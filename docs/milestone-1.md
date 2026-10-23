@@ -3,7 +3,8 @@
 ## Status: built; waiting for the laptop measurement and your playtest
 
 All five steps are in. On the dev machine the radius 8 budget holds with room to spare
-(main thread p99 3.7 ms, no frame over 20 ms); what's left is checking that on your laptop
+(main thread p99 at most 3.7 ms, no frame over 20 ms, even with one worker); what's left is
+checking that on your laptop
 (`?autofly`, now at radius 8 by default) and trying edits by hand.
 
 ### Before and after (radius 8, dev machine, 12 threads)
@@ -15,14 +16,19 @@ All five steps are in. On the dev machine the radius 8 budget holds with room to
 | bench: meshing | 1561 ms (culled, non-empty chunks) | 205–280 ms (greedy with AO) |
 | triangles in view | 568k | 207k |
 | vertex data | 32.5 MB | 7.5 MB |
-| autofly: first view | 2.3 s | 0.9–1.0 s |
-| autofly: main thread p50 / p99 / max | 1.5 / 11.1 / 14.9 ms | 0.9 / 3.7 / 5.3 ms (dev server), 1.1 / 3.7 / 4.2 ms (build) |
-| autofly: frames over 20 ms, holes | 0, 0 | 0, 0 |
+| autofly: first view (in front / all) | 2.3 s | 0.57–0.64 / 0.84–0.90 s |
+| autofly: main thread p50 / p99 / max | 1.5 / 11.1 / 14.9 ms | 0.8–1.1 / 2.8–3.7 / 3.8–4.5 ms |
+| autofly: worst frame, frames over 20 ms, holes | 17.1 ms, 0, 0 | 17.1–18.0 ms, 0, 0 |
 | meshes in memory | 40.1 MB | 9.6 MB |
 
-Bench ranges are the spread across runs (about ±25 % on this machine). The autofly
-numbers are from step 4; step 5 changes only the order chunks load in (below), and the
-pane was being throttled by the time it was done (see step 5).
+Bench ranges are the spread across runs (about ±25 % on this machine). Autofly ranges are
+two runs each on the dev server and the production build (`vite preview`), after step 5,
+with the app window in front; no console errors.
+
+With `?workers=1` (production build), standing in for a machine with few cores: view in
+front 3.56 s, all 5.61 s; the flight itself still had no frame over 20 ms (main thread
+p99 2.4 ms), no holes, and at most 63 chunks waiting. One worker keeps up with sprint
+flying at radius 8 on this CPU.
 
 Approved 2026-10-23: drop the brightness jitter, edits remesh synchronously on the main
 thread, radius 8 at the end if the numbers allow.
@@ -155,8 +161,8 @@ player's height comes first. The order is re-sorted on changing chunk (or height
 turning more than 30°. Default view radius is now 8. `?workers=N` sets the pool size, to
 see how fewer cores load.
 
-Measured headless, because the pane was being throttled to 1 fps by then (the app
-window was covered; the page still reports "visible"): the real loader at radius 8 with
+Measured headless first, because the pane was being throttled to 1 fps at the time (the
+PC was locked; the page still reports "visible"): the real loader at radius 8 with
 one simulated worker (capacity 2), looking along the autofly heading, counting jobs
 finished until the chunks within the horizontal field of view (+0.2 rad) are meshed:
 
@@ -168,7 +174,9 @@ finished until the chunks within the horizontal field of view (+0.2 rad) are mes
 
 With workers as the bottleneck, jobs are time: on a slow machine the view in front fills
 about a third sooner, and nothing is loaded later overall. Autofly now reports both
-("first view after load: in front …, all …").
+("first view after load: in front …, all …"). Confirmed in the browser afterwards with
+`?autofly&workers=1`: in front at 3.56 s of 5.61 s (63 %; the headless count predicted
+432 / 663 = 65 %).
 
 Where it differs from the plan: the plan had strict rings with direction only breaking
 ties within a ring. That loads everything behind at distance 4 before anything ahead at
