@@ -1,0 +1,166 @@
+# Milestone 1 plan: fast engine
+
+## Status: planned, waiting for your OK
+
+Goal: fly at sprint speed (36 blocks/s) with no frame over 20 ms, at view radius 8.
+Generation and meshing leave the main thread for a worker pool; the mesher becomes
+greedy with per-vertex ambient occlusion; chunks load in rings that fill the view
+first. Everything is measured before and after: a `?stats` overlay, a scripted flight
+(`?autofly`) and a headless `npm run bench`.
+
+## Baseline (scaffold, measured 2026-10-23)
+
+Headless, Node 22, seed 20261022, radius 7 around chunk (0, 0), median of 3 runs:
+
+| | |
+| --- | --- |
+| Generate | 1.0 ms per chunk (1156 chunks, 1.2 s) |
+| Mesh (culled faces) | 2.7 ms per chunk, of which 0.9 ms is `paddedBlocks`; worst 6–15 ms (GC) |
+| Triangles in view | 436k (596 chunks) |
+
+Where the time goes: `height()` runs fractal noise 4 times per column (once per chunk
+of the column); `paddedBlocks` calls `world.getBlock` (a string-keyed `Map` lookup) for
+every border cell; the mesher pushes into `number[]` and then copies to typed arrays;
+the per-block brightness jitter stops any two faces from ever being identical.
+The in-browser baseline (`?autofly` frame times) is the first thing recorded once the
+overlay exists, before any engine change.
+
+## Scope decisions
+
+- **The world stays the single owner of block data, on the main thread.** Workers are
+  stateless apart from a `Generator` per seed: a generate job returns blocks
+  (transferred to the main thread), a mesh job receives a padded copy (transferred to
+  the worker) and returns vertex buffers (transferred back). Edits stay synchronous on
+  the main thread and need no syncing with workers.
+- **Generation is per column** (cx, cz → all four chunks), sharing one 32 × 32
+  heightmap, so noise runs once per column instead of four times. The job takes a
+  cy range, so a taller world (Milestone 3) only changes the range. Output is still
+  cubic chunks; nothing else changes shape.
+- **All-air chunks** come back as `null` (no transfer), are stored as zeros on the
+  main thread and are never meshed until edited. Most of the top layer (y 96–127)
+  should be all air; the bench will count them.
+- **The brightness jitter goes.** It makes every face unique, so nothing could merge.
+  AO gives the ground its variation now; textures arrive in Milestone 3.
+- **Edits remesh synchronously on the main thread** (greedy is fast enough), so the
+  change shows the same frame with no hole at chunk borders. With AO an edit within
+  one block of a chunk edge or corner affects up to 7 neighbours (diagonals too, not
+  just the 3 face neighbours as now); `setBlock` returns all of them. If the stats show
+  an edit taking over 4 ms, neighbours move to urgent worker jobs swapped in together.
+- **Worker count:** `hardwareConcurrency - 1`, capped by `TUNING.workers.max` (8),
+  at least 1.
+- **Default view radius becomes 8** at the end, if the flight measurements allow it.
+- **Out of scope:** textures, lighting, LOD, occlusion culling, compressing chunk data in
+  memory. The stats will say whether memory needs attention before Milestone 4.
+
+## Files
+
+| File | Contents |
+| --- | --- |
+| `src/stats.ts` | `?stats` overlay (F3 toggles): fps, frame time avg / max over 1 s, a 5 s frame-time graph with the 16.7 and 20 ms lines, draw calls and triangles (`renderer.info`), chunks loaded / meshed / empty, jobs queued / in flight, worker busy %, memory (JS heap where the browser has it, plus our own chunk and geometry byte counts), frames over 20 ms since load |
+| `src/autofly.ts` | `?autofly[=seconds]`: from spawn, flies a fixed straight heading at sprint speed for 30 s, then prints a report (console and overlay): frame time p50 / p95 / p99 / max, frames over 20 and 33 ms, time until the first full view is meshed, and holes (chunks within the radius without a mesh) sampled each second |
+| `bench/bench.ts`, `bench/vitest.config.ts` | `npm run bench`: a fixed set (seed 20261022, columns within radius 8 of the origin), 5 runs, median. Prints generate, pad, mesh (ms per chunk mean / p95 / max), triangles, vertex bytes. Runs the culled mesher and the greedy mesher side by side |
+| `src/world/generate.ts` | `generateColumn(cx, cz, cyMin, cyMax)`: one heightmap, chunks of a column, `null` for all-air |
+| `src/world/world.ts` | `addColumn()` for worker results; `Chunk.empty` hint; `setBlock` returns diagonal neighbours too |
+| `src/mesh/padding.ts` | `paddedBlocks` rewritten: row copies with `subarray`/`set` from the chunk and its 26 neighbours, no per-cell `getBlock` |
+| `src/mesh/greedy.ts` | Greedy mesher with AO: the new `meshChunk` |
+| `src/mesh/culled.ts` | The scaffold mesher, kept as the test oracle and the bench comparison |
+| `src/mesh/builder.ts` | Growable typed-array vertex builder, reused between jobs; slices to exact length at the end |
+| `src/workers/protocol.ts` | Job and result message types |
+| `src/workers/chunkWorker.ts` | Worker entry: `handleJob(job)` (a pure function, tested directly) plus the `onmessage` glue |
+| `src/workers/pool.ts` | `WorkerPool`: spawns workers (`new Worker(new URL(...), { type: 'module' })`), hands a job to an idle worker, routes results, tracks busy time |
+| `src/chunkLoader.ts` | Becomes the job scheduler: wanted set, priority queue, dispatch, cancellation, stale-result checks, per-frame budget for applying results. Takes a `JobRunner` interface, so tests drive it with a synchronous fake runner |
+| `src/render/chunkRenderer.ts` | New vertex format; bounding spheres from chunk bounds instead of `computeBoundingSphere()` |
+| `src/config.ts` | `TUNING.workers` (max, jobs in flight per worker), `TUNING.view.applyBudgetMs` (replaces `meshBudgetMs`), `TUNING.render.ao` (the four AO brightness levels) |
+
+## Key data structures
+
+```ts
+/** One pass of a chunk mesh. Positions in world space (no transform), as now. */
+interface MeshData {
+  positions: Float32Array;              // xyz per vertex
+  colors: Uint8Array;                   // rgba per vertex, normalised; face shade × AO baked in
+  indices: Uint16Array | Uint32Array;   // Uint16 when under 65 536 vertices (almost always)
+}
+
+type Job =
+  | { kind: 'generate'; id: number; seed: number; cx: number; cz: number; cyMin: number; cyMax: number }
+  | { kind: 'mesh'; id: number; cx: number; cy: number; cz: number; version: number; padded: Uint8Array };
+
+type JobResult =
+  | { kind: 'generate'; id: number; cx: number; cz: number; chunks: (Uint8Array | null)[]; ms: number }
+  | { kind: 'mesh'; id: number; cx: number; cy: number; cz: number; version: number; mesh: ChunkMesh; ms: number };
+```
+
+Greedy mask: per axis, per direction, per slice, a reused `Int32Array(32 × 32)`; each
+cell packs block id (8 bits), the face's four AO levels (2 bits each) and the pass, so
+two faces merge only when block, AO and pass all match. Width then height extension as
+in 0fps; the quad's diagonal is picked by comparing the AO sums of its two pairs of
+opposite corners (0fps's rule), so the gradient doesn't crease. AO counts opaque
+blocks only; transparent faces (water, glass) get no AO so water stays flat.
+
+## Scheduling
+
+- **Wanted set:** columns within radius + 1 generated, chunks within radius meshed. A
+  chunk can be meshed once its 3 × 3 columns are generated.
+- **Priority:** ring (whole-chunk distance from the player's column) first; within a
+  ring, chunks in front of the camera before those behind (dot product with the look
+  direction); within a column, the chunk at the player's height first. Rings 0–1 always
+  go first regardless of direction. Recomputed when the player changes chunk or turns
+  more than 30°.
+- **Dispatch:** at most `workers × 2` jobs in flight, so each worker has its next job
+  waiting but the queue stays short enough that cancellation means something.
+- **Cancellation:** queued jobs for chunks that left the wanted set are dropped. Results
+  of in-flight jobs are dropped if the chunk is no longer wanted, or (mesh) if
+  `chunk.version` changed since dispatch, in which case it is queued again.
+- **Applying results:** within `applyBudgetMs` (3 ms) per frame: store generated chunks,
+  build padded copies, create geometries. Anything left waits for the next frame.
+
+## Tests
+
+- **Greedy covers exactly what culled covers:** rasterise both meshes to unit faces
+  (position, normal, pass) and compare the sets: generated terrain chunks, random
+  seeded block soups (all block types, chunk borders included), and empty / full chunks.
+  Also no unit face covered twice.
+- **Merging:** a 32 × 32 × 1 slab in an empty chunk is 6 quads; a checkerboard of two
+  blocks doesn't merge; faces with different AO don't merge.
+- **AO values:** exact levels at known corners (inside an L, under an overhang), across a
+  chunk border and across a diagonal chunk corner; the diagonal flips in a known case.
+- **Winding:** the existing counter-clockwise test, run on greedy quads.
+- **Padding:** the fast `paddedBlocks` equals the old per-cell version on a world with
+  edits near every edge and corner, and with unloaded neighbours.
+- **Generation:** `generateColumn` equals four per-chunk generations (determinism kept);
+  all-air chunks come back `null`.
+- **Edits:** a block on a chunk corner marks all 7 neighbours stale.
+- **Worker handler:** `handleJob` round trip for both job kinds; the result buffers are
+  the ones listed as transferables.
+- **Scheduler** (fake runner): ring order and view-first within a ring; meshing waits for
+  neighbours; out-of-range queued jobs are cancelled; stale-version results are dropped
+  and requeued; out-of-range results are dropped; nothing is meshed twice.
+- **Regression guard:** greedy triangles on the bench set stay under a quarter of culled.
+
+## How it's measured
+
+1. `npm run bench` before and after each engine change; numbers go in this file.
+2. `?stats&autofly` on the dev build before and after, same seed. I'll run it in the
+   built-in browser; the result that counts is yours on the laptop.
+3. Done when: on your laptop, `?autofly` at radius 8 reports no frame over 20 ms after
+   the first full view, no holes after the first second, and 60 fps average.
+
+## Order of work (one commit each, playable after each)
+
+1. `npm run bench`, `?stats`, `?autofly`. Record the in-browser baseline.
+2. Cheap wins on the main thread: fast padding, typed-array builder, compact vertex
+   format, chunk-bounds spheres, column generation, skipping all-air chunks. Measure.
+3. Greedy mesher with AO, diagonal stale neighbours, culled mesher kept as oracle.
+   Measure triangles and mesh time.
+4. Worker pool and protocol; `ChunkLoader` as a job scheduler with cancellation.
+5. Ring / view-first priority, apply budget, radius 8 if the numbers allow. Final
+   measurements and notes in this file.
+
+## Questions for you
+
+1. OK to drop the per-block brightness jitter (it blocks merging)?
+2. Edits remeshed synchronously on the main thread: fine, or would you rather they
+   went through the workers from the start?
+3. Raise the default view radius to 8 at the end of the milestone?
+4. Which laptop (CPU cores, browser) should the 60 fps / 20 ms budget be judged on?
