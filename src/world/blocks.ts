@@ -1,7 +1,10 @@
 // Block types. A block is one byte in a chunk; 0 is air.
 //
-// Colours are placeholders (one colour per face group). Milestone 2 replaces them with a
-// texture atlas; keep the per-face idea (top / side / bottom), it's what grass needs.
+// Each block names a texture for its top, sides and bottom (`textures.ts` makes them), which
+// is what grass needs. The plain colours are each face's average look, kept for the
+// reference mesher and anything that wants a block's colour without its texture.
+
+import type { TextureName } from './textures';
 
 export enum Block {
   Air = 0,
@@ -16,6 +19,8 @@ export enum Block {
   Glass = 9,
 }
 
+type RGB = [number, number, number];
+
 export interface BlockInfo {
   name: string;
   /** Opaque blocks hide the faces of whatever is next to them. */
@@ -24,41 +29,51 @@ export interface BlockInfo {
   passable: boolean;
   /** Drawn in the transparent pass (sorted, blended). */
   transparent: boolean;
+  /**
+   * Drawn with holes (alpha-tested, in the opaque pass): its faces against the same block
+   * are drawn too, so a canopy of leaves isn't hollow when seen through the holes.
+   */
+  cutout: boolean;
   /** Swum in, not walked on (water). */
   liquid: boolean;
   /** Seconds of holding the button to break it (by hand; there are no tools). */
   hardness: number;
+  textures: { top: TextureName; side: TextureName; bottom: TextureName };
   /** RGB 0–1 for the top, sides and bottom. */
-  top: [number, number, number];
-  side: [number, number, number];
-  bottom: [number, number, number];
+  top: RGB;
+  side: RGB;
+  bottom: RGB;
 }
 
-const hex = (h: number): [number, number, number] => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
-const solid = (name: string, hardness: number, top: number, side = top, bottom = side): BlockInfo => ({
+const hex = (h: number): RGB => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
+const faces = (top: TextureName, side = top, bottom = side) => ({ top, side, bottom });
+const solid = (name: string, hardness: number, textures: BlockInfo['textures'], top: number, side = top, bottom = side): BlockInfo => ({
   name,
   opaque: true,
   passable: false,
   transparent: false,
+  cutout: false,
   liquid: false,
   hardness,
+  textures,
   top: hex(top),
   side: hex(side),
   bottom: hex(bottom),
 });
 
 export const BLOCKS: readonly BlockInfo[] = [
-  { name: 'Air', opaque: false, passable: true, transparent: false, liquid: false, hardness: 0, top: [0, 0, 0], side: [0, 0, 0], bottom: [0, 0, 0] },
-  solid('Stone', 2.5, 0x8a8d91),
-  solid('Dirt', 0.6, 0x86603e),
-  solid('Grass', 0.7, 0x6aa84f, 0x7d7a45, 0x86603e),
-  solid('Sand', 0.6, 0xdccb8e),
+  // Never drawn; its textures are only there to fill the table.
+  { ...solid('Air', 0, faces('stone'), 0), opaque: false, passable: true },
+  solid('Stone', 2.5, faces('stone'), 0x8a8d91),
+  solid('Dirt', 0.6, faces('dirt'), 0x86603e),
+  solid('Grass', 0.7, faces('grass_top', 'grass_side', 'dirt'), 0x6aa84f, 0x7d7a45, 0x86603e),
+  solid('Sand', 0.6, faces('sand'), 0xdccb8e),
   // Not a raycast target, so never broken.
-  { name: 'Water', opaque: false, passable: true, transparent: true, liquid: true, hardness: Infinity, top: hex(0x3a78c9), side: hex(0x3a78c9), bottom: hex(0x3a78c9) },
-  solid('Wood', 1.5, 0xa7854f, 0x6b4a2b),
-  { ...solid('Leaves', 0.3, 0x3f8a36), opaque: false },
-  solid('Planks', 1.5, 0xb88c55),
-  { ...solid('Glass', 0.4, 0xcfe8f2), opaque: false, transparent: true },
+  { ...solid('Water', Infinity, faces('water'), 0x3a78c9), opaque: false, passable: true, transparent: true, liquid: true },
+  solid('Wood', 1.5, faces('wood_top', 'wood_side'), 0xa7854f, 0x6b4a2b),
+  { ...solid('Leaves', 0.3, faces('leaves'), 0x3f8a36), opaque: false, cutout: true },
+  solid('Planks', 1.5, faces('planks'), 0xb88c55),
+  { ...solid('Glass', 0.4, faces('glass'), 0xcfe8f2), opaque: false, transparent: true },
 ];
 
 /** Blocks the player can place, in hotbar order (keys 1–9). */

@@ -37,7 +37,8 @@ describe('chunk worker jobs', () => {
     if (result.kind !== 'mesh') throw new Error('wrong kind');
     expect(result.version).toBe(5);
     expect(result.mesh).toEqual(expected);
-    expect(resultTransferables(result)).toHaveLength(7);
+    // The padded copy, then positions, colours, texture coordinates and indices of both passes.
+    expect(resultTransferables(result)).toHaveLength(9);
     const received = send(result, resultTransferables(result));
     expect(received.mesh).toEqual(expected);
     expect(received.padded).toEqual(paddedBlocks(world, 0, 1, 0));

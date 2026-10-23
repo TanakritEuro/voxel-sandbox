@@ -96,7 +96,7 @@ function checkAgainstWorld(world: World, m: ChunkMesh): void {
       const nb = world.getBlock(...front);
       // Winding: the block behind the face is solid and the face is visible from the front.
       expect(b).not.toBe(Block.Air);
-      expect(nb === Block.Air || (!BLOCKS[nb].opaque && nb !== b)).toBe(true);
+      expect(nb === Block.Air || (!BLOCKS[nb].opaque && (nb !== b || BLOCKS[b].cutout))).toBe(true);
 
       const faceLevels = q.corners.map((c) => {
         if (BLOCKS[b].transparent) return 3;
@@ -110,9 +110,8 @@ function checkAgainstWorld(world: World, m: ChunkMesh): void {
       if (levels) expect(faceLevels).toEqual(levels);
       levels = faceLevels;
 
-      const info = BLOCKS[b];
-      const rgb = dir === 2 ? info.top : dir === 3 ? info.bottom : info.side;
-      const expected = faceLevels.map((l) => rgb.map((v) => Math.round(v * SHADE[dir] * TUNING.render.ao[l] * 255)));
+      // Grey: directional shade × AO, multiplied with the texture in the shader.
+      const expected = faceLevels.map((l) => Array(3).fill(Math.round(SHADE[dir] * TUNING.render.ao[l] * 255)));
       expect(q.colours).toEqual(expected);
     }
     const l = levels!;
@@ -200,10 +199,10 @@ describe('greedy mesher', () => {
     world.setBlock(10, 41, 10, Block.Stone);
     const m = mesh(world, 0, 1, 0);
     const top = quadsOf(m.opaque, 'opaque').filter((q) => q.axis === 1 && q.sign > 0 && q.corners[0][1] === 41);
-    const bright = Math.round(BLOCKS[Block.Stone].top[0] * 255);
+    const bright = 255;
     const level = (q: Quad, x: number, z: number) => {
       const k = q.corners.findIndex((c) => c[0] === x && c[2] === z);
-      return k < 0 ? null : TUNING.render.ao.indexOf(TUNING.render.ao.find((a) => Math.round(BLOCKS[Block.Stone].top[0] * a * 255) === q.colours[k][0])!);
+      return k < 0 ? null : TUNING.render.ao.indexOf(TUNING.render.ao.find((a) => Math.round(a * 255) === q.colours[k][0])!);
     };
     // The floor face east of the block: its two corners against the block have one solid side (level 2).
     const east = top.find((q) => q.corners.some((c) => c[0] === 11 && c[2] === 10) && q.corners.some((c) => c[0] === 12 && c[2] === 11) && unitFaces(q).length === 1)!;
@@ -230,7 +229,7 @@ describe('greedy mesher', () => {
       (q) => q.axis === 1 && q.sign > 0 && unitFaces(q).some((f) => f.block.join() === '6,40,6') && unitFaces(q).length === 1,
     )!;
     const k = q.corners.findIndex((c) => c[0] === 6 && c[2] === 6);
-    expect(q.colours[k][0]).toBe(Math.round(BLOCKS[Block.Stone].top[0] * TUNING.render.ao[0] * 255));
+    expect(q.colours[k][0]).toBe(Math.round(TUNING.render.ao[0] * 255));
   });
 
   it('takes AO from the neighbouring chunks, including diagonal ones', () => {
@@ -243,7 +242,7 @@ describe('greedy mesher', () => {
     checkAgainstWorld(world, m);
     const corner = quadsOf(m.opaque, 'opaque').find((q) => q.axis === 1 && q.sign > 0 && unitFaces(q).some((f) => f.block.join() === '31,40,31'))!;
     const k = corner.corners.findIndex((c) => c[0] === 32 && c[2] === 32);
-    expect(corner.colours[k][0]).toBe(Math.round(BLOCKS[Block.Stone].top[0] * TUNING.render.ao[2] * 255));
+    expect(corner.colours[k][0]).toBe(Math.round(TUNING.render.ao[2] * 255));
   });
 
   // Per-vertex AO keeps faces with different corner shading apart, which on stepped terrain

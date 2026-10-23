@@ -6,6 +6,7 @@ import { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
 import { Input } from './input';
 import { Player } from './player';
+import { textureIcon } from './render/blockMaterial';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
 import { WaterView } from './render/water';
@@ -112,11 +113,14 @@ let selected = 0;
 let target: RayHit | null = null;
 const mining = new Mining();
 
+/** Each hotbar block shown by its side texture. */
+const hotbarIcons = HOTBAR.map((b) => textureIcon(BLOCKS[b].textures.side));
+
 function renderHotbar(): void {
-  hotbarEl.innerHTML = HOTBAR.map((b, i) => {
-    const [r, g, bl] = BLOCKS[b].top.map((c) => Math.round(c * 255));
-    return `<div class="slot${i === selected ? ' selected' : ''}" title="${BLOCKS[b].name}"><span style="background: rgb(${r},${g},${bl})"></span><em>${i + 1}</em></div>`;
-  }).join('');
+  hotbarEl.innerHTML = HOTBAR.map(
+    (b, i) =>
+      `<div class="slot${i === selected ? ' selected' : ''}" title="${BLOCKS[b].name}"><span style="background-image: url(${hotbarIcons[i]})"></span><em>${i + 1}</em></div>`,
+  ).join('');
 }
 
 function edit(x: number, y: number, z: number, block: Block): void {

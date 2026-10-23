@@ -12,6 +12,12 @@ export interface MeshData {
    * would convert every buffer on the CPU.
    */
   colors: Uint8Array;
+  /**
+   * Texture coordinates per vertex, 4 bytes: u and v in blocks (0..32, the corner's place on
+   * the face within the chunk: the shader repeats the texture every block), the texture
+   * array layer, and a spare byte for alignment.
+   */
+  uvl: Uint8Array;
   /** Uint16 when the mesh has at most 65 536 vertices (almost always). */
   indices: Uint16Array | Uint32Array;
 }
@@ -19,6 +25,7 @@ export interface MeshData {
 export class MeshBuilder {
   private positions = new Float32Array(4096 * 3);
   private colors = new Uint8Array(4096 * 4);
+  private uvl = new Uint8Array(4096 * 4);
   private indices = new Uint32Array(4096 * 1.5);
   /** Vertices and indices written since `reset()`. */
   vertexCount = 0;
@@ -36,12 +43,16 @@ export class MeshBuilder {
       const capacity = Math.max(vertices, this.positions.length / 3) * 2;
       this.positions = grow(this.positions, capacity * 3);
       this.colors = grow(this.colors, capacity * 4);
+      this.uvl = grow(this.uvl, capacity * 4);
       this.indices = grow(this.indices, capacity * 1.5);
     }
   }
 
-  vertex(x: number, y: number, z: number, r: number, g: number, b: number): void {
+  vertex(x: number, y: number, z: number, r: number, g: number, b: number, u = 0, tv = 0, layer = 0): void {
     const v = this.vertexCount++;
+    this.uvl[v * 4] = u;
+    this.uvl[v * 4 + 1] = tv;
+    this.uvl[v * 4 + 2] = layer;
     this.positions[v * 3] = x;
     this.positions[v * 3 + 1] = y;
     this.positions[v * 3 + 2] = z;
@@ -72,10 +83,16 @@ export class MeshBuilder {
   /** Copies of the used part, safe to keep or transfer while the builder is reused. */
   build(): MeshData {
     const indices = this.indices.subarray(0, this.indexCount);
+    let small: Uint16Array | undefined;
+    if (this.vertexCount <= 65536) {
+      small = new Uint16Array(indices.length);
+      small.set(indices);
+    }
     return {
       positions: this.positions.slice(0, this.vertexCount * 3),
       colors: this.colors.slice(0, this.vertexCount * 4),
-      indices: this.vertexCount <= 65536 ? Uint16Array.from(indices) : indices.slice(),
+      uvl: this.uvl.slice(0, this.vertexCount * 4),
+      indices: small ?? indices.slice(),
     };
   }
 }

@@ -1,6 +1,6 @@
 # Milestone 3 plan: richer world
 
-## Status: in progress (step 1 of 6 done)
+## Status: in progress (steps 1–2 of 6 done)
 
 Approved 2026-10-23 as proposed: 256-block world with sea level 62, 16 × 16 pixel-art
 textures, no per-biome tint for now, ores coal / iron / copper / crystal.
@@ -34,6 +34,47 @@ after turning was still one under the player (those come first whatever the dire
 It now checks that the first column generated after a turn is on the new side, turning
 from -x to +x so that the order columns happen to be listed in can't pass it: it fails
 with `behindWeight` 0 and passes with 1.
+
+**Step 2 (textures).** `world/textures.ts` paints 11 layers of 16 × 16 pixel art with seeded
+noise, speckles, stripes and rings (stone, dirt, grass top and side, sand, water, bark and
+rings, leaves with about a third of the pixels as holes, planks, glass with a frame), as
+plain typed arrays; `BLOCKS` names a texture for each block's top, sides and bottom.
+`render/blockMaterial.ts` uploads them as one `DataArrayTexture` (nearest up close,
+mipmapped) and draws chunks with a small `ShaderMaterial`: texture × the mesher's grey
+shade (directional × AO, taken towards linear so it darkens as much as it did the flat
+colours), alpha test, Three.js fog. Each vertex gains 4 bytes: u and v in blocks within the
+chunk (the shader repeats the texture every block across a merged quad, sampling with
+`textureGrad` on the unwrapped UVs so the mip level doesn't jump at block seams) and the
+layer. On walls v runs up the y axis, so textures stand upright. The hotbar shows the side
+textures.
+
+Leaves are a new kind of block, `cutout`: alpha-tested in the opaque pass, and their faces
+against other leaves are drawn (the reference mesher too), so a canopy seen through its
+holes shows leaves, not the sky. Glass and water still hide faces against themselves.
+
+| radius 8 | step 1 | step 2 |
+| --- | --- | --- |
+| bench: greedy meshing | 360 ms | 369 ms |
+| triangles | 207k | 207k |
+| vertex data | 7.5 MB | 9.1 MB (+21 %, the texture coordinates) |
+| `?autofly` main thread p50 / p99 / max, dev | 1.6 / 4.4 / 5.8 ms | 1.8 / 4.2 / 6.2 ms |
+| `?autofly`, production build | | 1.9 / 4.5 / 6.4 ms |
+| meshes in memory after a flight | 9.6 MB | 11.6 MB |
+
+No frame over 20 ms, no holes, no console errors. Looked at in the pane: textures on grass,
+sides, sand and water, no seam lines in the distance, AO still visible; placed leaves show
+holes with leaves behind them, glass shows its frame and highlights.
+
+Differs from the plan: the texture names and painters live in `world/textures.ts`, not
+`render/` (blocks name their textures, and world code doesn't import from rendering);
+the mask key didn't need the layer (a block's texture follows from the block and the face
+direction, which the mesher already keys on); and leaves draw faces against each other
+(the plan said "stay hidden"), which looked hollow through the holes.
+
+Tests (6 more): textures are deterministic, distinct and cover every block face; opaque
+blocks have no transparent pixels, leaves 20–50 %, glass mostly clear, water translucent;
+a merged quad's UVs span its size in blocks with v up the wall; grass uses grass top, grass
+side and dirt; leaves draw their shared faces and glass doesn't.
 
 Goal: a world worth exploring. Blocks get textures (generated at startup, no image files),
 greedy meshes keep working with them, leaves get holes. Four biomes (plains, forest,

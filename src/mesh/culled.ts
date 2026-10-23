@@ -33,10 +33,10 @@ const FACES: Face[] = [
   { d: [0, 0, -1], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]], colour: 'side', shade: 0.68 },
 ];
 
-/** Should the face of block `a` towards neighbour `b` be drawn? */
+/** Should the face of block `a` towards neighbour `b` be drawn? (Leaves and other cutouts show against themselves.) */
 function faceVisible(a: Block, b: Block): boolean {
   if (b === Block.Air) return true;
-  return !BLOCKS[b].opaque && b !== a;
+  return !BLOCKS[b].opaque && (b !== a || BLOCKS[a].cutout);
 }
 
 const opaque = new MeshBuilder();

@@ -91,7 +91,7 @@ it('bench', () => {
         times.push(performance.now() - t0);
         for (const d of [m.opaque, m.transparent]) {
           triangles += d.indices.length / 3;
-          bytes += d.positions.byteLength + d.colors.byteLength + d.indices.byteLength;
+          bytes += d.positions.byteLength + d.colors.byteLength + d.uvl.byteLength + d.indices.byteLength;
         }
       }
       meshTimes[name] = times;

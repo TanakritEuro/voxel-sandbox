@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { MeshData } from '../mesh/builder';
 import type { ChunkMesh } from '../mesh/mesher';
 import { CHUNK_SIZE } from '../world/coords';
+import { createBlockMaterial, createBlockTextures } from './blockMaterial';
 
 /** Radius of the sphere around a chunk cube; every chunk mesh fits inside it. */
 const CHUNK_RADIUS = (CHUNK_SIZE * Math.sqrt(3)) / 2;
@@ -10,18 +11,11 @@ const CHUNK_RADIUS = (CHUNK_SIZE * Math.sqrt(3)) / 2;
 export class ChunkRenderer {
   readonly group = new THREE.Group();
   private readonly meshes = new Map<string, THREE.Mesh[]>();
-  private readonly opaqueMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
-  private readonly transparentMaterial = new THREE.MeshBasicMaterial({
-    vertexColors: true,
-    transparent: true,
-    // Both sides, so the water's surface shows from underneath. In one pass: Three.js would
-    // otherwise draw transparent double-sided meshes twice (back faces, then front), adding
-    // a draw call per water mesh for nothing on flat water.
-    side: THREE.DoubleSide,
-    forceSinglePass: true,
-    opacity: 0.65,
-    depthWrite: false,
-  });
+  private readonly textures = createBlockTextures();
+  /** Solid blocks, and leaves with their holes cut out (alpha test). */
+  private readonly opaqueMaterial = createBlockMaterial(this.textures, { alphaTest: 0.5, transparent: false });
+  /** Water and glass, blended. */
+  private readonly transparentMaterial = createBlockMaterial(this.textures, { alphaTest: 0.01, transparent: true });
 
   /** Triangles currently in the scene, for the stats line. */
   triangles = 0;
@@ -76,6 +70,7 @@ export class ChunkRenderer {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(data.colors, 4, true));
+    geo.setAttribute('uvl', new THREE.BufferAttribute(data.uvl, 4));
     geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geo.boundingSphere = new THREE.Sphere(centre.clone(), CHUNK_RADIUS);
     const mesh = new THREE.Mesh(geo, material);

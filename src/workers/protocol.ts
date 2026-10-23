@@ -48,5 +48,5 @@ export const jobTransferables = (job: Job): ArrayBuffer[] => (job.kind === 'mesh
 export function resultTransferables(result: JobResult): ArrayBuffer[] {
   if (result.kind === 'generate') return result.chunks.flatMap((c) => (c ? [c.buffer as ArrayBuffer] : []));
   const { opaque, transparent } = result.mesh;
-  return [result.padded, ...[opaque, transparent].flatMap((d) => [d.positions, d.colors, d.indices])].map((a) => a.buffer as ArrayBuffer);
+  return [result.padded, ...[opaque, transparent].flatMap((d) => [d.positions, d.colors, d.uvl, d.indices])].map((a) => a.buffer as ArrayBuffer);
 }

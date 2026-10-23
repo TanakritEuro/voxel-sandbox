@@ -6,11 +6,15 @@
 // and each of the 32 slices across it, a 32 × 32 mask records the visible faces as
 // block id + the AO level of their four corners. Runs of equal mask cells are merged into
 // rectangles, widest first then tallest, so faces merge only when block and AO match.
-// Colours carry the block colour × directional shade × AO, so the material needs no lights.
+// The block's texture follows from the block and the face direction, so it needs no place in
+// the key. Each vertex carries texture coordinates in blocks (the shader repeats the texture
+// across a merged quad) and its layer; the vertex colour is grey, directional shade × AO,
+// multiplied with the texture.
 
 import { TUNING } from '../config';
 import { Block, BLOCKS } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
+import { textureLayer } from '../world/textures';
 import { MeshBuilder, type MeshData } from './builder';
 import { PADDED } from './padding';
 
@@ -31,22 +35,22 @@ const STRIDE = [1, P * P, P];
 /** Baked directional shading per direction (+x, -x, +y, -y, +z, -z): the classic voxel look, no lights needed. */
 export const SHADE = [0.8, 0.8, 1.0, 0.55, 0.68, 0.68];
 
-// Per block id: opaque (hides the faces next to it and darkens corners), drawn in the transparent pass.
+// Per block id: opaque (hides the faces next to it and darkens corners), drawn in the
+// transparent pass, drawn with holes (faces against the same block shown too).
 const OPAQUE = new Uint8Array(256);
 const TRANSPARENT = new Uint8Array(256);
-/** Vertex colour 0–255 by block, direction and AO level: COLOUR[((block * 6 + dir) * 4 + ao) * 3 + channel]. */
-const COLOUR = new Uint8Array(256 * 6 * 4 * 3);
+const CUTOUT = new Uint8Array(256);
+/** Texture array layer by block and direction: LAYER[block * 6 + dir]. */
+const LAYER = new Uint8Array(256 * 6);
 BLOCKS.forEach((info, b) => {
   OPAQUE[b] = info.opaque ? 1 : 0;
   TRANSPARENT[b] = info.transparent ? 1 : 0;
-  for (let dir = 0; dir < 6; dir++) {
-    const rgb = dir === 2 ? info.top : dir === 3 ? info.bottom : info.side;
-    for (let ao = 0; ao < 4; ao++) {
-      const k = SHADE[dir] * TUNING.render.ao[ao] * 255;
-      for (let ch = 0; ch < 3; ch++) COLOUR[((b * 6 + dir) * 4 + ao) * 3 + ch] = Math.round(rgb[ch] * k);
-    }
-  }
+  CUTOUT[b] = info.cutout ? 1 : 0;
+  for (let dir = 0; dir < 6; dir++) LAYER[b * 6 + dir] = textureLayer(dir === 2 ? info.textures.top : dir === 3 ? info.textures.bottom : info.textures.side);
 });
+/** Vertex brightness 0–255 by direction and AO level: SHADED[dir * 4 + ao]. */
+const SHADED = new Uint8Array(6 * 4);
+for (let dir = 0; dir < 6; dir++) for (let ao = 0; ao < 4; ao++) SHADED[dir * 4 + ao] = Math.round(SHADE[dir] * TUNING.render.ao[ao] * 255);
 
 /** AO level of a face corner from the two blocks beside it and the one diagonally between them (each 0 or 1). */
 const vertexAO = (side1: number, side2: number, corner: number): number => (side1 && side2 ? 0 : 3 - side1 - side2 - corner);
@@ -82,6 +86,10 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
     const su = STRIDE[ua];
     const sv = STRIDE[va];
     const towards = s * sd; // the neighbour the face looks at
+    // Texture axes: on the sides u runs along the other horizontal axis and v up, on top
+    // and bottom u along x and v along z, so textures stand upright on walls.
+    const tu = d === 0 ? 2 : 0;
+    const tv = d === 1 ? 2 : 1;
 
     for (let c = 0; c < S; c++) {
       // The mask: block id | AO of corners 0–3 (2 bits each) << 8, or 0 for no face.
@@ -94,7 +102,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
           if (b !== AIR) {
             const f = i + towards;
             const nb = padded[f];
-            if (nb === AIR || (!OPAQUE[nb] && nb !== b)) {
+            if (nb === AIR || (!OPAQUE[nb] && (nb !== b || CUTOUT[b]))) {
               if (TRANSPARENT[b]) key = b | (NO_AO << 8);
               else {
                 // Corners 0–3 are at (-u, -v), (+u, -v), (+u, +v), (-u, +v), in the layer the face looks at.
@@ -142,15 +150,16 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
           const a2 = (ao >> 4) & 3;
           const a3 = (ao >> 6) & 3;
           const out = TRANSPARENT[b] ? transparent : opaque;
-          const colour = (b * 6 + dir) * 4;
+          const shade = dir * 4;
+          const layer = LAYER[b * 6 + dir];
           const u0 = origin[ua] + u;
           const v0 = origin[va] + v;
           out.reserve(1);
           pos[d] = plane;
-          corner(out, pos, ua, va, u0, v0, colour + a0);
-          corner(out, pos, ua, va, u0 + w, v0, colour + a1);
-          corner(out, pos, ua, va, u0 + w, v0 + h, colour + a2);
-          corner(out, pos, ua, va, u0, v0 + h, colour + a3);
+          corner(out, origin, tu, tv, layer, ua, va, u0, v0, SHADED[shade + a0]);
+          corner(out, origin, tu, tv, layer, ua, va, u0 + w, v0, SHADED[shade + a1]);
+          corner(out, origin, tu, tv, layer, ua, va, u0 + w, v0 + h, SHADED[shade + a2]);
+          corner(out, origin, tu, tv, layer, ua, va, u0, v0 + h, SHADED[shade + a3]);
           // Split along the darker diagonal, so a lone dark corner shades both triangles
           // symmetrically instead of creasing (0fps).
           out.quad(a0 + a2 > a1 + a3);
@@ -163,9 +172,20 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   return { opaque: opaque.build(), transparent: transparent.build(), quads };
 }
 
-function corner(out: MeshBuilder, p: Float64Array, ua: number, va: number, u: number, v: number, colour: number): void {
+function corner(
+  out: MeshBuilder,
+  origin: number[],
+  tu: number,
+  tv: number,
+  layer: number,
+  ua: number,
+  va: number,
+  u: number,
+  v: number,
+  shade: number,
+): void {
+  const p = pos;
   p[ua] = u;
   p[va] = v;
-  const c = colour * 3;
-  out.vertex(p[0], p[1], p[2], COLOUR[c], COLOUR[c + 1], COLOUR[c + 2]);
+  out.vertex(p[0], p[1], p[2], shade, shade, shade, p[tu] - origin[tu], p[tv] - origin[tv], layer);
 }
