@@ -8,7 +8,7 @@ import { Block } from './blocks';
 import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, WORLD_HEIGHT } from './coords';
 import { Noise } from './noise';
 
-export const SEA_LEVEL = 40;
+export const SEA_LEVEL = 62;
 
 export class Generator {
   private readonly noise: Noise;

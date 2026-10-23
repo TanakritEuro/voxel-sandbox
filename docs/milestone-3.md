@@ -1,6 +1,39 @@
 # Milestone 3 plan: richer world
 
-## Status: planned, waiting for your OK
+## Status: in progress (step 1 of 6 done)
+
+Approved 2026-10-23 as proposed: 256-block world with sea level 62, 16 × 16 pixel-art
+textures, no per-biome tint for now, ores coal / iron / copper / crystal.
+
+## Results so far
+
+**Step 1 (shared empty chunks, 256-block world).** All-air chunks point at one shared
+`EMPTY_BLOCKS` array; `setBlock` gives a chunk its own the first time it's edited. Then
+`MAX_CHUNK_Y` 7 (y 0..255) and sea level 62 (everything above it moves up 22 blocks;
+the mountains come with biomes in step 3). `?autofly` flies 22 blocks higher to match.
+
+Block data for the radius 8 area (headless, the bench's 253 columns):
+
+| | chunks (all air) | unshared | shared |
+| --- | --- | --- | --- |
+| 128 blocks | 1012 (506) | 31.6 MB | 15.8 MB |
+| 256 blocks | 2024 (1286) | 63.3 MB | 23.1 MB |
+
+So the taller world takes less memory than the old one did. In the pane after a flight:
+chunks 30.7 MB for 2616 loaded (was 40.9 MB for 1308).
+
+Bench (radius 8): generate 313 ms for the twice-as-tall columns (204–254 before); 574
+chunks meshed instead of 394 (the terrain moved up across a chunk layer, and solid stone
+chunks underground are meshed though they have no faces; caves in step 4 hollow them, so
+no special case for now); greedy meshing 360 ms total, same 207k triangles. `?autofly`
+radius 8: first view 0.91 s, main thread p50 1.6 / p99 4.4 / max 5.8 ms, nothing over 20 ms,
+no holes, no console errors.
+
+The loader's turning test was redone: with twice the chunks per column, the first job
+after turning was still one under the player (those come first whatever the direction).
+It now checks that the first column generated after a turn is on the new side, turning
+from -x to +x so that the order columns happen to be listed in can't pass it: it fails
+with `behindWeight` 0 and passes with 1.
 
 Goal: a world worth exploring. Blocks get textures (generated at startup, no image files),
 greedy meshes keep working with them, leaves get holes. Four biomes (plains, forest,

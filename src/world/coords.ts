@@ -9,9 +9,9 @@ export const CHUNK_SIZE = 1 << CHUNK_BITS; // 32
 export const CHUNK_MASK = CHUNK_SIZE - 1;
 export const CHUNK_VOLUME = CHUNK_SIZE ** 3;
 
-/** The world's vertical extent in chunks (scaffold: y from 0 to 127). Milestone 3 may lift this. */
+/** The world's vertical extent in chunks: y from 0 to 255, room for mountains above sea level 62. */
 export const MIN_CHUNK_Y = 0;
-export const MAX_CHUNK_Y = 3;
+export const MAX_CHUNK_Y = 7;
 export const WORLD_HEIGHT = (MAX_CHUNK_Y - MIN_CHUNK_Y + 1) * CHUNK_SIZE;
 
 export const toChunk = (v: number): number => v >> CHUNK_BITS;

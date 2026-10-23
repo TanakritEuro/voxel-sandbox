@@ -5,6 +5,12 @@ import { Block } from './blocks';
 import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
 import { Generator } from './generate';
 
+/**
+ * The blocks of every all-air chunk until it's edited: one shared array, so the half of the
+ * world that is sky costs nothing. Never written to; `setBlock` gives a chunk its own first.
+ */
+export const EMPTY_BLOCKS = new Uint8Array(CHUNK_VOLUME);
+
 export class Chunk {
   /** Bumped on every edit, so the renderer knows to remesh. */
   version = 0;
@@ -15,7 +21,8 @@ export class Chunk {
     readonly cx: number,
     readonly cy: number,
     readonly cz: number,
-    readonly blocks: Uint8Array,
+    /** Block ids; `EMPTY_BLOCKS` (shared, read-only) until an all-air chunk is first edited. */
+    public blocks: Uint8Array,
     /** All air as generated and not edited since: nothing to mesh. */
     public empty = false,
   ) {}
@@ -67,7 +74,7 @@ export class World {
 
   /** Store a freshly generated chunk; null means all air. */
   private addGenerated(cx: number, cy: number, cz: number, blocks: Uint8Array | null): void {
-    const chunk = new Chunk(cx, cy, cz, blocks ?? new Uint8Array(CHUNK_VOLUME), blocks === null);
+    const chunk = new Chunk(cx, cy, cz, blocks ?? EMPTY_BLOCKS, blocks === null);
     this.chunks.set(chunk.key, chunk);
   }
 
@@ -93,6 +100,7 @@ export class World {
     if (!chunk) return [];
     const i = localIndex(toLocal(x), toLocal(y), toLocal(z));
     if (chunk.blocks[i] === block) return [];
+    if (chunk.blocks === EMPTY_BLOCKS) chunk.blocks = new Uint8Array(CHUNK_VOLUME);
     chunk.blocks[i] = block;
     chunk.version++;
     chunk.modified = true;
@@ -112,6 +120,13 @@ export class World {
       }
     }
     return stale;
+  }
+
+  /** Bytes of block data held: chunks with their own arrays (the shared empty one counts once). */
+  get blockBytes(): number {
+    let owned = 0;
+    for (const chunk of this.chunks.values()) if (chunk.blocks !== EMPTY_BLOCKS) owned++;
+    return (owned + 1) * CHUNK_VOLUME;
   }
 
   /** Remove a chunk's data (when far away). Modified chunks should be saved first (Milestone 4). */

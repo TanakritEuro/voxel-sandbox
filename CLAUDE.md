@@ -26,9 +26,11 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1 and 2 built (`docs/milestone-1.md`, `docs/milestone-2.md`), waiting for playtests. A seeded heightmap world
+Milestones 1 and 2 built (`docs/milestone-1.md`, `docs/milestone-2.md`), waiting for playtests;
+Milestone 3 in progress (`docs/milestone-3.md`). A seeded heightmap world
 (`world/generate.ts`: fractal Perlin noise, grass, dirt, stone, sand beaches, water to sea
-level) in 32³ chunks, 128 blocks tall, generated a column at a time. Chunks within
+level 62) in 32³ chunks, 256 blocks tall, generated a column at a time; all-air chunks
+share one empty array until edited. Chunks within
 8 chunks of the camera are generated and meshed in a pool of Web Workers, near and in
 front of the camera first, scheduled from the main thread, and unloaded when far away
 (`chunkLoader.ts`). The mesher
@@ -95,7 +97,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/world/` — `blocks.ts` (block ids, properties, colours, hotbar), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `generate.ts`
   (terrain by column with one heightmap, all-air chunks as null, sea level, spawn search),
-  `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit),
+  `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit,
+  `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
   crouching at edges, swimming, flying; `overlapsBlock` for placing), `mining.ts` (break
   timing and crack stage).

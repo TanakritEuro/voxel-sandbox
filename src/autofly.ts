@@ -10,7 +10,7 @@ import { LONG_FRAME_MS } from './stats';
 
 const DEFAULT_SECONDS = 30;
 /** Eye height: high enough to clear nearly all terrain. The flight passes through anything anyway. */
-const ALTITUDE = 112;
+const ALTITUDE = 134;
 /** Diagonal (+x, +z): crosses chunk borders on both axes, the most loading per block flown. */
 const YAW = (-3 * Math.PI) / 4;
 const PITCH = -0.3;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Block } from '../src/world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
 import { Generator, SEA_LEVEL } from '../src/world/generate';
-import { World } from '../src/world/world';
+import { EMPTY_BLOCKS, World } from '../src/world/world';
 
 /** The scaffold's generator, one block at a time: what the column generator must reproduce. */
 function generateReference(g: Generator, cx: number, cy: number, cz: number): Uint8Array {
@@ -63,6 +63,24 @@ describe('column generation', () => {
     expect(bottom.empty).toBe(false);
     world.setBlock(3, MAX_CHUNK_Y * CHUNK_SIZE + 3, 3, Block.Stone);
     expect(top.empty).toBe(false);
+  });
+
+  it('shares one array between all-air chunks and gives a chunk its own on its first edit', () => {
+    const world = new World(20261022);
+    for (let cz = 0; cz <= 1; cz++) for (let cx = 0; cx <= 1; cx++) world.ensureColumn(cx, cz);
+    const empties = [...world.chunks.values()].filter((c) => c.empty);
+    expect(empties.length).toBeGreaterThan(3);
+    for (const c of empties) expect(c.blocks).toBe(EMPTY_BLOCKS);
+    const [edited, ...others] = empties;
+    const y = edited.cy * CHUNK_SIZE + 3;
+    world.setBlock(edited.cx * CHUNK_SIZE + 3, y, edited.cz * CHUNK_SIZE + 3, Block.Glass);
+    expect(edited.blocks).not.toBe(EMPTY_BLOCKS);
+    expect(world.getBlock(edited.cx * CHUNK_SIZE + 3, y, edited.cz * CHUNK_SIZE + 3)).toBe(Block.Glass);
+    for (const c of others) expect(c.blocks).toBe(EMPTY_BLOCKS);
+    expect(EMPTY_BLOCKS.every((b) => b === Block.Air)).toBe(true);
+    // Only chunks with their own arrays count, plus the shared one once.
+    const owned = [...world.chunks.values()].filter((c) => c.blocks !== EMPTY_BLOCKS).length;
+    expect(world.blockBytes).toBe((owned + 1) * CHUNK_VOLUME);
   });
 
   it('fills in only the missing chunks of a column, keeping edited ones', () => {

@@ -12,7 +12,7 @@ import { WaterView } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import { Block, BLOCKS, HOTBAR } from './world/blocks';
-import { CHUNK_SIZE, CHUNK_VOLUME, toChunk } from './world/coords';
+import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock } from './world/physics';
 import { raycast, type RayHit } from './world/raycast';
@@ -82,7 +82,7 @@ const stats = new Stats(
     queued: loader.queued,
     inFlight: loader.inFlight,
     workerBusy: pool.busy(),
-    chunkBytes: world.chunks.size * CHUNK_VOLUME,
+    chunkBytes: world.blockBytes,
     geometryBytes: chunks.bytes,
     sceneTriangles: chunks.triangles,
   }),

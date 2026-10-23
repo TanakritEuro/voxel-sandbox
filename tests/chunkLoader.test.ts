@@ -154,15 +154,24 @@ describe('chunk loader', () => {
   it('sorts again after turning round', () => {
     TUNING.view.radius = 5;
     const s = setup(1);
-    for (let frame = 0; frame < 30; frame++) {
-      s.loader.update(16, EYE, 16, 1, 0);
-      s.runner.deliver();
-    }
+    const frames = (lookX: number, n: number) => {
+      for (let frame = 0; frame < n; frame++) {
+        s.loader.update(16, EYE, 16, lookX, 0);
+        s.runner.deliver();
+      }
+    };
+    // Facing -x first: the order columns are listed in starts at -x too, so the turn to +x is
+    // what must change the order (a loader ignoring the look would keep going at -x).
+    frames(-1, 60);
     const before = s.runner.jobs.length;
-    s.loader.update(16, EYE, 16, -1, 0); // turn to face -x
-    const next = s.runner.jobs.slice(before);
-    expect(next).toHaveLength(1);
-    expect(next[0].cx).toBeLessThan(0);
+    // Facing -x, the loader got past the columns underfoot to ones ahead.
+    expect(s.runner.jobs.some((j) => j.kind === 'generate' && j.cx <= -2)).toBe(true);
+    frames(1, 20); // turn to face +x
+    // The columns underfoot come first whatever the direction, so the turn shows in the
+    // next column generated: on the new side.
+    const generated = s.runner.jobs.slice(before).filter((j) => j.kind === 'generate');
+    expect(generated.length).toBeGreaterThan(0);
+    expect(generated[0].cx).toBeGreaterThan(0);
   });
 
   it('meshes a chunk only once the columns around it are loaded', () => {
