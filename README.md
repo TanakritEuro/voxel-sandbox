@@ -24,6 +24,10 @@ Add `?seed=123` to the URL for a different world.
 
 Measuring: `?stats` shows the performance overlay (F3 toggles it), `?autofly` flies a fixed
 path at sprint speed for 30 s and prints a frame-time report, `?radius=12` sets the view
-radius (8 by default), `?workers=1` the number of chunk workers. `npm run bench` times generation and meshing headless.
+radius (8 by default), `?workers=1` the number of chunk workers. `npm run bench` times
+generation and meshing headless.
+
+Play it at https://tanakriteuro.github.io/voxel-sandbox/ (try
+https://tanakriteuro.github.io/voxel-sandbox/?autofly&stats on your own machine).
 
 See `CLAUDE.md` for the engine design, architecture and roadmap.
