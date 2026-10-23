@@ -78,6 +78,8 @@ export const TUNING = {
   edit: {
     /** How far away you can break or place blocks. */
     reach: 7,
+    /** Seconds after breaking a block before the next one starts, while the button stays held. */
+    breakPause: 0.2,
   },
   water: {
     /** With the eye under water: fog colour and range (blocks). */

@@ -17,7 +17,7 @@ Open http://localhost:5173 and click to play.
 | Shift | Crouch (won't walk off edges); flying: down |
 | Ctrl (tap) | Sprint until you stop moving forward; flying: faster |
 | F, or Space twice | Start or stop flying |
-| Left click | Break block |
+| Left button (hold) | Break block (stone takes longest) |
 | Right click | Place block |
 | 1–9 or wheel | Pick a block |
 | Esc | Release the mouse |

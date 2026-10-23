@@ -1,5 +1,6 @@
-// Keyboard and mouse: which keys are held, presses kept until something takes them (so a
-// tap shorter than a physics step still counts), and mouse look with pointer lock.
+// Keyboard and mouse: which keys and buttons are held, presses kept until something takes
+// them (so a tap shorter than a physics step still counts), and mouse look with pointer
+// lock. Mouse buttons are codes too: 'Mouse0' (left), 'Mouse2' (right).
 
 import { TUNING } from './config';
 
@@ -22,7 +23,8 @@ export class Input implements Controls {
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     canvas.addEventListener('click', () => {
-      if (!this.locked) canvas.requestPointerLock();
+      // Some embedded browsers refuse; say so rather than leave an unhandled rejection.
+      if (!this.locked) canvas.requestPointerLock().catch((e: Error) => console.warn('Pointer lock refused:', e.message));
     });
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
@@ -39,6 +41,18 @@ export class Input implements Controls {
     });
     window.addEventListener('keyup', (e) => this.held.delete(e.code));
     window.addEventListener('blur', () => this.held.clear());
+    // Buttons count only with the mouse captured: the click that captures it does nothing else.
+    canvas.addEventListener('mousedown', (e) => {
+      if (!this.locked) return;
+      this.pressed.add(`Mouse${e.button}`);
+      this.held.add(`Mouse${e.button}`);
+    });
+    document.addEventListener('mouseup', (e) => this.held.delete(`Mouse${e.button}`));
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    document.addEventListener('pointerlockchange', () => {
+      if (this.locked) return;
+      for (const code of [...this.held]) if (code.startsWith('Mouse')) this.held.delete(code);
+    });
   }
 
   get locked(): boolean {

@@ -1,6 +1,6 @@
 # Milestone 2 plan: walking player
 
-## Status: in progress (steps 1–3 of 5 done)
+## Status: in progress (steps 1–4 of 5 done)
 
 Approved 2026-10-23 as proposed: fly mode collides with blocks, breaking takes time in fly
 mode too, sprint on Ctrl only.
@@ -72,6 +72,28 @@ beach and up the terraces, and the sky came back. No console errors.
 Differs from the plan: water's pull is one rate (`drag`) for every direction instead of
 separate gravity and drag numbers, and the exit boost is 8.5, not 6 (6 doesn't reach a bank
 one block above the water).
+
+**Step 4 (timed breaking, cracks).** `BLOCKS` has a `hardness` (seconds by hand): leaves
+0.3, glass 0.4, dirt and sand 0.6, grass 0.7, wood and planks 1.5, stone 2.5. `world/mining.ts`
+counts how long the left button has been held on the same block; looking at another
+block or letting go starts again, and after a block breaks there's a 0.2 s pause
+(`TUNING.edit.breakPause`) before the next one starts, so holding the button digs one
+block at a time. `render/crack.ts` draws ten stages from one seeded 16 × 16 pattern (seven
+branches wandering out from the middle, grown a pixel at a time), on a box just outside
+the block with a polygon offset so it never fights the block's faces. Mouse buttons are now
+part of `Input` (`Mouse0`, `Mouse2`), counted only while the mouse is captured; placing
+takes one press of the right button. A refused pointer lock is logged as a warning, not an
+unhandled rejection.
+
+6 more tests: every block breaks after its hardness (to within a frame), looking away or
+letting go restarts, the stages run 0–9 evenly, the pause between blocks, and the crack
+pattern grows (each stage contains the last) to 15–45 % of the face and is the same every
+time.
+
+Checked in the pane, which can't capture the mouse at all ("WrongDocumentError", a limit
+of the embedded browser), by making the page believe it was captured and sending real
+mouse events: looking down at the grass and holding the left button showed the cracks
+growing on it, then dug a hole, grass then dirt then dirt, one block at a time.
 
 Goal: walk the world instead of flying over it. Gravity, an AABB that collides with the
 blocks, jumping, sprinting, crouching that won't walk off edges, swimming with an

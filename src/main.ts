@@ -7,11 +7,13 @@ import { TUNING } from './config';
 import { Input } from './input';
 import { Player } from './player';
 import { ChunkRenderer } from './render/chunkRenderer';
+import { CrackOverlay } from './render/crack';
 import { WaterView } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import { Block, BLOCKS, HOTBAR } from './world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, toChunk } from './world/coords';
+import { Mining } from './world/mining';
 import { overlapsBlock } from './world/physics';
 import { raycast, type RayHit } from './world/raycast';
 import { World } from './world/world';
@@ -101,11 +103,14 @@ const outline = new THREE.LineSegments(
 );
 outline.visible = false;
 scene.add(outline);
+const cracks = new CrackOverlay();
+scene.add(cracks.mesh);
 
 // --- Editing -----------------------------------------------------------------------------
 
 let selected = 0;
 let target: RayHit | null = null;
+const mining = new Mining();
 
 function renderHotbar(): void {
   hotbarEl.innerHTML = HOTBAR.map((b, i) => {
@@ -118,11 +123,11 @@ function edit(x: number, y: number, z: number, block: Block): void {
   for (const c of world.setBlock(x, y, z, block)) loader.remesh(c.cx, c.cy, c.cz);
 }
 
-canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-canvas.addEventListener('mousedown', (e) => {
-  if (!input.locked || !target) return;
-  if (e.button === 0) edit(target.x, target.y, target.z, Block.Air);
-  if (e.button === 2) {
+/** Breaking (hold the left button) and placing (a click of the right one), once per frame. */
+function editing(dt: number): void {
+  const broken = mining.update(target, input.isHeld('Mouse0'), dt);
+  if (broken) edit(broken.x, broken.y, broken.z, Block.Air);
+  if (input.take('Mouse2') && target) {
     const x = target.x + target.nx;
     const y = target.y + target.ny;
     const z = target.z + target.nz;
@@ -130,7 +135,8 @@ canvas.addEventListener('mousedown', (e) => {
     // Not inside the player (water and other passable blocks can go there).
     if (BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) edit(x, y, z, block);
   }
-});
+  cracks.show(mining.target, mining.stage);
+}
 window.addEventListener('keydown', (e) => {
   const n = Number(e.key);
   if (n >= 1 && n <= HOTBAR.length) {
@@ -165,6 +171,7 @@ function frame(now: number): void {
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 
   target = raycast(world, camera.position, dir, TUNING.edit.reach);
+  editing(dt);
   outline.visible = target !== null;
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 

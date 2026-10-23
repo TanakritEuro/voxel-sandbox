@@ -37,10 +37,11 @@ with directional shading; water and glass go in a separate transparent pass. A w
 player with an AABB that collides with the blocks, jumping, sprinting, crouching at edges,
 swimming with an underwater view, and fly mode (`player.ts`, `world/physics.ts`, 120 Hz
 fixed step), a voxel raycast (`world/raycast.ts`) with a block
-outline, left click to break, right click to place, 1–9 or the wheel for the hotbar.
+outline, hold the left button to break (time by block `hardness`, with cracks), right click to
+place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: no timed breaking yet, no lighting, no textures, no trees or caves, and edits are lost on reload.
+Known limits, each fixed by a milestone below: no lighting, no textures, no trees or caves, and edits are lost on reload.
 
 ## Architecture
 
@@ -96,19 +97,22 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (terrain by column with one heightmap, all-air chunks as null, sea level, spawn search),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit),
   `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
-  crouching at edges, swimming, flying; `overlapsBlock` for placing).
+  crouching at edges, swimming, flying; `overlapsBlock` for placing), `mining.ts` (break
+  timing and crack stage).
 - `src/mesh/` — `padding.ts` (the 34³ padded copy, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colours, Uint16 indices),
   `mesher.ts` (greedy mesher with AO, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — Three.js meshes per chunk. `water.ts` — the underwater fog.
+  `crack.ts` — the crack pattern and overlay.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
   (near first, in front before behind) up to the pool's capacity, drops stale or
   out-of-range results, remeshes edits on the main thread.
 - `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`),
   `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
   `pool.ts` (`WorkerPool`).
-- `src/input.ts` — keys held, presses kept until taken, mouse look and pointer lock.
+- `src/input.ts` — keys and mouse buttons held, presses kept until taken, mouse look and
+  pointer lock.
 - `src/player.ts` — the player: physics at a fixed step, interpolated camera, fly toggle,
   waiting for the ground to load; `autopilot` for `?autofly`.
 - `src/main.ts` — entry point, editing, HUD, frame loop.
