@@ -26,6 +26,8 @@ export type JobResult =
       cyMin: number;
       /** Chunks cyMin.. upwards; null for all air. */
       chunks: (Uint8Array | null)[];
+      /** Each chunk's face connectivity (`visibility.ts`), worked out here rather than on the main thread. */
+      connectivity: number[];
       /** Time the worker spent on the job. */
       ms: number;
     }

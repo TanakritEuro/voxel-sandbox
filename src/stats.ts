@@ -7,6 +7,8 @@ import type * as THREE from 'three';
 /** Engine numbers the overlay shows, read when it redraws. */
 export interface EngineCounters {
   chunks: number;
+  /** Chunks that could be seen from the player's chunk (the rest aren't meshed or drawn). */
+  visible: number;
   meshed: number;
   queued: number;
   inFlight: number;
@@ -105,7 +107,7 @@ export class Stats {
       `  player physics ${physics.toFixed(2)} ms avg, ${physicsMax.toFixed(2)} max (${steps.toFixed(1)} steps a frame)`,
       `over ${LONG_FRAME_MS} ms: ${this.longFrames} frames since load`,
       `draw calls ${r.calls}   triangles ${Math.round(r.triangles / 1000)}k drawn / ${Math.round(c.sceneTriangles / 1000)}k`,
-      `chunks ${c.chunks} loaded, ${c.meshed} meshed`,
+      `chunks ${c.chunks} loaded, ${c.visible} could be seen, ${c.meshed} meshed`,
       `jobs ${c.queued} queued, ${c.inFlight} in flight` + (c.workerBusy === null ? '' : `, workers ${Math.round(c.workerBusy * 100)}% busy`),
       `memory: chunks ${mb(c.chunkBytes)}, meshes ${mb(c.geometryBytes)}` + (heap ? `, JS heap ${mb(heap)}` : ''),
       ...(this.note ? ['', this.note] : []),

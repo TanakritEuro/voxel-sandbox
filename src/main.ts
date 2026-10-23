@@ -80,6 +80,7 @@ const stats = new Stats(
   renderer,
   () => ({
     chunks: world.chunks.size,
+    visible: loader.visibleChunks,
     meshed: chunks.count,
     queued: loader.queued,
     inFlight: loader.inFlight,

@@ -4,6 +4,7 @@
 import { Block } from './blocks';
 import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
 import { Generator, type GeneratorOptions } from './generate';
+import { ALL_CONNECTED, chunkConnectivity } from './visibility';
 
 /**
  * The blocks of every all-air chunk until it's edited: one shared array, so the half of the
@@ -16,6 +17,8 @@ export class Chunk {
   version = 0;
   /** Edited by the player since generation (these must be saved, Milestone 4). */
   modified = false;
+  /** Which faces see each other through open space (`visibility.ts`); -1 until worked out. */
+  private connections = -1;
 
   constructor(
     readonly cx: number,
@@ -29,6 +32,16 @@ export class Chunk {
 
   get key(): string {
     return chunkKey(this.cx, this.cy, this.cz);
+  }
+
+  /** Faces connected through the chunk's open space: given by the worker that made it, else worked out when first asked. */
+  get connectivity(): number {
+    if (this.connections < 0) this.connections = this.empty ? ALL_CONNECTED : chunkConnectivity(this.blocks);
+    return this.connections;
+  }
+
+  set connectivity(mask: number) {
+    this.connections = mask;
   }
 }
 
@@ -66,9 +79,11 @@ export class World {
    * Store generated chunks cyMin.. upwards of a column (from `generateColumn`, here or in a
    * worker), except those already loaded: edited chunks stay as they are.
    */
-  addColumn(cx: number, cz: number, cyMin: number, chunks: (Uint8Array | null)[]): void {
+  addColumn(cx: number, cz: number, cyMin: number, chunks: (Uint8Array | null)[], connectivity?: number[]): void {
     chunks.forEach((blocks, i) => {
-      if (!this.chunks.has(chunkKey(cx, cyMin + i, cz))) this.addGenerated(cx, cyMin + i, cz, blocks);
+      if (this.chunks.has(chunkKey(cx, cyMin + i, cz))) return;
+      this.addGenerated(cx, cyMin + i, cz, blocks);
+      if (connectivity) this.getChunk(cx, cyMin + i, cz)!.connectivity = connectivity[i];
     });
   }
 
@@ -105,6 +120,7 @@ export class World {
     chunk.version++;
     chunk.modified = true;
     chunk.empty = false;
+    chunk.connectivity = -1; // worked out again when next asked
 
     // Per axis, the chunk offsets whose border reaches this block: 0, and -1 or +1 at an edge.
     const sides = (l: number) => (l === 0 ? [0, -1] : l === CHUNK_MASK ? [0, 1] : [0]);

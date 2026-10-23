@@ -8,18 +8,25 @@
 // (near first, in front of the camera before behind, see `columnPriority`) and start
 // whatever is ready, up to the runner's capacity. Nothing is queued beyond that, so work for
 // chunks that went out of range is never started: cancelling is free.
+//
+// Only chunks that could be seen are meshed and drawn: a walk from the player's chunk through
+// open space (`world/visibility.ts`) decides which, so cave walls deep under the ground stay
+// unmeshed until the player goes down there.
 
 import { TUNING } from './config';
 import { type ChunkMesh, meshChunk } from './mesh/mesher';
 import { paddedBlocks, PADDED_VOLUME } from './mesh/padding';
 import type { JobResult, JobRunner } from './workers/protocol';
 import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from './world/coords';
+import { ALL_CONNECTED, reachableChunks } from './world/visibility';
 import type { World } from './world/world';
 
 /** Where meshes go (the chunk renderer). */
 export interface ChunkSink {
   set(key: string, cx: number, cy: number, cz: number, mesh: ChunkMesh): void;
   remove(key: string): void;
+  /** Show or hide a chunk's mesh (hidden: can't be seen from where the player is). */
+  setVisible(key: string, visible: boolean): void;
 }
 
 interface Column {
@@ -33,6 +40,9 @@ interface Column {
 const SPARE_PADDED = 32;
 
 const columnKey = (cx: number, cz: number): string => `${cx},${cz}`;
+
+/** New chunks change what can be seen, but walking again for every one is wasteful: at most this often (ms). */
+const WALK_INTERVAL = 100;
 
 /** Turning further than this (30°) since the columns were last sorted sorts them again. */
 const TURN_COS = Math.cos(Math.PI / 6);
@@ -79,6 +89,12 @@ export class ChunkLoader {
    * skipped (idle frames, and frames waiting on workers).
    */
   private dirty = true;
+  /** Chunks that could be seen from the player's chunk (keys), from the last walk. */
+  private reachable = new Set<string>();
+  /** The walk is out of date: right away after moving or an edit, at the next interval after new chunks. */
+  private walkNow = true;
+  private walkSoon = false;
+  private lastWalk = Number.NEGATIVE_INFINITY;
 
   constructor(
     private readonly world: World,
@@ -93,15 +109,25 @@ export class ChunkLoader {
     return this.running;
   }
 
+  /** Chunks that could be seen from the player's chunk (meshed or to be meshed). */
+  get visibleChunks(): number {
+    return this.reachable.size;
+  }
+
+  /** Could chunk (cx, cy, cz) be seen from the player's chunk, as of the last walk? */
+  canSee(cx: number, cy: number, cz: number): boolean {
+    return this.reachable.has(chunkKey(cx, cy, cz));
+  }
+
   /** Work outstanding: not started, or running. */
   get pending(): number {
     return this.queued + this.running;
   }
 
   /**
-   * Chunks within `radius` columns of the player's column that have no mesh yet: holes,
-   * if they're inside the fog. With `minCos`, only columns within that angle of the look
-   * direction (and the ones under the player) count. Measured by `?autofly`.
+   * Chunks within `radius` columns of the player's column that have no mesh yet and could be
+   * seen (or aren't loaded, so nobody knows yet): holes, if they're inside the fog. With `minCos`, only columns within that angle
+   * of the look direction (and the ones under the player) count. Measured by `?autofly`.
    */
   missing(radius: number, minCos = -1): number {
     const { cx, cz } = this.centre;
@@ -111,7 +137,11 @@ export class ChunkLoader {
         const d2 = dx * dx + dz * dz;
         if (d2 > radius * radius) continue;
         if (d2 >= 4 && dx * this.look.x + dz * this.look.z < minCos * Math.sqrt(d2)) continue;
-        for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) if (!this.meshed.has(chunkKey(cx + dx, cy, cz + dz))) n++;
+        for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
+          const key = chunkKey(cx + dx, cy, cz + dz);
+          if (this.meshed.has(key)) continue;
+          if (this.reachable.has(key) || !this.world.getChunk(cx + dx, cy, cz + dz)) n++;
+        }
       }
     }
     return n;
@@ -133,6 +163,7 @@ export class ChunkLoader {
       this.rebuildOrder();
       if (moved) this.unloadFar();
       this.dirty = true;
+      this.walkNow = true;
     }
     const deadline = performance.now() + TUNING.view.applyBudgetMs;
     // Results first: they unblock more work.
@@ -140,13 +171,25 @@ export class ChunkLoader {
       this.apply(this.results.shift()!);
       this.dirty = true;
     }
+    const now = performance.now();
+    // While results keep coming, walk at most every WALK_INTERVAL; once they stop, at once,
+    // so no chunk is meshed on a walk that ran before its neighbours were known.
+    const idle = this.results.length === 0 && this.running === 0;
+    if (this.walkNow || (this.walkSoon && (idle || now - this.lastWalk >= WALK_INTERVAL))) {
+      this.walk();
+      this.lastWalk = now;
+      this.walkNow = this.walkSoon = false;
+      this.dirty = true;
+    }
     if (this.dirty) this.dispatch(deadline);
   }
 
   /** Remesh now, on this thread (after an edit), so the change shows this frame. */
   remesh(cx: number, cy: number, cz: number): void {
-    // A chunk without a mesh yet is meshed by the next walk, from its new version.
+    // A chunk without a mesh yet is meshed by the next walk, from its new version. The edit may
+    // have opened or closed a way through it, so walk again too.
     this.dirty = true;
+    this.walkNow = true;
     const key = chunkKey(cx, cy, cz);
     const chunk = this.world.getChunk(cx, cy, cz);
     if (!chunk || !this.meshed.has(key) || !this.neighboursLoaded(cx, cz)) return;
@@ -159,7 +202,10 @@ export class ChunkLoader {
     this.running--;
     if (result.kind === 'generate') {
       this.generating.delete(columnKey(result.cx, result.cz));
-      if (this.inKeepRange(result.cx, result.cz)) this.world.addColumn(result.cx, result.cz, result.cyMin, result.chunks);
+      if (this.inKeepRange(result.cx, result.cz)) {
+        this.world.addColumn(result.cx, result.cz, result.cyMin, result.chunks, result.connectivity);
+        this.walkSoon = true;
+      }
       return;
     }
     const { cx, cy, cz, version } = result;
@@ -170,7 +216,24 @@ export class ChunkLoader {
     const chunk = this.world.getChunk(cx, cy, cz);
     if (!chunk || chunk.version !== version || !this.inKeepRange(cx, cz)) return;
     this.renderer.set(key, cx, cy, cz, result.mesh);
+    this.renderer.setVisible(key, this.reachable.has(key));
     this.meshed.set(key, version);
+  }
+
+  /** Work out which chunks could be seen from the player's chunk; show those meshes, hide the rest. */
+  private walk(): void {
+    const { cx, cz } = this.centre;
+    if (Number.isNaN(cx)) return;
+    const r = TUNING.view.radius;
+    // Above or below the world, start from its top or bottom chunk.
+    const cy = Math.max(MIN_CHUNK_Y, Math.min(MAX_CHUNK_Y, this.centre.cy));
+    this.reachable = reachableChunks(
+      [cx, cy, cz],
+      (x, y, z) => y >= MIN_CHUNK_Y && y <= MAX_CHUNK_Y && (x - cx) ** 2 + (z - cz) ** 2 <= r * r,
+      // A chunk not loaded yet counts as open, so the walk carries on into it until it is.
+      (x, y, z) => this.world.getChunk(x, y, z)?.connectivity ?? ALL_CONNECTED,
+    );
+    for (const key of this.meshed.keys()) this.renderer.setVisible(key, this.reachable.has(key));
   }
 
   /** Start ready work in priority order while there's capacity and time; count the rest. */
@@ -211,6 +274,8 @@ export class ChunkLoader {
           this.meshed.set(key, chunk.version);
           continue;
         }
+        // Can't be seen from here: leave it until it can.
+        if (!this.reachable.has(key)) continue;
         // Border faces and AO need the neighbours, or they'd be drawn against "air".
         neighbours ??= this.neighboursLoaded(cx, cz);
         if (!neighbours || !canStart()) {

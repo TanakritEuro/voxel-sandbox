@@ -1,6 +1,6 @@
 # Milestone 3 plan: richer world
 
-## Status: in progress (steps 1–4 of 6 done; cave culling proposed before step 5)
+## Status: in progress (steps 1–4 and visibility culling done; trees next)
 
 Approved 2026-10-23 as proposed: 256-block world with sea level 62, 16 × 16 pixel-art
 textures, no per-biome tint for now, ores coal / iron / copper / crystal.
@@ -172,6 +172,48 @@ when the cave limit is removed); entrances on dry land; ores only replace stone,
 depth range, all four found, coal > iron > crystal; a vein across a chunk border with each
 chunk placing its own part, independently; the same chunks whichever order columns load in.
 `Generator` and `World` take options to switch caves and ores off, for the surface tests.
+
+**Step 4b (visibility culling, added 2026-10-23).** `world/visibility.ts`: per chunk, a flood
+fill through see-through blocks finds which of its 6 faces see each other (15 pairs, a bit
+each), worked out in the worker that generates the chunk (sent back with it) and again
+after an edit. The loader walks from the player's chunk through connected faces, never in
+the direction opposite one already taken; only chunks the walk reaches are meshed, and
+meshes of chunks it no longer reaches are hidden. It walks again at once after moving to
+another chunk or an edit, at most every 100 ms while new chunks arrive, and at once when
+they stop (otherwise a walk made before some neighbours were known can mesh chunks that
+turn out unseen; a test caught it). `?stats` shows how many chunks could be seen.
+
+Measured, and the gain is modest:
+
+| radius 8 | no culling | culling |
+| --- | --- | --- |
+| bench: chunks / triangles seen from the spawn point | 718 / 1857k | 554 / 1478k (-20 %) |
+| same, with caves never opening onto land (experiment) | | 462 / 1237k (-33 %) |
+| same, with narrower tunnels (0.05, experiment) | 718 / 1566k | 503 / 1149k |
+| `?autofly` after the flight: chunks meshed, triangles drawn | 1062, 412k | 968, 349k |
+| meshes in memory after the flight | 120 MB | 112 MB |
+| `?autofly` main thread p50 / p99 / max | 2.9 / 7.8 / 9.0 ms | 2.5–2.7 / 6.6–7.5 / 8.0–10.1 ms |
+| at the spawn point: triangles in the scene, meshes | ~2.5M, ~120 MB | 1525k, 67 MB |
+
+Why so little: a chunk is coarse. A surface chunk holds both open sky and tunnels, and both
+touch its side faces (at different heights); connectivity is per face pair, not per region,
+so the walk comes in through a side via the sky and leaves downwards via a tunnel. Cave
+entrances add to it but aren't the main leak (keeping caves off the surface only gets to
+-33 %). From the autofly's height over mountains, nearly everything is genuinely reachable
+through the air. Finer sections (16 or 8 blocks tall) would tighten it; fewer or narrower
+caves cut triangles roughly in proportion to the cave wall. In absolute terms ~350k
+triangles drawn a frame and ~110 MB of meshes may well be fine for a laptop GPU: the laptop
+measurement should decide before more work goes into this.
+
+Also fixed on the way: autofly's "first view" counted unloaded chunks as not missing once
+culling existed, and started the flight at 0.09 s; chunks not loaded yet now count as holes.
+
+Tests (9 more): connectivity of open air, solid stone, a straight tunnel, a bend, two
+separate tunnels, a sealed pocket, see-through blocks; the walk through open space, over a
+solid surface (the top layer seen, nothing under it), down a shaft, and refusing a U-turn
+back under the start (fails with that rule off); the loader meshing a deep chunk once the
+player is down there and hiding it from above. The loader tests now check only chunks that
+could be seen are drawn.
 
 Differs from the plan: the biome weights are Gaussians of the distance in climate space
 rather than smoothsteps of thresholds, which gave smoother borders and fewer tuning knobs;

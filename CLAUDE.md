@@ -47,8 +47,8 @@ outline, hold the left button to break (time by block `hardness`, with cracks), 
 place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: no trees yet, cave walls are all drawn
-(no visibility culling yet), no lighting,
+Known limits, each fixed by a milestone below: no trees yet; visibility culling is per
+chunk and coarse, so many cave walls are still meshed and drawn; no lighting,
 and edits are lost on reload.
 
 ## Architecture
@@ -106,7 +106,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
   border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
-  `features.ts` (ore veins across chunk borders),
+  `features.ts` (ore veins across chunk borders), `visibility.ts` (chunk face connectivity
+  and the walk from the player's chunk that decides what to mesh and draw),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
@@ -121,8 +122,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   array, the chunk shader, hotbar icons. `water.ts` — the underwater fog.
   `crack.ts` — the crack pattern and overlay.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
-  (near first, in front before behind) up to the pool's capacity, drops stale or
-  out-of-range results, remeshes edits on the main thread.
+  (near first, in front before behind) up to the pool's capacity, meshes only chunks the
+  visibility walk reaches and hides the rest, drops stale or out-of-range results, remeshes
+  edits on the main thread.
 - `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`),
   `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
   `pool.ts` (`WorkerPool`).

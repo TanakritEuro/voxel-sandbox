@@ -10,7 +10,8 @@ import { TUNING } from '../src/config';
 import { meshCulled } from '../src/mesh/culled';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks } from '../src/mesh/padding';
-import { MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
+import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
+import { ALL_CONNECTED, reachableChunks } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { World } from '../src/world/world';
 
@@ -57,6 +58,7 @@ it('bench', () => {
   const sizes: Record<string, { triangles: number; bytes: number }> = {};
   let emptyChunks = 0;
   let meshedChunks = 0;
+  let seenLine = '';
 
   // One warm-up run (JIT), then RUNS measured ones.
   for (let run = 0; run <= RUNS; run++) {
@@ -101,6 +103,23 @@ it('bench', () => {
     if (run === 0) {
       emptyChunks = [...world.chunks.values()].filter((c) => c.empty).length;
       meshedChunks = padded.length;
+      // What visibility culling leaves to mesh and draw, seen from the spawn point's chunk.
+      const spawn = world.generator.findLand(0, 0);
+      const eye = world.generator.height(spawn.x, spawn.z) + 2;
+      const seen = reachableChunks(
+        [toChunk(spawn.x), toChunk(eye), toChunk(spawn.z)],
+        (x, y, z) => y >= MIN_CHUNK_Y && y <= MAX_CHUNK_Y && x * x + z * z <= RADIUS * RADIUS,
+        (x, y, z) => world.getChunk(x, y, z)?.connectivity ?? ALL_CONNECTED,
+      );
+      let seenChunks = 0;
+      let seenTriangles = 0;
+      for (const [p, cx, cy, cz] of padded) {
+        if (!seen.has(chunkKey(cx, cy, cz))) continue;
+        const m = meshChunk(p, cx, cy, cz);
+        seenChunks++;
+        seenTriangles += (m.opaque.indices.length + m.transparent.indices.length) / 3;
+      }
+      seenLine = `seen from spawn (visibility culling): ${seenChunks} of ${meshedChunks} chunks, ${Math.round(seenTriangles / 1000)}k of ${Math.round(sizes.greedy.triangles / 1000)}k greedy triangles`;
       continue;
     }
     record(gen, genTimes);
@@ -120,6 +139,7 @@ it('bench', () => {
     ...Object.entries(mesh).map(([name, t]) =>
       row(`mesh (${name})`, t, meshedChunks, 'chunks', `: ${Math.round(sizes[name].triangles / 1000)}k triangles, ${(sizes[name].bytes / 2 ** 20).toFixed(1)} MB vertex data`),
     ),
+    seenLine,
     '',
   ];
   console.log(lines.join('\n'));

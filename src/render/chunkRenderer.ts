@@ -54,6 +54,10 @@ export class ChunkRenderer {
     this.meshes.delete(key);
   }
 
+  setVisible(key: string, visible: boolean): void {
+    for (const m of this.meshes.get(key) ?? []) m.visible = visible;
+  }
+
   get count(): number {
     return this.meshes.size;
   }

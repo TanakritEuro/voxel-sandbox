@@ -45,6 +45,12 @@ class FakeSink implements ChunkSink {
   }
   remove(key: string): void {
     this.meshes.delete(key);
+    this.hidden.delete(key);
+  }
+  readonly hidden = new Set<string>();
+  setVisible(key: string, visible: boolean): void {
+    if (visible) this.hidden.delete(key);
+    else this.hidden.add(key);
   }
 }
 
@@ -90,19 +96,25 @@ function inView(cx: number, cz: number): [number, number, number][] {
 const fresh = (world: World, cx: number, cy: number, cz: number) => meshChunk(paddedBlocks(world, cx, cy, cz), cx, cy, cz);
 
 describe('chunk loader', () => {
-  it('meshes every chunk in view once, the same as meshing on the main thread', () => {
+  it('meshes every chunk in view that could be seen, once, the same as meshing on the main thread', () => {
     const s = setup();
     settle(s, 16, 16);
+    let seen = 0;
     for (const [cx, cy, cz] of inView(0, 0)) {
       const chunk = s.world.getChunk(cx, cy, cz)!;
       expect(chunk).toBeDefined();
       const key = chunkKey(cx, cy, cz);
       if (chunk.empty) expect(s.sink.meshes.has(key)).toBe(false);
+      // Out of sight: not drawn (a walk during loading may have meshed it before its neighbours
+      // were known; it stays hidden).
+      else if (!s.loader.canSee(cx, cy, cz)) expect(!s.sink.meshes.has(key) || s.sink.hidden.has(key)).toBe(true);
       else {
         expect(s.sink.meshes.get(key)).toEqual(fresh(s.world, cx, cy, cz));
         expect(s.sink.sets.get(key)).toBe(1);
+        seen++;
       }
     }
+    expect(seen).toBeGreaterThan(5);
     expect(s.loader.missing(RADIUS)).toBe(0);
     // All-air chunks never become jobs.
     for (const job of s.runner.jobs) if (job.kind === 'mesh') expect(s.world.getChunk(job.cx, job.cy, job.cz)!.empty).toBe(false);
@@ -136,7 +148,7 @@ describe('chunk loader', () => {
           for (let ez = -1; ez <= 1; ez++) for (let ex = -1; ex <= 1; ex++) ready &&= world.hasColumn(dx + ex, dz + ez);
           if (!ready) continue;
           for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
-            if (!world.getChunk(dx, cy, dz)!.empty) expect(started.has(chunkKey(dx, cy, dz))).toBe(true);
+            if (!world.getChunk(dx, cy, dz)!.empty && s.loader.canSee(dx, cy, dz)) expect(started.has(chunkKey(dx, cy, dz))).toBe(true);
           }
         }
       started.add(chunkKey(job.cx, job.cy, job.cz));
@@ -172,6 +184,28 @@ describe('chunk loader', () => {
     const generated = s.runner.jobs.slice(before).filter((j) => j.kind === 'generate');
     expect(generated.length).toBeGreaterThan(0);
     expect(generated[0].cx).toBeGreaterThan(0);
+  });
+
+  it('meshes a deep chunk only once it can be seen, and hides it again from above', () => {
+    const s = setup();
+    const at = (y: number) => {
+      for (let frame = 0; frame < 10_000; frame++) {
+        s.loader.update(16, y, 16, 1, 0);
+        if (s.loader.pending === 0 && s.runner.waiting === 0) return;
+        s.runner.deliver();
+      }
+    };
+    const deep = chunkKey(0, 0, 0);
+    at(150); // up in the sky
+    expect(s.loader.canSee(0, 0, 0)).toBe(false);
+    expect(s.sink.meshes.has(deep)).toBe(false);
+    at(10); // down in it
+    expect(s.loader.canSee(0, 0, 0)).toBe(true);
+    expect(s.sink.meshes.get(deep)).toEqual(fresh(s.world, 0, 0, 0));
+    expect(s.sink.hidden.has(deep)).toBe(false);
+    at(150); // back up: kept, but not drawn
+    expect(s.sink.meshes.has(deep)).toBe(true);
+    expect(s.sink.hidden.has(deep)).toBe(true);
   });
 
   it('meshes a chunk only once the columns around it are loaded', () => {
