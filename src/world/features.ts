@@ -1,4 +1,4 @@
-// Features placed into generated chunks. So far: ore veins.
+// Features placed into generated chunks: ore veins and trees.
 //
 // A vein starts at a seeded spot in some chunk and wanders a few blocks, never more than
 // REACH from its start; it only replaces stone. Every chunk replays the veins of itself and
@@ -6,6 +6,7 @@
 // border comes out whole, whichever chunk is generated first or alone.
 
 import { createRng, hash3 } from '../math';
+import type { Biome } from './biomes';
 import { Block } from './blocks';
 import { CHUNK_SIZE } from './coords';
 
@@ -77,4 +78,141 @@ export function placeOres(blocks: Uint8Array, cx: number, cy: number, cz: number
           }
         });
   return placed;
+}
+
+// Trees. A tree's place is decided per 5 × 5-block cell of the world, from the seed and the
+// cell alone: a chance by biome, a spot in the cell, a height; then it must stand on its
+// biome's ground (grass, snowy grass or snow, desert sand), on dry land not cut by a cave. Each
+// column job asks for the trees within TREE_REACH of its chunks and writes the parts that
+// fall inside them, going through trees in world order: trunks may replace leaves, leaves
+// only fill air, so overlapping trees come out the same whatever the load order.
+
+export enum TreeKind {
+  Oak = 0,
+  Spruce = 1,
+  Cactus = 2,
+}
+
+export interface Tree {
+  x: number;
+  z: number;
+  /** The lowest trunk block (the ground is one below). */
+  y: number;
+  kind: TreeKind;
+  /** Trunk blocks. */
+  height: number;
+}
+
+/** What tree placement needs to know about the ground; the generator answers it. */
+export interface Ground {
+  height(x: number, z: number): number;
+  biome(x: number, z: number): Biome;
+  /** The block on top of the column (before caves). */
+  top(x: number, z: number): Block;
+  /** Above the water. */
+  dry(x: number, z: number): boolean;
+  /** Has a cave carved the block at (x, y, z)? */
+  carved(x: number, y: number, z: number): boolean;
+}
+
+const CELL = 5;
+/** Furthest a tree's blocks reach from its trunk, sideways. */
+export const TREE_REACH = 2;
+/** Tallest a tree reaches above its lowest trunk block (spruce: 9 trunk, a leaf on top). */
+export const TREE_TOP = 10;
+
+/** Per biome (plains, forest, desert, mountains): the chance a cell has a tree, which tree, on what ground. */
+const TREE_CHANCE = [0.1, 0.7, 0.08, 0.3];
+const TREE_KIND = [TreeKind.Oak, TreeKind.Oak, TreeKind.Cactus, TreeKind.Spruce];
+const TREE_GROUND: readonly (readonly Block[])[] = [[Block.Grass], [Block.Grass], [Block.Sand], [Block.SnowyGrass, Block.Snow]];
+const MOST_CHANCE = Math.max(...TREE_CHANCE);
+const TREE_HEIGHTS: Record<TreeKind, [number, number]> = {
+  [TreeKind.Oak]: [4, 6],
+  [TreeKind.Spruce]: [6, 9],
+  [TreeKind.Cactus]: [2, 4],
+};
+
+/** The trees whose trunks stand in [x0, x1] × [z0, z1], in world order (z, then x). */
+export function treesIn(seed: number, x0: number, z0: number, x1: number, z1: number, ground: Ground): Tree[] {
+  const trees: Tree[] = [];
+  for (let gz = Math.floor(z0 / CELL); gz <= Math.floor(z1 / CELL); gz++) {
+    for (let gx = Math.floor(x0 / CELL); gx <= Math.floor(x1 / CELL); gx++) {
+      const chance = hash3(seed, gx, 101, gz);
+      if (chance >= MOST_CHANCE) continue; // no biome is this sure: skip the lookups
+      const x = gx * CELL + Math.floor(hash3(seed, gx, 102, gz) * CELL);
+      const z = gz * CELL + Math.floor(hash3(seed, gx, 103, gz) * CELL);
+      if (x < x0 || x > x1 || z < z0 || z > z1) continue;
+      const biome = ground.biome(x, z);
+      if (chance >= TREE_CHANCE[biome]) continue;
+      if (!TREE_GROUND[biome].includes(ground.top(x, z)) || !ground.dry(x, z)) continue;
+      const h = ground.height(x, z);
+      if (ground.carved(x, h, z)) continue;
+      const kind = TREE_KIND[biome];
+      const [lo, hi] = TREE_HEIGHTS[kind];
+      trees.push({ x, z, y: h + 1, kind, height: lo + Math.floor(hash3(seed, gx, 104, gz) * (hi - lo + 1)) });
+    }
+  }
+  return trees;
+}
+
+const AIR = Block.Air;
+
+/** Write the parts of `trees` that fall in chunk (cx, cy, cz). */
+export function placeTrees(blocks: Uint8Array, cx: number, cy: number, cz: number, trees: readonly Tree[], seed: number): void {
+  const x0 = cx * S;
+  const y0 = cy * S;
+  const z0 = cz * S;
+  const index = (x: number, y: number, z: number): number => {
+    const lx = x - x0;
+    const ly = y - y0;
+    const lz = z - z0;
+    return lx >= 0 && lx < S && ly >= 0 && ly < S && lz >= 0 && lz < S ? (ly * S + lz) * S + lx : -1;
+  };
+  const leaf = (x: number, y: number, z: number, block: Block) => {
+    const i = index(x, y, z);
+    if (i >= 0 && blocks[i] === AIR) blocks[i] = block;
+  };
+  for (const t of trees) {
+    if (t.y - 1 >= y0 + S || t.y + TREE_TOP < y0) continue; // nothing of it in this chunk
+    const wood = t.kind === TreeKind.Oak ? Block.Wood : t.kind === TreeKind.Spruce ? Block.SpruceWood : Block.Cactus;
+    const leaves = t.kind === TreeKind.Oak ? Block.Leaves : Block.SpruceLeaves;
+    // Trunk: through air and other trees' leaves.
+    for (let i = 0; i < t.height; i++) {
+      const at = index(t.x, t.y + i, t.z);
+      if (at >= 0 && (blocks[at] === AIR || blocks[at] === Block.Leaves || blocks[at] === Block.SpruceLeaves)) blocks[at] = wood;
+    }
+    if (t.kind === TreeKind.Cactus) continue;
+    // Grass doesn't grow under a trunk.
+    const ground = index(t.x, t.y - 1, t.z);
+    if (ground >= 0 && (blocks[ground] === Block.Grass || blocks[ground] === Block.SnowyGrass)) blocks[ground] = Block.Dirt;
+    const top = t.y + t.height - 1;
+    if (t.kind === TreeKind.Oak) {
+      // Two wide layers round the top of the trunk, a narrow one level with it, a cross above.
+      for (let y = top - 2; y <= top + 1; y++) {
+        const r = y < top ? 2 : 1;
+        for (let dz = -r; dz <= r; dz++)
+          for (let dx = -r; dx <= r; dx++) {
+            const corner = Math.abs(dx) === r && Math.abs(dz) === r;
+            if (y === top + 1 && (corner || (dx !== 0 && dz !== 0))) continue;
+            // Corners come and go by a seeded coin, so canopies aren't all square.
+            if (corner && hash3(seed, t.x + dx, y, t.z + dz) < (r === 2 ? 0.6 : 0.5)) continue;
+            leaf(t.x + dx, y, t.z + dz, leaves);
+          }
+      }
+    } else {
+      // A cone: a tip above the trunk, then layers alternately narrow and wide downwards,
+      // leaving the lowest two trunk blocks bare.
+      leaf(t.x, top + 1, t.z, leaves);
+      for (let y = top; y >= t.y + 2; y--) {
+        const k = top - y;
+        const wide = k >= 2 && k % 2 === 0;
+        for (let dz = -2; dz <= 2; dz++)
+          for (let dx = -2; dx <= 2; dx++) {
+            const reach = Math.abs(dx) + Math.abs(dz);
+            if (k < 2 ? reach > 1 : wide ? reach > 3 : Math.max(Math.abs(dx), Math.abs(dz)) > 1) continue;
+            leaf(t.x + dx, y, t.z + dz, leaves);
+          }
+      }
+    }
+  }
 }

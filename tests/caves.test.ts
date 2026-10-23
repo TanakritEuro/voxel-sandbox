@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { Block, BLOCKS } from '../src/world/blocks';
 import { CHUNK_SIZE, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../src/world/coords';
 import { ORES, placeOres } from '../src/world/features';
-import { caveLimit, SEA_LEVEL } from '../src/world/generate';
+import { caveLimit, type GeneratorOptions, SEA_LEVEL } from '../src/world/generate';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
 const S = CHUNK_SIZE;
-const CAVES_ONLY = { caves: true, ores: false };
-const NONE = { caves: false, ores: false };
+const CAVES_ONLY = { caves: true, ores: false, trees: false };
+const NONE = { caves: false, ores: false, trees: false };
 
 /** Worlds of the columns cx, cz in [-r, r], with and without a generation pass. */
-function pair(r: number, withOptions: { caves: boolean; ores: boolean }, without: { caves: boolean; ores: boolean }) {
+function pair(r: number, withOptions: GeneratorOptions, without: GeneratorOptions) {
   const a = new World(SEED, withOptions);
   const b = new World(SEED, without);
   for (let cz = -r; cz <= r; cz++)
@@ -98,7 +98,7 @@ describe('caves', () => {
 });
 
 describe('ores', () => {
-  const { a: ored, b: bare } = pair(2, { caves: true, ores: true }, CAVES_ONLY);
+  const { a: ored, b: bare } = pair(2, { caves: true, ores: true, trees: false }, CAVES_ONLY);
   const oreOf = new Map(ORES.map((o) => [o.block, o]));
 
   it('only replace stone, each within its depth range, all four found', () => {

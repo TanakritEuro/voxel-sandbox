@@ -25,6 +25,9 @@ export enum Block {
   IronOre = 15,
   CopperOre = 16,
   CrystalOre = 17,
+  SpruceWood = 18,
+  SpruceLeaves = 19,
+  Cactus = 20,
 }
 
 type RGB = [number, number, number];
@@ -90,6 +93,9 @@ export const BLOCKS: readonly BlockInfo[] = [
   solid('Iron ore', 3.5, faces('iron_ore'), 0x958a80),
   solid('Copper ore', 3, faces('copper_ore'), 0x8f8577),
   solid('Crystal ore', 4.5, faces('crystal_ore'), 0x8aa3ab),
+  solid('Spruce wood', 1.5, faces('spruce_top', 'spruce_side'), 0x7a5a38, 0x3f2c1c),
+  { ...solid('Spruce leaves', 0.3, faces('spruce_leaves'), 0x2f5f3a), opaque: false, cutout: true },
+  solid('Cactus', 0.4, faces('cactus_top', 'cactus_side'), 0x5c9a3c, 0x4f8a33),
 ];
 
 /** Blocks the player can place, in hotbar order (keys 1–9). */

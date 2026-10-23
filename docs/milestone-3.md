@@ -1,6 +1,6 @@
 # Milestone 3 plan: richer world
 
-## Status: in progress (steps 1–4 and visibility culling done; trees next)
+## Status: in progress (steps 1–5 and visibility culling done; notes and playtest next)
 
 Approved 2026-10-23 as proposed: 256-block world with sea level 62, 16 × 16 pixel-art
 textures, no per-biome tint for now, ores coal / iron / copper / crystal.
@@ -214,6 +214,61 @@ solid surface (the top layer seen, nothing under it), down a shaft, and refusing
 back under the start (fails with that rule off); the loader meshing a deep chunk once the
 player is down there and hiding it from above. The loader tests now check only chunks that
 could be seen are drawn.
+
+**Step 5 (trees).** `world/features.ts`: one possible tree per 5 × 5-block cell of the
+world, decided from the seed and the cell alone (a chance by biome: plains 0.1, forest 0.7,
+desert 0.08, mountains 0.3; a spot in the cell; a height), kept only if it stands on its
+biome's ground (grass; desert sand; snowy grass or snow) on dry land, not on a steep slope
+and not on ground a cave has taken (`carvedAt`). Oaks (trunk 4–6, two wide layers, a narrow
+one and a cross, corners by a seeded coin), spruces (trunk 6–9, a cone of alternating
+layers, the lowest two trunk blocks bare), cacti (2–4). New blocks: spruce wood and leaves
+(cutout), cactus, with textures. A column job now computes its height map, biomes, top
+blocks and cave limits 3 blocks beyond its edges, asks for every tree within 2 blocks of
+it, and writes the parts that land in each of its chunks, in world order: trunks may
+replace leaves, leaves only fill air, so overlapping canopies come out the same whatever
+the load order. Chunks above the ground that a canopy reaches are no longer all air.
+`Generator.ground()` answers the same questions column by column for tests and tools;
+`findLand` won't put the spawn point in a tree.
+
+Spruces were first allowed only on snowy grass: 9 in a 256 × 256 stretch of mountains
+(most of it is steep stone or above the snow line). On snow as well: 443.
+
+*Found on the way: light lines down the leaves, and pale distant canopies.* Diagnosed in the
+pane step by step: not cracks (a magenta background didn't show through), not fog, not the
+texture's layer (leaf fragments, coloured by layer), not the holes' colour or sRGB mipmaps;
+gone without mipmaps, and gone when the opaque pass wrote alpha 1. Three.js (r186) always
+gives the canvas an alpha channel (its `alpha` option only sets how the background clears),
+and the browser shows the page's light-blue CSS background wherever a pixel's alpha is
+below 1. Leaf faces seen edge-on, and distant leaves, sample coarse mipmaps whose alpha is
+the holes averaged in (about 0.68): those pixels let the page through. The opaque pass now
+writes alpha 1 (the alpha test has already cut the holes), and water and glass blend their
+colour but leave the canvas's alpha alone; water looks a little deeper blue for it.
+
+| radius 8 | visibility culling | step 5 |
+| --- | --- | --- |
+| bench: generate | 678 ms | 816 ms |
+| bench: greedy triangles, vertex data | 1857k, 81.5 MB | 2118k, 92.9 MB |
+| bench: seen from spawn | 554 chunks, 1478k triangles | 560 chunks, 1721k triangles |
+| `?autofly` (build) main thread p50 / p99 / max | 2.5–2.7 / 6.6–7.5 / 8.0–10.1 ms | 2.4 / 6.3 / 6.8 ms |
+| `?autofly` triangles drawn, draw calls | 349k, 176 | 406k, 177 |
+| meshes in memory after the flight | 112 MB | 133 MB |
+
+No frame over 20 ms, no holes, no console errors. Screenshots: a dense oak forest
+(`?at=-121,-226`), cacti over the dunes (`?at=384,0`), snowy peaks with spruces (`?at=0,192`),
+oaks on grassland by the sea.
+
+Tests (8 more): every chosen tree stands whole in the world (wood trunk, dirt or sand under
+it, leaves round its top, across chunk borders), and every trunk in the world is a chosen
+tree (the column jobs and `ground()` agree); a chunk holding only a canopy is the same
+generated alone; oaks only on plains and forest, cacti only in desert, spruces only in the
+mountains, all on dry, uncarved ground; forests over 3× denser than plains; canopies make
+the chunks above the ground non-empty; the spawn point avoids trunks. Cave and ore
+comparisons switch trees off on both sides (a tree skipped over a cave would otherwise
+count as a difference).
+
+Differs from the plan: trees are per 5 × 5 cell rather than per column (spacing for free);
+spruces grow on snow too; the column job's border is 3 blocks, not the 38 × 38 (3 each
+side) planned — the same thing.
 
 Differs from the plan: the biome weights are Gaussians of the distance in climate space
 rather than smoothsteps of thresholds, which gave smoother borders and fewer tuning knobs;

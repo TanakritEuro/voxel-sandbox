@@ -40,7 +40,12 @@ const fragmentShader = /* glsl */ `
     vec2 tile = vec2(fract(vUv.x), 1.0 - fract(vUv.y)); // v runs up, image rows run down
     vec4 texel = textureGrad(map, vec3(tile, vLayer), dFdx(vUv), dFdy(vUv));
     if (texel.a < alphaTest) discard;
-    gl_FragColor = vec4(texel.rgb * vShade, texel.a);
+    #ifdef OPAQUE
+      // Holes are cut by the alpha test; what's left is solid, so alpha 1 (see the blending below).
+      gl_FragColor = vec4(texel.rgb * vShade, 1.0);
+    #else
+      gl_FragColor = vec4(texel.rgb * vShade, texel.a);
+    #endif
     #include <colorspace_fragment>
     #include <fog_fragment>
   }
@@ -69,6 +74,7 @@ export function createBlockMaterial(map: THREE.DataArrayTexture, options: { alph
     uniforms,
     vertexShader,
     fragmentShader,
+    defines: options.transparent ? {} : { OPAQUE: '' },
     fog: true,
     transparent: options.transparent,
     depthWrite: !options.transparent,
@@ -76,6 +82,16 @@ export function createBlockMaterial(map: THREE.DataArrayTexture, options: { alph
     // would otherwise draw transparent double-sided meshes twice, back faces then front.
     side: options.transparent ? THREE.DoubleSide : THREE.FrontSide,
     forceSinglePass: true,
+    // Three.js always gives the canvas an alpha channel, and the browser shows the page through
+    // wherever it's below 1. So blend colour as usual but leave the canvas's alpha as it was (1);
+    // the opaque pass writes 1 too, however mipmapping averaged a leaf's holes.
+    ...(options.transparent && {
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.SrcAlphaFactor,
+      blendDst: THREE.OneMinusSrcAlphaFactor,
+      blendSrcAlpha: THREE.ZeroFactor,
+      blendDstAlpha: THREE.OneFactor,
+    }),
   });
 }
 

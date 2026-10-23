@@ -30,6 +30,11 @@ export const TEXTURE_NAMES = [
   'iron_ore',
   'copper_ore',
   'crystal_ore',
+  'spruce_side',
+  'spruce_top',
+  'spruce_leaves',
+  'cactus_side',
+  'cactus_top',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -80,6 +85,8 @@ const WOOD = hex(0xa7854f);
 const LEAVES = hex(0x3f8a36);
 const PLANKS = hex(0xb88c55);
 const SNOW = hex(0xeef3f7);
+const SPRUCE_BARK = hex(0x3f2c1c);
+const CACTUS = hex(0x4f8a33);
 const SANDSTONE = hex(0xd3bf86);
 
 const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
@@ -208,6 +215,47 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   },
   crystal_ore(c) {
     ore(c, [hex(0x5fe3f2), hex(0xb8f6ff)]);
+  },
+  spruce_side(c) {
+    // Darker bark than oak, with finer vertical grooves.
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      const column = x % 3 === 0 ? 0.75 : 0.95 + c.rng() * 0.15;
+      for (let y = 0; y < TEXTURE_SIZE; y++) c.set(x, y, SPRUCE_BARK, column * (1 + (c.rng() - 0.5) * 0.12));
+    }
+  },
+  spruce_top(c) {
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const edge = x === 0 || y === 0 || x === TEXTURE_SIZE - 1 || y === TEXTURE_SIZE - 1;
+        const ring = Math.floor(Math.hypot(x - 7.5, y - 7.5) * 1.4) % 2;
+        c.set(x, y, edge ? SPRUCE_BARK : hex(0x7a5a38), (edge ? 1 : ring ? 0.85 : 1.03) * (1 + (c.rng() - 0.5) * 0.08));
+      }
+  },
+  spruce_leaves(c) {
+    // Needles: dark, denser than oak leaves (fewer holes), with short light strokes.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        if (c.rng() < 0.24) c.set(x, y, hex(0x2f5f3a), 0.5, 0);
+        else c.set(x, y, hex(0x2f5f3a), 1 + (c.rng() - 0.5) * 0.4);
+      }
+    for (let n = 0; n < 8; n++) {
+      const x = Math.floor(c.rng() * TEXTURE_SIZE);
+      const y = Math.floor(c.rng() * TEXTURE_SIZE);
+      c.set(x, y, hex(0x4c8a55));
+      c.set(x + 1, y + 1, hex(0x4c8a55));
+    }
+  },
+  cactus_side(c) {
+    // Ribs down the sides, pale spines along them.
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      const rib = x % 4 === 1 ? 1.12 : x % 4 === 3 ? 0.82 : 1;
+      for (let y = 0; y < TEXTURE_SIZE; y++) c.set(x, y, CACTUS, rib * (1 + (c.rng() - 0.5) * 0.1));
+    }
+    for (let y = 2; y < TEXTURE_SIZE; y += 4) for (let x = 1; x < TEXTURE_SIZE; x += 4) c.set(x, y + (x % 8 === 1 ? 0 : 2), hex(0xe8e2b8));
+  },
+  cactus_top(c) {
+    c.speckle(hex(0x5c9a3c), 0.12);
+    for (const [x, y] of [[4, 4], [11, 4], [4, 11], [11, 11], [7, 7], [8, 8]]) c.set(x, y, hex(0xe8e2b8));
   },
   glass(c) {
     // Nearly clear, a light frame and a few highlights.
