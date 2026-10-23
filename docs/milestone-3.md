@@ -1,11 +1,68 @@
 # Milestone 3 plan: richer world
 
-## Status: in progress (steps 1–5 and visibility culling done; notes and playtest next)
+## Status: built; waiting for your playtest (and the laptop measurement)
 
 Approved 2026-10-23 as proposed: 256-block world with sea level 62, 16 × 16 pixel-art
-textures, no per-biome tint for now, ores coal / iron / copper / crystal.
+textures, no per-biome tint for now, ores coal / iron / copper / crystal. Visibility culling
+was added as a step on 2026-10-23.
 
-## Results so far
+All steps are in: a 256-block world, procedural textures on greedy meshes, four blended
+biomes, caves, ores, trees across chunk borders, and per-chunk visibility culling. 116 tests.
+The world is much richer and costs much more to draw: the numbers below are the price.
+
+### Before and after (radius 8, dev machine, 12 threads; the pane at 60 Hz)
+
+| | end of Milestone 2 | end of Milestone 3 |
+| --- | --- | --- |
+| bench: generate (253 columns) | 174–222 ms (128 blocks tall) | 816 ms (256 tall, biomes, caves, ores, trees) |
+| bench: greedy triangles, vertex data | 207k, 7.5 MB | 2118k, 92.9 MB |
+| bench: triangles seen from spawn | 207k (no culling) | 1721k |
+| `?autofly` (build) main thread p50 / p99 / max | 1.1–1.4 / 3.3–3.7 / 4.5–5.0 ms | 2.3 / 6.0–6.3 / 6.8–7.0 ms |
+| `?autofly` frames over 20 ms, holes | 0, 0 | 0, 0 |
+| `?autofly` first view (all) | 0.84–0.90 s | 1.72–2.15 s |
+| `?autofly` triangles drawn, draw calls | 56k, 68 | 406k, 177 |
+| meshes in memory after the flight | 9.6 MB | 133 MB (chunk data 40.8 MB) |
+| `?autofly&workers=1`: first view (in front / all) | 3.56 / 5.61 s | 5.07 / 7.63 s |
+| `?autofly&workers=1`: holes | none | up to 2 chunks, in 6 of 30 s |
+
+The engine didn't change in Milestone 2, so its first-view, memory and one-worker numbers are
+Milestone 1's; its autofly ran with the pane at 120 Hz (the frame budget doesn't depend on it).
+Where the cost comes from: mountains (rugged slopes, many faces) and above all caves, whose
+walls are 3.6× the surface's triangles; visibility culling takes off only about 20 %, being
+per chunk (step 4b explains why). On this machine nothing drops. The one-worker run is the
+warning: a single worker no longer keeps up with sprint flying (Milestone 1's did), so a
+laptop with 2 cores could see brief gaps in the fog. With 4 cores (3 workers) it should keep
+up; your `?autofly&stats` will say. If it doesn't, in order of cost: finer culling sections,
+narrower or rarer caves, a smaller view radius by default.
+
+## Playtest questions
+
+Open https://tanakriteuro.github.io/voxel-sandbox/ (or `npm run dev`). Places to start
+(default seed): forest `?at=-121,-226`, desert `?at=384,0`, snowy mountains `?at=0,192`, a cave
+mouth `?at=-48,71`.
+
+1. **Laptop performance.** `?autofly&stats` on the laptop: frames over 20 ms, main thread
+   p99, holes, meshes in memory. Then fly at sprint over mountains yourself: any stutter or
+   gaps?
+2. **Textures.** Do the 16 × 16 pixel-art textures read well up close and in the distance? Any
+   that look wrong (grass side, sandstone layers, ores, cactus, spruce)? Is AO with textures
+   too dark or too light (`TUNING.render.ao`)?
+3. **Water.** It's a deeper blue now that the page no longer shows through it. Better or
+   too dark?
+4. **Biomes.** Size (one swing of climate per ~1400 blocks, `CLIMATE_SCALE`), mix (plains 36 %,
+   forest 25 %, mountains 26 %, desert 13 %, 30 % under the sea), and the borders (ragged
+   enough, or too ragged)?
+5. **Mountains.** Height, steepness, snow line (sea level + 58 ± 8), bare stone on slopes of 3
+   or more: too harsh?
+6. **Caves.** How often you come across an entrance; tunnel width (`TUNNEL` 0.07, 5.4 % of
+   the underground open); the deep caverns. They're as bright as daylight until lighting in
+   Milestone 4: acceptable for now?
+7. **Ores.** Coal everywhere, iron and copper less, crystal rare (about 20 blocks per 5 × 5
+   columns, below y 24). Too rare, too common?
+8. **Trees.** Density (forest 0.7, mountains 0.3, plains 0.1, desert 0.08 per 5 × 5 cell),
+   oak and spruce shapes, cactus heights.
+
+## Results by step
 
 **Step 1 (shared empty chunks, 256-block world).** All-air chunks point at one shared
 `EMPTY_BLOCKS` array; `setBlock` gives a chunk its own the first time it's edited. Then

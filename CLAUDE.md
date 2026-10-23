@@ -26,8 +26,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1 and 2 built (`docs/milestone-1.md`, `docs/milestone-2.md`), waiting for playtests;
-Milestone 3 in progress (`docs/milestone-3.md`). A seeded world of four biomes
+Milestones 1–3 built (`docs/milestone-1.md` to `docs/milestone-3.md`), waiting for playtests
+and the laptop measurement. A seeded world of four biomes
 (`world/biomes.ts`: plains, forest, desert, snowy mountains from temperature and humidity
 noise, heights blended across borders; `world/generate.ts`: surface layers by biome and
 slope, beaches, sea floors, water to sea level 62; `world/caves.ts`: tunnels and caverns from
