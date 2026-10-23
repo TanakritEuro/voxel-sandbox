@@ -16,14 +16,24 @@ radius 8: 1012 chunks generated, 788 meshed; median of 5 runs, ms per chunk):
 | pad | 0.90 | 1.32 | 2.59 | |
 | mesh (culled) | 1.70 | 4.43 | 5.74 | 568k triangles, 32.5 MB vertex data |
 
-`?autofly` (30 s, radius 7) in the desktop app's browser pane on the dev machine
-(12 threads): first view 1.9 s, frames p50 16.7 / p99 16.9 / max 17.0 ms, none over
-20 ms, no holes, at most 39 chunks pending. A fast desktop already holds radius 7 with
-the scaffold, so the numbers that matter are radius 8 and the laptop. Runs taken while
-the pane was hidden froze (one 10–40 s frame) and are discarded; autofly now flags any
-gap over 500 ms as a stall.
+`?autofly` in the desktop app's browser pane (dev server, dev machine with 12 threads):
 
-To do: the radius 8 browser baseline with the pane visible, and yours on the laptop.
+| | radius 7 | radius 8 |
+| --- | --- | --- |
+| First view | 1.9 s | 2.3 s |
+| Frame p50 / p99 / max | 16.7 / 16.9 / 17.0 ms | 16.7 / 17.0 / 17.1 ms |
+| Frames over 20 ms | 0 | 0 |
+| Main thread p50 / p99 / max | | 1.5 / 11.1 / 14.9 ms |
+| Holes, most pending | 0, 39 | 0, 56 |
+
+A fast desktop already holds radius 8 with the scaffold, so frame drops don't separate
+before from after here. Main-thread time per frame does: its p99 is the 8 ms loading
+budget plus rendering, and on a laptop two or three times slower that is a dropped frame.
+Autofly reports it for that reason. Runs taken while the pane or the Chrome window was
+hidden or covered froze or ran at 1 fps (the page still says "visible"); autofly flags any
+gap over 500 ms as a stall, and those runs are discarded.
+
+To do: yours on the laptop.
 
 Goal: fly at sprint speed (36 blocks/s) with no frame over 20 ms, at view radius 8.
 Generation and meshing leave the main thread for a worker pool; the mesher becomes

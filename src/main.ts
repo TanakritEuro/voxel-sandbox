@@ -155,7 +155,9 @@ function frame(now: number): void {
     (target ? ` · ${BLOCKS[target.block].name}` : '');
 
   renderer.render(scene, camera);
-  stats.frame(now, interval, performance.now() - start);
+  const work = performance.now() - start;
+  stats.frame(now, interval, work);
+  autofly?.frameWork(work);
   requestAnimationFrame(frame);
 }
 
