@@ -2,7 +2,7 @@
 // Pure simulation (no Three.js), so the same code runs in tests and, later, in workers.
 
 import { Block } from './blocks';
-import { chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal, CHUNK_MASK } from './coords';
+import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
 import { Generator } from './generate';
 
 export class Chunk {
@@ -16,6 +16,8 @@ export class Chunk {
     readonly cy: number,
     readonly cz: number,
     readonly blocks: Uint8Array,
+    /** All air as generated and not edited since: nothing to mesh. */
+    public empty = false,
   ) {}
 
   get key(): string {
@@ -38,13 +40,25 @@ export class World {
   /** The chunk, generating it first if needed. Undefined outside the world's vertical range. */
   ensureChunk(cx: number, cy: number, cz: number): Chunk | undefined {
     if (cy < MIN_CHUNK_Y || cy > MAX_CHUNK_Y) return undefined;
-    const key = chunkKey(cx, cy, cz);
-    let chunk = this.chunks.get(key);
-    if (!chunk) {
-      chunk = new Chunk(cx, cy, cz, this.generator.generate(cx, cy, cz));
-      this.chunks.set(key, chunk);
+    if (!this.chunks.has(chunkKey(cx, cy, cz))) this.addGenerated(cx, cy, cz, this.generator.generateColumn(cx, cz, cy, cy)[0]);
+    return this.getChunk(cx, cy, cz);
+  }
+
+  /** Generate whatever is missing of the column (cx, cz), all heights at once. */
+  ensureColumn(cx: number, cz: number): void {
+    let missing = false;
+    for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) if (!this.chunks.has(chunkKey(cx, cy, cz))) missing = true;
+    if (!missing) return;
+    const generated = this.generator.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);
+    for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
+      if (!this.chunks.has(chunkKey(cx, cy, cz))) this.addGenerated(cx, cy, cz, generated[cy - MIN_CHUNK_Y]);
     }
-    return chunk;
+  }
+
+  /** Store a freshly generated chunk; null means all air. */
+  private addGenerated(cx: number, cy: number, cz: number, blocks: Uint8Array | null): void {
+    const chunk = new Chunk(cx, cy, cz, blocks ?? new Uint8Array(CHUNK_VOLUME), blocks === null);
+    this.chunks.set(chunk.key, chunk);
   }
 
   /**
@@ -71,6 +85,7 @@ export class World {
     chunk.blocks[i] = block;
     chunk.version++;
     chunk.modified = true;
+    chunk.empty = false;
 
     const stale = [chunk];
     const lx = toLocal(x);

@@ -1,6 +1,6 @@
 # Milestone 1 plan: fast engine
 
-## Status: in progress (step 1 of 5 done)
+## Status: in progress (steps 1–2 of 5 done)
 
 Approved 2026-10-23: drop the brightness jitter, edits remesh synchronously on the main
 thread, radius 8 at the end if the numbers allow.
@@ -34,6 +34,27 @@ hidden or covered froze or ran at 1 fps (the page still says "visible"); autofly
 gap over 500 ms as a stall, and those runs are discarded.
 
 To do: yours on the laptop.
+
+**Step 2 (main-thread wins).** Bench now generates by column, skips all-air chunks as the
+loader does, and reports totals (per-item means aren't comparable across the change):
+
+| total ms, radius 8 bench | scaffold | step 2 |
+| --- | --- | --- |
+| generate | 992 (1012 chunks) | 210 (253 columns) |
+| pad | 709 (788 chunks) | 32 (394 chunks) |
+| mesh (culled) | 1561 for the 394 non-empty chunks | 1586; worst chunk 13.0 → 10.7 ms |
+| vertex data | 32.5 MB | 20.6 MB |
+
+Meshing speed is unchanged: its cost is the per-block loop, which step 3 replaces. The
+typed-array builder stops it allocating `number[]`s (the worst chunk dropped).
+`?autofly&radius=8` in the pane: first view 2.3 → 1.1 s, most chunks pending 56 → 7,
+main thread p99 11.1 → 10.5 ms and max 14.9 → 13.7 ms (still the 8 ms loading budget
+plus rendering, until workers), meshes in memory 40.1 → 25.4 MB.
+
+Found on the way: under Vitest an imported constant costs a property lookup on every use
+(imports become getters on a module object), so the first builder version benched 50 %
+slower until the mesher copied `PADDED` into a local constant, as the scaffold did with
+its own sizes. Hot loops keep local copies of imported constants.
 
 Goal: fly at sprint speed (36 blocks/s) with no frame over 20 ms, at view radius 8.
 Generation and meshing leave the main thread for a worker pool; the mesher becomes

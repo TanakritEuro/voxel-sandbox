@@ -3,7 +3,8 @@
 // a pool of Web Workers and keeps only this scheduling here.
 
 import { TUNING } from './config';
-import { meshChunk, paddedBlocks } from './mesh/mesher';
+import { meshChunk } from './mesh/mesher';
+import { paddedBlocks, PADDED_VOLUME } from './mesh/padding';
 import type { ChunkRenderer } from './render/chunkRenderer';
 import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from './world/coords';
 import type { World } from './world/world';
@@ -13,6 +14,8 @@ export class ChunkLoader {
   private readonly meshed = new Map<string, number>();
   private centre = { cx: Number.NaN, cz: Number.NaN };
   private queue: [number, number, number][] = [];
+  /** Reused input for the mesher. */
+  private readonly padded = new Uint8Array(PADDED_VOLUME);
 
   constructor(
     private readonly world: World,
@@ -63,10 +66,11 @@ export class ChunkLoader {
 
   private mesh(cx: number, cy: number, cz: number): void {
     // Neighbours must exist before meshing, or border faces would be drawn against "air".
-    for (let dy = -1; dy <= 1; dy++)
-      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) this.world.ensureChunk(cx + dx, cy + dy, cz + dz);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) this.world.ensureColumn(cx + dx, cz + dz);
     const chunk = this.world.getChunk(cx, cy, cz)!;
-    this.renderer.set(chunk.key, meshChunk(paddedBlocks(this.world, cx, cy, cz), cx, cy, cz));
+    // All air has no faces (the faces of blocks next to it belong to their own chunks).
+    if (chunk.empty) this.renderer.remove(chunk.key);
+    else this.renderer.set(chunk.key, cx, cy, cz, meshChunk(paddedBlocks(this.world, cx, cy, cz, this.padded), cx, cy, cz));
     this.meshed.set(chunk.key, chunk.version);
   }
 

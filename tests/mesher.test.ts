@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { meshChunk, paddedBlocks } from '../src/mesh/mesher';
+import { meshChunk } from '../src/mesh/mesher';
+import { paddedBlocks } from '../src/mesh/padding';
 import { Block } from '../src/world/blocks';
 import { CHUNK_VOLUME } from '../src/world/coords';
 import { Chunk, World } from '../src/world/world';

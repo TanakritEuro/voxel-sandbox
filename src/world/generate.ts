@@ -5,7 +5,7 @@
 // beaches and water up to sea level. Caves, biomes and trees come in Milestone 3.
 
 import { Block } from './blocks';
-import { CHUNK_SIZE, CHUNK_VOLUME, localIndex, WORLD_HEIGHT } from './coords';
+import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, WORLD_HEIGHT } from './coords';
 import { Noise } from './noise';
 
 export const SEA_LEVEL = 40;
@@ -41,27 +41,54 @@ export class Generator {
     return { x, z };
   }
 
-  /** Fill a chunk's blocks. */
+  /** Fill one chunk's blocks. */
   generate(cx: number, cy: number, cz: number): Uint8Array {
-    const blocks = new Uint8Array(CHUNK_VOLUME);
-    const x0 = cx * CHUNK_SIZE;
-    const y0 = cy * CHUNK_SIZE;
-    const z0 = cz * CHUNK_SIZE;
+    return this.generateColumn(cx, cz, cy, cy)[0] ?? new Uint8Array(CHUNK_VOLUME);
+  }
+
+  /**
+   * The chunks cyMin..cyMax of column (cx, cz), sharing one heightmap (the noise is most of
+   * the cost). A chunk that would be all air comes back as null.
+   */
+  generateColumn(cx: number, cz: number, cyMin: number, cyMax: number): (Uint8Array | null)[] {
+    const heights = new Int32Array(CHUNK_SIZE * CHUNK_SIZE);
+    let top = SEA_LEVEL;
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-        const h = this.height(x0 + lx, z0 + lz);
-        const beach = h <= SEA_LEVEL + 1;
-        for (let ly = 0; ly < CHUNK_SIZE; ly++) {
-          const y = y0 + ly;
-          let b: Block = Block.Air;
-          if (y < h - 3) b = Block.Stone;
-          else if (y < h) b = beach ? Block.Sand : Block.Dirt;
-          else if (y === h) b = beach ? Block.Sand : Block.Grass;
-          else if (y <= SEA_LEVEL) b = Block.Water;
-          if (b !== Block.Air) blocks[localIndex(lx, ly, lz)] = b;
-        }
+        const h = this.height(cx * CHUNK_SIZE + lx, cz * CHUNK_SIZE + lz);
+        heights[lz * CHUNK_SIZE + lx] = h;
+        top = Math.max(top, h);
       }
     }
-    return blocks;
+
+    const out: (Uint8Array | null)[] = [];
+    for (let cy = cyMin; cy <= cyMax; cy++) {
+      const y0 = cy * CHUNK_SIZE;
+      // Every column is filled up to its height or sea level, whichever is higher, so this is exact.
+      if (y0 > top) {
+        out.push(null);
+        continue;
+      }
+      const blocks = new Uint8Array(CHUNK_VOLUME);
+      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+        for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+          const h = heights[lz * CHUNK_SIZE + lx];
+          const beach = h <= SEA_LEVEL + 1;
+          const column = (lz << CHUNK_BITS) | lx;
+          fillRun(blocks, column, y0, 0, h - 3, Block.Stone);
+          fillRun(blocks, column, y0, h - 3, h, beach ? Block.Sand : Block.Dirt);
+          fillRun(blocks, column, y0, h, h + 1, beach ? Block.Sand : Block.Grass);
+          fillRun(blocks, column, y0, h + 1, SEA_LEVEL + 1, Block.Water);
+        }
+      }
+      out.push(blocks);
+    }
+    return out;
   }
+}
+
+/** Set world y in [from, to) of one column of a chunk whose bottom is y0. `column` is the local z and x bits. */
+function fillRun(blocks: Uint8Array, column: number, y0: number, from: number, to: number, block: Block): void {
+  const end = Math.min(to, y0 + CHUNK_SIZE) - y0;
+  for (let ly = Math.max(from, y0) - y0; ly < end; ly++) blocks[(ly << (2 * CHUNK_BITS)) | column] = block;
 }

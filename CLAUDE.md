@@ -91,9 +91,12 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties, colours, hotbar), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `generate.ts`
-  (terrain, sea level, spawn search), `world.ts` (`Chunk`, `World`: get/set across chunks,
-  stale neighbours on edit), `raycast.ts` (grid traversal).
-- `src/mesh/mesher.ts` — padded copy, culled-face mesher, opaque and transparent passes.
+  (terrain by column with one heightmap, all-air chunks as null, sea level, spawn search),
+  `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit),
+  `raycast.ts` (grid traversal).
+- `src/mesh/` — `padding.ts` (the 34³ padded copy, whole rows at a time), `builder.ts` (growable
+  typed-array output, `MeshData`: Float32 positions, RGBA8 colours, Uint16 indices),
+  `mesher.ts` (culled-face mesher, opaque and transparent passes).
 - `src/render/chunkRenderer.ts` — Three.js meshes per chunk.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling.
 - `src/player.ts` — free-fly camera with pointer lock.
@@ -101,7 +104,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `?radius=8` overrides the view radius.
 - `bench/` — `npm run bench`.
-- `tests/` — world, generation, mesher and raycast tests (headless).
+- `tests/` — world, generation, padding, mesher and raycast tests (headless).
 
 ## Conventions
 
@@ -114,7 +117,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - Gameplay knobs go in `TUNING`. Block properties go in `BLOCKS`.
 - Strict TypeScript. No `any` unless there is a comment explaining why.
 - Hot loops (generation, meshing, lighting) work on typed arrays with integer
-  indices, and don't allocate per block. Measure before and after optimising.
+  indices, and don't allocate per block. Copy imported constants into local `const`s used
+  in them (under Vitest each use of an import is a property lookup). Measure before and
+  after optimising.
 - Invented content only: no Minecraft textures, sounds, names or logos. Generate textures
   procedurally or use CC0 packs (recorded in `ASSETS.md`).
 

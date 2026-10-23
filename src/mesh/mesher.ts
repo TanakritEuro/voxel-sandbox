@@ -8,13 +8,8 @@
 import { hash3 } from '../math';
 import { Block, BLOCKS } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
-import type { World } from '../world/world';
-
-export interface MeshData {
-  positions: Float32Array;
-  colors: Float32Array;
-  indices: Uint32Array;
-}
+import { MeshBuilder, type MeshData } from './builder';
+import { PADDED } from './padding';
 
 export interface ChunkMesh {
   opaque: MeshData;
@@ -23,27 +18,9 @@ export interface ChunkMesh {
   quads: number;
 }
 
+// Local copies: imported bindings can cost a lookup each time in the hot loop (they do under Vitest).
 const S = CHUNK_SIZE;
-const P = S + 2; // padded size: one block of the neighbours on every side
-
-/** Copy a chunk's blocks plus a one-block border from its neighbours (air where unloaded). */
-export function paddedBlocks(world: World, cx: number, cy: number, cz: number): Uint8Array {
-  const out = new Uint8Array(P * P * P);
-  const chunk = world.getChunk(cx, cy, cz);
-  const x0 = cx * S - 1;
-  const y0 = cy * S - 1;
-  const z0 = cz * S - 1;
-  for (let y = 0; y < P; y++) {
-    for (let z = 0; z < P; z++) {
-      for (let x = 0; x < P; x++) {
-        const inside = x > 0 && x <= S && y > 0 && y <= S && z > 0 && z <= S;
-        out[(y * P + z) * P + x] =
-          inside && chunk ? chunk.blocks[((y - 1) * S + (z - 1)) * S + (x - 1)] : world.getBlock(x0 + x, y0 + y, z0 + z);
-      }
-    }
-  }
-  return out;
-}
+const P = PADDED;
 
 interface Face {
   /** Neighbour offset (also the normal). */
@@ -71,23 +48,14 @@ function faceVisible(a: Block, b: Block): boolean {
   return !BLOCKS[b].opaque && b !== a;
 }
 
-class Builder {
-  positions: number[] = [];
-  colors: number[] = [];
-  indices: number[] = [];
+// Reused for every chunk (one pair per thread).
+const opaque = new MeshBuilder();
+const transparent = new MeshBuilder();
 
-  quad(x: number, y: number, z: number, face: Face, rgb: [number, number, number]): void {
-    const base = this.positions.length / 3;
-    for (const [cx, cy, cz] of face.corners) {
-      this.positions.push(x + cx, y + cy, z + cz);
-      this.colors.push(rgb[0], rgb[1], rgb[2]);
-    }
-    this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-
-  build(): MeshData {
-    return { positions: new Float32Array(this.positions), colors: new Float32Array(this.colors), indices: new Uint32Array(this.indices) };
-  }
+function quad(out: MeshBuilder, x: number, y: number, z: number, face: Face, r: number, g: number, b: number): void {
+  out.reserve(1);
+  for (const [cx, cy, cz] of face.corners) out.vertex(x + cx, y + cy, z + cz, r, g, b);
+  out.quad();
 }
 
 /**
@@ -95,8 +63,8 @@ class Builder {
  * added), so the mesh needs no transform.
  */
 export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number): ChunkMesh {
-  const opaque = new Builder();
-  const transparent = new Builder();
+  opaque.reset();
+  transparent.reset();
   const x0 = cx * S;
   const y0 = cy * S;
   const z0 = cz * S;
@@ -118,8 +86,8 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
         for (const face of FACES) {
           if (!faceVisible(b, at(x + face.d[0], y + face.d[1], z + face.d[2]))) continue;
           const c = info[face.colour];
-          const k = face.shade * jitter;
-          out.quad(wx, wy, wz, face, [c[0] * k, c[1] * k, c[2] * k]);
+          const k = face.shade * jitter * 255;
+          quad(out, wx, wy, wz, face, Math.round(c[0] * k), Math.round(c[1] * k), Math.round(c[2] * k));
           quads++;
         }
       }
