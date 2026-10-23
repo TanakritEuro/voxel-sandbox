@@ -7,6 +7,13 @@
       "runtimeArgs": ["vite"],
       "env": { "BROWSER": "none" },
       "port": 5173
+    },
+    {
+      "name": "preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "preview", "--port", "4173"],
+      "env": { "BROWSER": "none" },
+      "port": 4173
     }
   ]
 }

@@ -29,16 +29,15 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 Milestone 1 in progress (`docs/milestone-1.md`). A seeded heightmap world
 (`world/generate.ts`: fractal Perlin noise, grass, dirt, stone, sand beaches, water to sea
 level) in 32³ chunks, 128 blocks tall, generated a column at a time. Chunks within
-7 chunks of the camera are generated and meshed on the main thread within a time budget
-per frame, nearest first, and unloaded when far away (`chunkLoader.ts`). The mesher
+7 chunks of the camera are generated and meshed in a pool of Web Workers, nearest first,
+scheduled from the main thread, and unloaded when far away (`chunkLoader.ts`). The mesher
 (`mesh/mesher.ts`) is greedy with per-vertex ambient occlusion, baked into vertex colours
 with directional shading; water and glass go in a separate transparent pass. A free-fly camera
 with pointer lock (`player.ts`), a voxel raycast (`world/raycast.ts`) with a block
 outline, left click to break, right click to place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: generation and meshing still run on the
-main thread (workers are Milestone 1 step 4), no lighting, no textures, no gravity or
+Known limits, each fixed by a milestone below: no lighting, no textures, no gravity or
 collision, no trees or caves, and edits are lost on reload.
 
 ## Architecture
@@ -99,7 +98,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `mesher.ts` (greedy mesher with AO, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — Three.js meshes per chunk.
-- `src/chunkLoader.ts` — load / mesh / unload scheduling.
+- `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs nearest first up to the
+  pool's capacity, drops stale or out-of-range results, remeshes edits on the main thread.
+- `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`),
+  `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
+  `pool.ts` (`WorkerPool`).
 - `src/player.ts` — free-fly camera with pointer lock.
 - `src/main.ts` — entry point, editing, HUD, frame loop.
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted

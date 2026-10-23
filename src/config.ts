@@ -10,9 +10,18 @@ export const TUNING = {
     radius: 7,
     /** Chunks further than radius + this are unloaded. */
     unloadMargin: 2,
-    /** Milliseconds per frame the main thread may spend generating and meshing chunks. */
-    meshBudgetMs: 8,
+    /**
+     * Milliseconds per frame the main thread may spend on loading: storing generated chunks,
+     * making padded copies for mesh jobs and turning finished meshes into Three.js meshes.
+     */
+    applyBudgetMs: 3,
     fov: 75,
+  },
+  workers: {
+    /** At most this many chunk workers (otherwise one per core, less one for the main thread). */
+    max: 8,
+    /** Jobs handed to each worker at once: one running, one waiting, so it never idles between messages. */
+    jobsPerWorker: 2,
   },
   render: {
     /**

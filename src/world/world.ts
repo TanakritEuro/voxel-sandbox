@@ -46,13 +46,23 @@ export class World {
 
   /** Generate whatever is missing of the column (cx, cz), all heights at once. */
   ensureColumn(cx: number, cz: number): void {
-    let missing = false;
-    for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) if (!this.chunks.has(chunkKey(cx, cy, cz))) missing = true;
-    if (!missing) return;
-    const generated = this.generator.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);
-    for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
-      if (!this.chunks.has(chunkKey(cx, cy, cz))) this.addGenerated(cx, cy, cz, generated[cy - MIN_CHUNK_Y]);
-    }
+    if (!this.hasColumn(cx, cz)) this.addColumn(cx, cz, MIN_CHUNK_Y, this.generator.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y));
+  }
+
+  /** Whether every chunk of the column (cx, cz) is loaded. */
+  hasColumn(cx: number, cz: number): boolean {
+    for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) if (!this.chunks.has(chunkKey(cx, cy, cz))) return false;
+    return true;
+  }
+
+  /**
+   * Store generated chunks cyMin.. upwards of a column (from `generateColumn`, here or in a
+   * worker), except those already loaded: edited chunks stay as they are.
+   */
+  addColumn(cx: number, cz: number, cyMin: number, chunks: (Uint8Array | null)[]): void {
+    chunks.forEach((blocks, i) => {
+      if (!this.chunks.has(chunkKey(cx, cyMin + i, cz))) this.addGenerated(cx, cyMin + i, cz, blocks);
+    });
   }
 
   /** Store a freshly generated chunk; null means all air. */

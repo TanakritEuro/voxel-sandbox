@@ -7,6 +7,7 @@ import { TUNING } from './config';
 import { FlyCamera } from './player';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { Stats } from './stats';
+import { WorkerPool } from './workers/pool';
 import { Block, BLOCKS, HOTBAR } from './world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, toChunk } from './world/coords';
 import { raycast, type RayHit } from './world/raycast';
@@ -42,7 +43,8 @@ window.addEventListener('resize', () => {
 const world = new World(seed);
 const chunks = new ChunkRenderer();
 scene.add(chunks.group);
-const loader = new ChunkLoader(world, chunks);
+const pool = new WorkerPool();
+const loader = new ChunkLoader(world, chunks, pool);
 const fly = new FlyCamera(camera, canvas);
 
 // Spawn above dry land near the origin.
@@ -56,9 +58,9 @@ const stats = new Stats(
   () => ({
     chunks: world.chunks.size,
     meshed: chunks.count,
-    queued: loader.pending,
-    inFlight: 0,
-    workerBusy: null,
+    queued: loader.queued,
+    inFlight: loader.inFlight,
+    workerBusy: pool.busy(),
     chunkBytes: world.chunks.size * CHUNK_VOLUME,
     geometryBytes: chunks.bytes,
     sceneTriangles: chunks.triangles,

@@ -7,6 +7,10 @@ export default defineConfig({
     port: 5173,
     open: true,
   },
+  // Chunk workers are ES modules (`new Worker(url, { type: 'module' })`).
+  worker: {
+    format: 'es',
+  },
   build: {
     // Keep the warning sensible; three.js alone is ~700 kB.
     chunkSizeWarningLimit: 1500,

@@ -1,6 +1,6 @@
 # Milestone 1 plan: fast engine
 
-## Status: in progress (steps 1–3 of 5 done)
+## Status: in progress (steps 1–4 of 5 done)
 
 Approved 2026-10-23: drop the brightness jitter, edits remesh synchronously on the main
 thread, radius 8 at the end if the numbers allow.
@@ -90,6 +90,40 @@ Where it differs from the plan:
   split along the darker diagonal. Plus hand-checked cases: a slab is 6 quads, a block on a
   floor darkens the right corners, an inside corner is level 0, AO across a diagonal chunk
   corner, and an edit at a chunk corner marks all 7 neighbours stale.
+
+**Step 4 (worker pool and scheduler).** `?autofly`, dev machine (8 workers):
+
+| | main thread, step 3 | workers, dev server | workers, production build |
+| --- | --- | --- | --- |
+| radius 8: main thread p50 / p99 / max | 0.9 / 9.5 / 11.0 ms | 0.9 / 3.7 / 5.3 ms | 1.1 / 3.7 / 4.2 ms |
+| radius 8: first view | 0.8 s | 1.0 s | 0.9 s |
+| radius 12: main thread p50 / p99 / max | | | 1.7 / 4.4 / 5.3 ms |
+| radius 12: first view, most pending | | | 1.7 s, 27 |
+
+No frame over 20 ms, no holes, no console errors in any run. The first view is a little
+slower than step 3 (workers take a moment to start); the main thread's worst frame is
+half what it was, and the p99 is now rendering and applying results, not the 8 ms meshing
+budget. At radius 12 chunk data is 80 MB, half of it all-air chunks still stored as 32 KB
+of zeros: worth sharing one empty array before saving arrives (Milestone 4).
+
+Where it differs from the plan:
+
+- **No queue to cancel.** Each frame the loader walks the columns nearest first and
+  starts what's ready up to the pool's capacity (workers × 2), so nothing is queued
+  ahead; work for chunks that left the view is simply never started. Results are dropped
+  if their column is out of range, or (meshes) if the chunk's version changed since.
+- **The walk is skipped** unless a result arrived, the player changed chunk, a block was
+  edited, or the last walk ran out of time. Walking every frame cost 0.5 ms at p50.
+- **`applyBudgetMs` (3 ms)** covers storing results, padded copies for new mesh jobs and
+  creating meshes; it replaces the 8 ms meshing budget.
+- **The job handler** is `workers/jobs.ts` (pure, tested directly); `chunkWorker.ts` is
+  only the message glue. Padded copies come back with each result and are reused.
+- **Tests** drive the loader with a fake runner that runs jobs at once but returns results
+  when told: everything in view meshed once and identical to main-thread meshing, nearest
+  first, meshing only with neighbours loaded, results dropped after the player jumps
+  away, a mesh made before an edit dropped and the edit meshed, edits remeshed at once
+  on the main thread, idle frames start nothing. Job results go through
+  `structuredClone` with their transfer lists, which detaches every listed buffer.
 
 Goal: fly at sprint speed (36 blocks/s) with no frame over 20 ms, at view radius 8.
 Generation and meshing leave the main thread for a worker pool; the mesher becomes

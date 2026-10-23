@@ -27,7 +27,7 @@ for (let p = 0; p < PADDED; p++) {
  * `World.getBlock` would: stone below the world, air above it and in unloaded chunks.
  * Copies whole rows of x at a time.
  */
-export function paddedBlocks(world: World, cx: number, cy: number, cz: number, out = new Uint8Array(PADDED_VOLUME)): Uint8Array {
+export function paddedBlocks(world: World, cx: number, cy: number, cz: number, out: Uint8Array = new Uint8Array(PADDED_VOLUME)): Uint8Array {
   // The 27 chunks around (and including) this one, indexed (dy + 1) * 9 + (dz + 1) * 3 + (dx + 1),
   // with the block an absent one reads as.
   const blocks: (Uint8Array | undefined)[] = [];
