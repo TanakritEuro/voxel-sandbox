@@ -97,6 +97,7 @@ export class Player {
 
   /** Fly straight along the facing at full flying speed, through anything. For `?autofly`. */
   autopilot(dt: number, forward: number): void {
+    this.waiting = false; // flies through anything, loaded or not
     const speed = TUNING.fly.speed * TUNING.fly.sprintMultiplier * forward;
     this.body.x -= Math.sin(this.input.yaw) * speed * dt;
     this.body.z -= Math.cos(this.input.yaw) * speed * dt;

@@ -35,6 +35,14 @@ laptop with 2 cores could see brief gaps in the fog. With 4 cores (3 workers) it
 up; your `?autofly&stats` will say. If it doesn't, in order of cost: finer culling sections,
 narrower or rarer caves, a smaller view radius by default.
 
+**On your laptop** (2026-10-23, live site, Chrome, `?autofly&stats`, 8 workers, a snapshot
+partway through the flight): 60 fps, frame 16.7 ms avg and 16.9 max, main thread 3.7 avg and
+8.1 max, 1 frame over 20 ms since load, a flat frame graph; 248 draw calls, 669k triangles
+drawn of 3024k; meshes 132.7 MB, chunks 44.3 MB, JS heap 514 MB. Inside the budget, so
+visibility culling stays as it is. (The flight's final report wasn't in the screenshot. The
+HUD said "waiting for the ground to load" all through the flight; fixed, the autopilot never
+waits.)
+
 ## Playtest questions
 
 Open https://tanakriteuro.github.io/voxel-sandbox/ (or `npm run dev`). Places to start
