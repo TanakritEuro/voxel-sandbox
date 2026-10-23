@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ChunkLoader, type ChunkSink } from '../src/chunkLoader';
+import { ChunkLoader, type ChunkSink, columnPriority } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks } from '../src/mesh/padding';
@@ -65,10 +65,13 @@ function setup(capacity = 8, check?: (job: Job, world: World) => void) {
   return { world, sink, runner, loader };
 }
 
-/** Frames until nothing is left to do: update, then the workers finish `perFrame` jobs. */
+/** The player's eye height in the tests: chunk layer 1. */
+const EYE = 60;
+
+/** Frames until nothing is left to do: update (looking along +x), then the workers finish `perFrame` jobs. */
 function settle({ loader, runner }: ReturnType<typeof setup>, x: number, z: number, perFrame = Infinity): void {
   for (let frame = 0; frame < 10_000; frame++) {
-    loader.update(x, z);
+    loader.update(x, EYE, z, 1, 0);
     if (loader.pending === 0 && runner.waiting === 0) return;
     runner.deliver(perFrame);
   }
@@ -105,15 +108,61 @@ describe('chunk loader', () => {
     for (const job of s.runner.jobs) if (job.kind === 'mesh') expect(s.world.getChunk(job.cx, job.cy, job.cz)!.empty).toBe(false);
   });
 
-  it('starts work nearest first', () => {
-    const s = setup(1);
+  it('ranks columns near first and in front before behind', () => {
+    // Looking along +x.
+    expect(columnPriority(0, 0, 1, 0)).toBe(0);
+    expect(columnPriority(-1, 0, 1, 0)).toBeLessThan(columnPriority(2, 0, 1, 0)); // the ones underfoot first, whatever the direction
+    expect(columnPriority(5, 0, 1, 0)).toBeLessThan(columnPriority(0, 4, 1, 0)); // ahead at 5 before beside at 4
+    expect(columnPriority(0, 4, 1, 0)).toBeLessThan(columnPriority(-4, 0, 1, 0)); // beside before behind
+    expect(columnPriority(-3, 0, 1, 0)).toBeCloseTo(columnPriority(6, 0, 1, 0)); // behind counts double
+    expect(columnPriority(3, 4, 0, 0)).toBeLessThan(columnPriority(6, 0, 0, 0)); // no direction: plain distance
+  });
+
+  it('starts work in priority order, and the player\'s height first within a column', () => {
+    TUNING.view.radius = 5;
+    const r = TUNING.view.radius;
+    const priority = (cx: number, cz: number) => columnPriority(cx, cz, 1, 0);
+    // A chunk's mesh can wait for a neighbouring column further down the order, so meshes
+    // aren't strictly in order: but none starts while a higher-priority chunk is ready.
+    const started = new Set<string>();
+    let meshes = 0;
+    const s = setup(1, (job, world) => {
+      if (job.kind !== 'mesh') return;
+      meshes++;
+      for (let dz = -r; dz <= r; dz++)
+        for (let dx = -r; dx <= r; dx++) {
+          if (dx * dx + dz * dz > r * r || priority(dx, dz) >= priority(job.cx, job.cz)) continue;
+          let ready = true;
+          for (let ez = -1; ez <= 1; ez++) for (let ex = -1; ex <= 1; ex++) ready &&= world.hasColumn(dx + ex, dz + ez);
+          if (!ready) continue;
+          for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
+            if (!world.getChunk(dx, cy, dz)!.empty) expect(started.has(chunkKey(dx, cy, dz))).toBe(true);
+          }
+        }
+      started.add(chunkKey(job.cx, job.cy, job.cz));
+    });
     settle(s, 16, 16, 1);
-    const d2 = (j: Job) => j.cx * j.cx + j.cz * j.cz;
-    for (const kind of ['generate', 'mesh'] as const) {
-      const order = s.runner.jobs.filter((j) => j.kind === kind).map(d2);
-      expect(order.length).toBeGreaterThan(0);
-      expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(meshes).toBeGreaterThan(10);
+    const generated = s.runner.jobs.filter((j) => j.kind === 'generate').map((j) => priority(j.cx, j.cz));
+    expect(generated.length).toBeGreaterThan(10);
+    expect(generated).toEqual([...generated].sort((a, b) => a - b));
+    const heights = s.runner.jobs.flatMap((j) => (j.kind === 'mesh' && j.cx === 0 && j.cz === 0 ? [Math.abs(j.cy - 1)] : []));
+    expect(heights.length).toBeGreaterThan(1);
+    expect(heights).toEqual([...heights].sort((a, b) => a - b));
+  });
+
+  it('sorts again after turning round', () => {
+    TUNING.view.radius = 5;
+    const s = setup(1);
+    for (let frame = 0; frame < 30; frame++) {
+      s.loader.update(16, EYE, 16, 1, 0);
+      s.runner.deliver();
     }
+    const before = s.runner.jobs.length;
+    s.loader.update(16, EYE, 16, -1, 0); // turn to face -x
+    const next = s.runner.jobs.slice(before);
+    expect(next).toHaveLength(1);
+    expect(next[0].cx).toBeLessThan(0);
   });
 
   it('meshes a chunk only once the columns around it are loaded', () => {
@@ -129,10 +178,10 @@ describe('chunk loader', () => {
 
   it('drops results for chunks that went out of range, and loads the new view', () => {
     const s = setup(64);
-    s.loader.update(16, 16); // starts generating around the origin
+    s.loader.update(16, EYE, 16, 1, 0); // starts generating around the origin
     expect(s.runner.waiting).toBeGreaterThan(0);
     const far = 100 * CHUNK_SIZE;
-    s.loader.update(far, far); // the player jumps away before any result is back
+    s.loader.update(far, EYE, far, 1, 0); // the player jumps away before any result is back
     s.runner.deliver();
     settle(s, far, far);
     for (const chunk of s.world.chunks.values()) expect(Math.abs(chunk.cx)).toBeGreaterThan(50);
@@ -142,9 +191,9 @@ describe('chunk loader', () => {
 
   it('drops a mesh made before an edit and meshes the edited chunk', () => {
     const s = setup(64);
-    s.loader.update(16, 16);
+    s.loader.update(16, EYE, 16, 1, 0);
     s.runner.deliver(); // columns generated
-    s.loader.update(16, 16); // mesh jobs start
+    s.loader.update(16, EYE, 16, 1, 0); // mesh jobs start
     const job = s.runner.jobs.find((j): j is Extract<Job, { kind: 'mesh' }> => j.kind === 'mesh' && j.cx === 0 && j.cz === 0)!;
     const x = job.cx * CHUNK_SIZE + 5;
     const y = job.cy * CHUNK_SIZE + 5;
@@ -172,7 +221,7 @@ describe('chunk loader', () => {
     const s = setup();
     settle(s, 16, 16);
     const jobs = s.runner.jobs.length;
-    for (let i = 0; i < 5; i++) s.loader.update(16, 16);
+    for (let i = 0; i < 5; i++) s.loader.update(16, EYE, 16, 1, 0);
     expect(s.runner.jobs.length).toBe(jobs);
     expect(s.loader.pending).toBe(0);
   });

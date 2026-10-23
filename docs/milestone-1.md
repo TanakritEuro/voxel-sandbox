@@ -1,6 +1,28 @@
 # Milestone 1 plan: fast engine
 
-## Status: in progress (steps 1–4 of 5 done)
+## Status: built; waiting for the laptop measurement and your playtest
+
+All five steps are in. On the dev machine the radius 8 budget holds with room to spare
+(main thread p99 3.7 ms, no frame over 20 ms); what's left is checking that on your laptop
+(`?autofly`, now at radius 8 by default) and trying edits by hand.
+
+### Before and after (radius 8, dev machine, 12 threads)
+
+| | scaffold | Milestone 1 |
+| --- | --- | --- |
+| bench: generate, all 253 columns | 992 ms | 174–222 ms |
+| bench: padded copies | 709 ms | 29–35 ms |
+| bench: meshing | 1561 ms (culled, non-empty chunks) | 205–280 ms (greedy with AO) |
+| triangles in view | 568k | 207k |
+| vertex data | 32.5 MB | 7.5 MB |
+| autofly: first view | 2.3 s | 0.9–1.0 s |
+| autofly: main thread p50 / p99 / max | 1.5 / 11.1 / 14.9 ms | 0.9 / 3.7 / 5.3 ms (dev server), 1.1 / 3.7 / 4.2 ms (build) |
+| autofly: frames over 20 ms, holes | 0, 0 | 0, 0 |
+| meshes in memory | 40.1 MB | 9.6 MB |
+
+Bench ranges are the spread across runs (about ±25 % on this machine). The autofly
+numbers are from step 4; step 5 changes only the order chunks load in (below), and the
+pane was being throttled by the time it was done (see step 5).
 
 Approved 2026-10-23: drop the brightness jitter, edits remesh synchronously on the main
 thread, radius 8 at the end if the numbers allow.
@@ -124,6 +146,37 @@ Where it differs from the plan:
   away, a mesh made before an edit dropped and the edit meshed, edits remeshed at once
   on the main thread, idle frames start nothing. Job results go through
   `structuredClone` with their transfer lists, which detaches every listed buffer.
+
+**Step 5 (loading order, radius 8).** Columns load by `columnPriority`: distance ×
+(1 + `behindWeight` × (1 − cos θ) / 2), θ the angle from the look direction, so with
+weight 1 a column straight behind counts as twice as far as one straight ahead; the
+columns within 2 of the player always come first. Within a column, the chunk at the
+player's height comes first. The order is re-sorted on changing chunk (or height) and on
+turning more than 30°. Default view radius is now 8. `?workers=N` sets the pool size, to
+see how fewer cores load.
+
+Measured headless, because the pane was being throttled to 1 fps by then (the app
+window was covered; the page still reports "visible"): the real loader at radius 8 with
+one simulated worker (capacity 2), looking along the autofly heading, counting jobs
+finished until the chunks within the horizontal field of view (+0.2 rad) are meshed:
+
+| behindWeight | view in front complete | everything complete |
+| --- | --- | --- |
+| 0 (plain rings) | 663 jobs | 663 jobs |
+| 1 (chosen) | 432 jobs (35 % sooner) | 663 jobs |
+| 2 | 398 jobs | 663 jobs |
+
+With workers as the bottleneck, jobs are time: on a slow machine the view in front fills
+about a third sooner, and nothing is loaded later overall. Autofly now reports both
+("first view after load: in front …, all …").
+
+Where it differs from the plan: the plan had strict rings with direction only breaking
+ties within a ring. That loads everything behind at distance 4 before anything ahead at
+5, which isn't "fill the view first", so the direction stretches the distance instead.
+The ordering tests check the rule the loader actually follows: generation strictly in
+priority order, and no mesh starts while a higher-priority chunk is ready (a chunk can
+wait for a neighbouring column further down the order), plus the player's height first
+and re-sorting after turning round.
 
 Goal: fly at sprint speed (36 blocks/s) with no frame over 20 ms, at view radius 8.
 Generation and meshing leave the main thread for a worker pool; the mesher becomes
@@ -282,8 +335,9 @@ blocks only; transparent faces (water, glass) get no AO so water stays flat.
 
 ## Questions for you
 
-1. OK to drop the per-block brightness jitter (it blocks merging)?
+1. OK to drop the per-block brightness jitter (it blocks merging)? **Yes.**
 2. Edits remeshed synchronously on the main thread: fine, or would you rather they
-   went through the workers from the start?
-3. Raise the default view radius to 8 at the end of the milestone?
+   went through the workers from the start? **Synchronous.**
+3. Raise the default view radius to 8 at the end of the milestone? **Yes, done.**
 4. Which laptop (CPU cores, browser) should the 60 fps / 20 ms budget be judged on?
+   Still open: the done-check is `?autofly` on it.

@@ -29,8 +29,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 Milestone 1 in progress (`docs/milestone-1.md`). A seeded heightmap world
 (`world/generate.ts`: fractal Perlin noise, grass, dirt, stone, sand beaches, water to sea
 level) in 32³ chunks, 128 blocks tall, generated a column at a time. Chunks within
-7 chunks of the camera are generated and meshed in a pool of Web Workers, nearest first,
-scheduled from the main thread, and unloaded when far away (`chunkLoader.ts`). The mesher
+8 chunks of the camera are generated and meshed in a pool of Web Workers, near and in
+front of the camera first, scheduled from the main thread, and unloaded when far away
+(`chunkLoader.ts`). The mesher
 (`mesh/mesher.ts`) is greedy with per-vertex ambient occlusion, baked into vertex colours
 with directional shading; water and glass go in a separate transparent pass. A free-fly camera
 with pointer lock (`player.ts`), a voxel raycast (`world/raycast.ts`) with a block
@@ -98,15 +99,17 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `mesher.ts` (greedy mesher with AO, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — Three.js meshes per chunk.
-- `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs nearest first up to the
-  pool's capacity, drops stale or out-of-range results, remeshes edits on the main thread.
+- `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
+  (near first, in front before behind) up to the pool's capacity, drops stale or
+  out-of-range results, remeshes edits on the main thread.
 - `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`),
   `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
   `pool.ts` (`WorkerPool`).
 - `src/player.ts` — free-fly camera with pointer lock.
 - `src/main.ts` — entry point, editing, HUD, frame loop.
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
-  sprint flight that reports frame times and holes. `?radius=8` overrides the view radius.
+  sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
+  `?workers=1` the worker count.
 - `bench/` — `npm run bench`.
 - `tests/` — world, generation, padding, mesher (greedy against culled, AO against the world)
   and raycast tests (headless).

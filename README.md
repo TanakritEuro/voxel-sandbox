@@ -23,7 +23,7 @@ Open http://localhost:5173 and click to play.
 Add `?seed=123` to the URL for a different world.
 
 Measuring: `?stats` shows the performance overlay (F3 toggles it), `?autofly` flies a fixed
-path at sprint speed for 30 s and prints a frame-time report, `?radius=8` sets the view
-radius. `npm run bench` times generation and meshing headless.
+path at sprint speed for 30 s and prints a frame-time report, `?radius=12` sets the view
+radius (8 by default), `?workers=1` the number of chunk workers. `npm run bench` times generation and meshing headless.
 
 See `CLAUDE.md` for the engine design, architecture and roadmap.

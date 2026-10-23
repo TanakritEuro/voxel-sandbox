@@ -20,6 +20,8 @@ const HOLE_MARGIN = 2;
 const STALL_MS = 500;
 
 export interface AutoflyReport {
+  /** From page load until the chunks in front of the camera at the start were meshed. */
+  frontViewMs: number;
   /** From page load until the view at the start was fully meshed. */
   firstViewMs: number;
   seconds: number;
@@ -54,6 +56,7 @@ export interface AutoflyReport {
 export class Autofly {
   private phase: 'loading' | 'flying' | 'done' = 'loading';
   private firstViewMs = 0;
+  private frontViewMs = 0;
   private flown = 0;
   private nextSample = 1;
   private readonly intervals: number[] = [];
@@ -90,6 +93,7 @@ export class Autofly {
     if (document.visibilityState !== 'visible' || interval > STALL_MS) this.stalled = true;
     if (this.phase === 'loading') {
       this.fly.move(dt, 0, 0, 0, false);
+      if (!this.frontViewMs && this.loader.missing(TUNING.view.radius, this.frontCos()) === 0) this.frontViewMs = now;
       if (this.loader.pending === 0 && this.loader.missing(TUNING.view.radius) === 0) {
         this.firstViewMs = now;
         this.phase = 'flying';
@@ -117,12 +121,20 @@ export class Autofly {
     if (this.phase === 'flying') this.work.push(ms);
   }
 
+  /** Cosine of the angle from the look direction that counts as "in front": half the horizontal field of view, plus a little. */
+  private frontCos(): number {
+    const { fov, aspect } = this.fly.camera;
+    const halfWidth = Math.atan(Math.tan(((fov / 2) * Math.PI) / 180) * aspect);
+    return Math.cos(Math.min(Math.PI, halfWidth + 0.2));
+  }
+
   private report(): void {
     const sorted = [...this.intervals].sort((a, b) => a - b);
     const work = [...this.work].sort((a, b) => a - b);
     const pctOf = (v: number[], p: number) => v[Math.min(v.length - 1, Math.floor(v.length * p))];
     const pct = (p: number) => pctOf(sorted, p);
     const r: AutoflyReport = {
+      frontViewMs: Math.round(this.frontViewMs),
       firstViewMs: Math.round(this.firstViewMs),
       seconds: this.seconds,
       frames: sorted.length,
@@ -143,7 +155,7 @@ export class Autofly {
     const f = (v: number) => v.toFixed(1);
     const text = [
       `autofly ${r.seconds} s at radius ${TUNING.view.radius}${r.stalled ? ' (PAGE STALLED OR HIDDEN: numbers invalid)' : ''}`,
-      `first view ${(r.firstViewMs / 1000).toFixed(1)} s after load`,
+      `first view after load: in front ${(r.frontViewMs / 1000).toFixed(2)} s, all ${(r.firstViewMs / 1000).toFixed(2)} s`,
       `frames ${r.frames}: p50 ${f(r.p50)}  p95 ${f(r.p95)}  p99 ${f(r.p99)}  max ${f(r.max)} ms`,
       `over 20 ms: ${r.over20}   over 33 ms: ${r.over33}`,
       `main thread: p50 ${f(r.workP50)}  p99 ${f(r.workP99)}  max ${f(r.workMax)} ms`,

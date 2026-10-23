@@ -43,7 +43,9 @@ window.addEventListener('resize', () => {
 const world = new World(seed);
 const chunks = new ChunkRenderer();
 scene.add(chunks.group);
-const pool = new WorkerPool();
+// `?workers=1` runs fewer workers, to see how a machine with fewer cores loads.
+const workersParam = Number(params.get('workers'));
+const pool = new WorkerPool(Number.isInteger(workersParam) && workersParam > 0 ? workersParam : undefined);
 const loader = new ChunkLoader(world, chunks, pool);
 const fly = new FlyCamera(camera, canvas);
 
@@ -141,9 +143,9 @@ function frame(now: number): void {
 
   if (autofly?.active) autofly.update(now, dt, interval);
   else fly.update(dt);
-  loader.update(camera.position.x, camera.position.z);
-
   const dir = fly.direction();
+  loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
+
   target = raycast(world, camera.position, dir, TUNING.edit.reach);
   outline.visible = target !== null;
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);

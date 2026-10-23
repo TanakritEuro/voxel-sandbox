@@ -7,7 +7,7 @@ export const TUNING = {
   },
   view: {
     /** Chunks are loaded and drawn within this many chunks of the player (horizontally). */
-    radius: 7,
+    radius: 8,
     /** Chunks further than radius + this are unloaded. */
     unloadMargin: 2,
     /**
@@ -15,6 +15,11 @@ export const TUNING = {
      * making padded copies for mesh jobs and turning finished meshes into Three.js meshes.
      */
     applyBudgetMs: 3,
+    /**
+     * Loading order: how much further a column straight behind the camera counts than one
+     * straight ahead (1: twice as far). 0 loads in plain rings.
+     */
+    behindWeight: 1,
     fov: 75,
   },
   workers: {

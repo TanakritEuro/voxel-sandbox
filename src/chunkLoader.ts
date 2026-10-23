@@ -4,9 +4,10 @@
 // mesh, and their results are stored here.
 //
 // Each frame, within a time budget: store finished results (dropping any that are out of
-// range or older than the chunk), then walk the columns around the player nearest first
-// and start whatever is ready, up to the runner's capacity. Nothing is queued beyond that,
-// so work for chunks that went out of range is never started: cancelling is free.
+// range or older than the chunk), then walk the columns around the player in priority order
+// (near first, in front of the camera before behind, see `columnPriority`) and start
+// whatever is ready, up to the runner's capacity. Nothing is queued beyond that, so work for
+// chunks that went out of range is never started: cancelling is free.
 
 import { TUNING } from './config';
 import { type ChunkMesh, meshChunk } from './mesh/mesher';
@@ -33,6 +34,24 @@ const SPARE_PADDED = 32;
 
 const columnKey = (cx: number, cz: number): string => `${cx},${cz}`;
 
+/** Turning further than this (30°) since the columns were last sorted sorts them again. */
+const TURN_COS = Math.cos(Math.PI / 6);
+
+/**
+ * Loading priority of the column (dx, dz) from the player's, looking along (fx, fz)
+ * (horizontal, unit length, or zero for no direction): lower goes first. Distance, made
+ * longer away from the view: `TUNING.view.behindWeight` 1 counts a column straight behind
+ * as twice as far as one straight ahead, so the view fills first but the world behind
+ * isn't left for last. The columns within 2 of the player always come first, whatever the
+ * direction: you're standing on them.
+ */
+export function columnPriority(dx: number, dz: number, fx: number, fz: number): number {
+  const d = Math.sqrt(dx * dx + dz * dz);
+  if (d < 2) return d;
+  const cos = (dx * fx + dz * fz) / d;
+  return d * (1 + (TUNING.view.behindWeight * (1 - cos)) / 2);
+}
+
 export class ChunkLoader {
   /** Chunk key → the chunk version its current mesh was built from (all-air chunks too, which have none). */
   private readonly meshed = new Map<string, number>();
@@ -42,9 +61,13 @@ export class ChunkLoader {
   private readonly meshing = new Map<string, number>();
   private running = 0;
   private nextId = 1;
-  private centre = { cx: Number.NaN, cz: Number.NaN };
+  private centre = { cx: Number.NaN, cy: Number.NaN, cz: Number.NaN };
+  /** Horizontal look direction the columns were sorted for (unit length, or zero). */
+  private look = { x: 0, z: 0 };
   /** Columns around the player, in the order to work on them. */
   private order: Column[] = [];
+  /** Within a column, chunk heights nearest the player's first. */
+  private heights: number[] = [];
   private readonly results: JobResult[] = [];
   private readonly spare: Uint8Array[] = [];
   /** Padded copy for edits, meshed here. */
@@ -77,27 +100,38 @@ export class ChunkLoader {
 
   /**
    * Chunks within `radius` columns of the player's column that have no mesh yet: holes,
-   * if they're inside the fog. Measured by `?autofly`.
+   * if they're inside the fog. With `minCos`, only columns within that angle of the look
+   * direction (and the ones under the player) count. Measured by `?autofly`.
    */
-  missing(radius: number): number {
+  missing(radius: number, minCos = -1): number {
     const { cx, cz } = this.centre;
     let n = 0;
     for (let dz = -radius; dz <= radius; dz++) {
       for (let dx = -radius; dx <= radius; dx++) {
-        if (dx * dx + dz * dz > radius * radius) continue;
+        const d2 = dx * dx + dz * dz;
+        if (d2 > radius * radius) continue;
+        if (d2 >= 4 && dx * this.look.x + dz * this.look.z < minCos * Math.sqrt(d2)) continue;
         for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) if (!this.meshed.has(chunkKey(cx + dx, cy, cz + dz))) n++;
       }
     }
     return n;
   }
 
-  update(x: number, z: number): void {
+  /** Once per frame, with the player's position and look direction (only its horizontal part counts). */
+  update(x: number, y: number, z: number, lookX: number, lookZ: number): void {
     const cx = toChunk(Math.floor(x));
+    const cy = toChunk(Math.floor(y));
     const cz = toChunk(Math.floor(z));
-    if (cx !== this.centre.cx || cz !== this.centre.cz) {
-      this.centre = { cx, cz };
+    const len = Math.hypot(lookX, lookZ);
+    const fx = len > 1e-6 ? lookX / len : 0;
+    const fz = len > 1e-6 ? lookZ / len : 0;
+    const moved = cx !== this.centre.cx || cz !== this.centre.cz;
+    const turned = (fx !== this.look.x || fz !== this.look.z) && fx * this.look.x + fz * this.look.z < TURN_COS;
+    if (moved || turned || cy !== this.centre.cy) {
+      this.centre = { cx, cy, cz };
+      this.look = { x: fx, z: fz };
       this.rebuildOrder();
-      this.unloadFar();
+      if (moved) this.unloadFar();
       this.dirty = true;
     }
     const deadline = performance.now() + TUNING.view.applyBudgetMs;
@@ -167,7 +201,7 @@ export class ChunkLoader {
       if (!mesh) continue;
 
       let neighbours: boolean | undefined;
-      for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
+      for (const cy of this.heights) {
         const chunk = world.getChunk(cx, cy, cz)!;
         const key = chunk.key;
         if (this.meshed.get(key) === chunk.version || this.meshing.get(key) === chunk.version) continue;
@@ -198,22 +232,25 @@ export class ChunkLoader {
     return true;
   }
 
-  /** Columns to mesh (within the view radius) and their neighbours (to generate), nearest first. */
+  /** Columns to mesh (within the view radius) and their neighbours (to generate), by `columnPriority`. */
   private rebuildOrder(): void {
-    const { cx, cz } = this.centre;
+    const { cx, cy, cz } = this.centre;
     const r = TUNING.view.radius;
     const inView = (dx: number, dz: number) => dx * dx + dz * dz <= r * r;
-    const list: (Column & { d2: number })[] = [];
+    const list: (Column & { priority: number })[] = [];
     for (let dz = -r - 1; dz <= r + 1; dz++) {
       for (let dx = -r - 1; dx <= r + 1; dx++) {
         const mesh = inView(dx, dz);
         let neighbour = false;
         for (let ez = -1; ez <= 1 && !mesh && !neighbour; ez++) for (let ex = -1; ex <= 1; ex++) if (inView(dx + ex, dz + ez)) neighbour = true;
-        if (mesh || neighbour) list.push({ cx: cx + dx, cz: cz + dz, mesh, d2: dx * dx + dz * dz });
+        if (mesh || neighbour) list.push({ cx: cx + dx, cz: cz + dz, mesh, priority: columnPriority(dx, dz, this.look.x, this.look.z) });
       }
     }
-    list.sort((a, b) => a.d2 - b.d2);
+    list.sort((a, b) => a.priority - b.priority);
     this.order = list;
+    this.heights = [];
+    for (let h = MIN_CHUNK_Y; h <= MAX_CHUNK_Y; h++) this.heights.push(h);
+    this.heights.sort((a, b) => Math.abs(a - cy) - Math.abs(b - cy));
   }
 
   /** Columns this close (in chunks, either axis) stay loaded; beyond, they're unloaded. */
