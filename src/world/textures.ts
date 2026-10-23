@@ -21,6 +21,11 @@ export const TEXTURE_NAMES = [
   'leaves',
   'planks',
   'glass',
+  'snow',
+  'snowy_grass_side',
+  'sandstone_top',
+  'sandstone_side',
+  'gravel',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -70,6 +75,8 @@ const BARK = hex(0x6b4a2b);
 const WOOD = hex(0xa7854f);
 const LEAVES = hex(0x3f8a36);
 const PLANKS = hex(0xb88c55);
+const SNOW = hex(0xeef3f7);
+const SANDSTONE = hex(0xd3bf86);
 
 const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   stone(c) {
@@ -153,6 +160,38 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
         }
       }
     }
+  },
+  snow(c) {
+    c.speckle(SNOW, 0.06);
+    c.spots(6, hex(0xd8e3ee));
+  },
+  snowy_grass_side(c) {
+    PAINTERS.dirt(c);
+    // Snow over the top edge, a little ragged.
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      const depth = 3 + (c.rng() < 0.4 ? 1 : 0);
+      for (let y = 0; y < depth; y++) c.set(x, y, SNOW, 1 + (c.rng() - 0.5) * 0.06);
+    }
+  },
+  sandstone_top(c) {
+    c.speckle(SANDSTONE, 0.08);
+    c.spots(5, hex(0xc2ad74));
+  },
+  sandstone_side(c) {
+    // Layers: bands of slightly different shades, a darker line between them.
+    const bands = [0, 4, 9, 13];
+    for (let y = 0; y < TEXTURE_SIZE; y++) {
+      const band = bands.filter((b) => b <= y).length;
+      const line = bands.includes(y) && y > 0;
+      for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, SANDSTONE, (line ? 0.82 : 0.94 + band * 0.03) * (1 + (c.rng() - 0.5) * 0.06));
+    }
+  },
+  gravel(c) {
+    // Pebbles: grey stones of several shades, small dark gaps.
+    c.speckle(hex(0x8d8680), 0.3);
+    c.spots(10, hex(0x6b6560));
+    c.spots(10, hex(0xa8a19a));
+    c.spots(6, hex(0x5a5550));
   },
   glass(c) {
     // Nearly clear, a light frame and a few highlights.

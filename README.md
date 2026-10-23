@@ -22,7 +22,8 @@ Open http://localhost:5173 and click to play.
 | 1–9 or wheel | Pick a block |
 | Esc | Release the mouse |
 
-Add `?seed=123` to the URL for a different world.
+Add `?seed=123` to the URL for a different world, `?at=x,z` to start somewhere else (with
+the default seed: desert `?at=384,0`, snowy mountains `?at=0,192`, forest `?at=-121,-226`).
 
 Measuring: `?stats` shows the performance overlay (F3 toggles it), `?autofly` flies a fixed
 path at sprint speed for 30 s and prints a frame-time report, `?radius=12` sets the view

@@ -1,24 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { Block } from '../src/world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
-import { Generator, SEA_LEVEL } from '../src/world/generate';
+import { columnLayers, Generator } from '../src/world/generate';
 import { EMPTY_BLOCKS, World } from '../src/world/world';
 
-/** The scaffold's generator, one block at a time: what the column generator must reproduce. */
+/** Each block on its own, from the column's layers: what the run-filling generator must reproduce. */
 function generateReference(g: Generator, cx: number, cy: number, cz: number): Uint8Array {
   const blocks = new Uint8Array(CHUNK_VOLUME);
   for (let lz = 0; lz < CHUNK_SIZE; lz++) {
     for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-      const h = g.height(cx * CHUNK_SIZE + lx, cz * CHUNK_SIZE + lz);
-      const beach = h <= SEA_LEVEL + 1;
+      const runs = columnLayers(g.column(cx * CHUNK_SIZE + lx, cz * CHUNK_SIZE + lz));
       for (let ly = 0; ly < CHUNK_SIZE; ly++) {
         const y = cy * CHUNK_SIZE + ly;
-        let b: Block = Block.Air;
-        if (y < h - 3) b = Block.Stone;
-        else if (y < h) b = beach ? Block.Sand : Block.Dirt;
-        else if (y === h) b = beach ? Block.Sand : Block.Grass;
-        else if (y <= SEA_LEVEL) b = Block.Water;
-        blocks[localIndex(lx, ly, lz)] = b;
+        blocks[localIndex(lx, ly, lz)] = runs.find(([from, to]) => y >= from && y < to)?.[2] ?? Block.Air;
       }
     }
   }

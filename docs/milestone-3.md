@@ -1,6 +1,6 @@
 # Milestone 3 plan: richer world
 
-## Status: in progress (steps 1–2 of 6 done)
+## Status: in progress (steps 1–3 of 6 done)
 
 Approved 2026-10-23 as proposed: 256-block world with sea level 62, 16 × 16 pixel-art
 textures, no per-biome tint for now, ores coal / iron / copper / crystal.
@@ -75,6 +75,53 @@ Tests (6 more): textures are deterministic, distinct and cover every block face;
 blocks have no transparent pixels, leaves 20–50 %, glass mostly clear, water translucent;
 a merged quad's UVs span its size in blocks with v up the wall; grass uses grass top, grass
 side and dirt; leaves draw their shared faces and glass doesn't.
+
+**Step 3 (biomes).** `world/biomes.ts`: temperature and humidity from two noises (about one
+swing per 1400 blocks); each biome sits at a point in that climate and weighs in by a
+Gaussian of the distance to it (width 0.09), so weights change over roughly a hundred blocks.
+The height is a continent noise (seas and land masses, ±32) plus each biome's base and shape
+blended by weight: rolling hills (plains, forest), rounded dune crests (desert), ridged noise
+squared plus detail (mountains, up to ~160 above the sea). The biome whose blocks cover a
+column is the strongest, with a seeded coin between the two strongest near a border so the
+line frays. `generate.ts` computes heights one column beyond the job's 32 × 32 for slopes,
+and `columnLayers` turns height, biome, slope and a noisy snow line (sea + 58 ± 8) into runs:
+grass on dirt; sand on sandstone (desert); snow on stone above the snow line, snowy grass
+below it (mountains); bare stone where a neighbour is 3 or more blocks up or down; sand on
+beaches and shallow sea floors, gravel on deep ones. New blocks: snow, snowy grass,
+sandstone, gravel, with textures. `?at=x,z` spawns near any column.
+
+Measured over 4000 × 4000 blocks (seed 20261022), after moving the biome points from a first
+try that gave 32 % mountains and 9 % desert and almost no sea: plains 36 %, forest 25 %,
+mountains 26 %, desert 13 %; 30 % of the land under the sea; ground from 19 below to 158
+above sea level; the steepest step between neighbouring columns 4.3 blocks. Nearest
+interiors to the origin: plains `?at=36,53`, forest `?at=-121,-226`, desert `?at=384,0`,
+mountains `?at=0,192` (182 high). Screenshots in the pane: a snowy ridged range with stone
+faces, rounded dunes by the sea, grass hills with lakes; no console errors.
+
+| radius 8 | step 2 | step 3 |
+| --- | --- | --- |
+| bench: generate (253 columns) | 277 ms | 721 ms (2.85 ms a column) |
+| chunks meshed, triangles, vertex data | 574, 207k, 9.1 MB | 718, 520k, 22.8 MB |
+| bench: greedy meshing | 369 ms | 655 ms |
+| `?autofly` main thread p50 / p99 / max (dev; build the same) | 1.8 / 4.2 / 6.2 ms | 2.3 / 6.8 / 8.1 ms |
+| `?autofly` first view (in front / all), most pending | 0.75 / 0.94 s, 0 | 1.17 / 1.82 s, 43 |
+| meshes in memory after the flight | 11.6 MB | 32.0 MB |
+
+The bench's area now holds mountains (one rises 192 blocks from the origin), whose rugged
+slopes have far more faces than the old rolling land, so everything downstream of the
+terrain grew. Still no frame over 20 ms and no holes (the pane is back at 60 Hz). Generation
+runs in the workers; its cost is mostly noise: every biome's shape is evaluated wherever its
+weight is above 1e-4, which with this blend is nearly everywhere. Worth trimming in step 4,
+when caves add their own noise; the main thread's p99 (applying more and bigger meshes) is
+the number to watch on the laptop.
+
+Differs from the plan: the biome weights are Gaussians of the distance in climate space
+rather than smoothsteps of thresholds, which gave smoother borders and fewer tuning knobs;
+the generation test now rebuilds each block from `columnLayers` instead of the old one-rule
+reference. Tests (10 more): all four biomes over 5 %; same seed same biomes, another seed
+different; no step over 6 blocks anywhere, across 50+ borders; mountains over 100 above the
+sea, plains and desert interiors under 40; borders fray only where another biome has
+weight; and the exact layers of every biome, steep slopes, beaches and sea floors.
 
 Goal: a world worth exploring. Blocks get textures (generated at startup, no image files),
 greedy meshes keep working with them, leaves get holes. Four biomes (plains, forest,

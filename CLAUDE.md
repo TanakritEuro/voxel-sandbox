@@ -27,9 +27,10 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestones 1 and 2 built (`docs/milestone-1.md`, `docs/milestone-2.md`), waiting for playtests;
-Milestone 3 in progress (`docs/milestone-3.md`). A seeded heightmap world
-(`world/generate.ts`: fractal Perlin noise, grass, dirt, stone, sand beaches, water to sea
-level 62) in 32³ chunks, 256 blocks tall, generated a column at a time; all-air chunks
+Milestone 3 in progress (`docs/milestone-3.md`). A seeded world of four biomes
+(`world/biomes.ts`: plains, forest, desert, snowy mountains from temperature and humidity
+noise, heights blended across borders; `world/generate.ts`: surface layers by biome and
+slope, beaches, sea floors, water to sea level 62) in 32³ chunks, 256 blocks tall, generated a column at a time; all-air chunks
 share one empty array until edited. Chunks within
 8 chunks of the camera are generated and meshed in a pool of Web Workers, near and in
 front of the camera first, scheduled from the main thread, and unloaded when far away
@@ -45,7 +46,7 @@ outline, hold the left button to break (time by block `hardness`, with cracks), 
 place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: no biomes, trees or caves yet, no lighting,
+Known limits, each fixed by a milestone below: no trees, caves or ores yet, no lighting,
 and edits are lost on reload.
 
 ## Architecture
@@ -99,8 +100,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties, textures per face, hotbar), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
-  (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `generate.ts`
-  (terrain by column with one heightmap, all-air chunks as null, sea level, spawn search),
+  (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
+  (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
+  border for slopes, `columnLayers` per column, all-air chunks as null, spawn search),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
@@ -127,7 +129,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/main.ts` — entry point, editing, HUD, frame loop.
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count.
+  `?workers=1` the worker count, `?at=x,z` where you spawn.
 - `bench/` — `npm run bench`.
 - `tests/` — world, generation, padding, mesher (greedy against culled, AO against the world)
   raycast, physics and player tests (headless).

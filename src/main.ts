@@ -65,8 +65,9 @@ function columnsLoaded(x: number, z: number): boolean {
   return true;
 }
 
-// Spawn standing on dry land near the origin.
-const spawn = world.generator.findLand(0, 0);
+// Spawn standing on dry land near the origin, or near `?at=x,z`.
+const [atX, atZ] = (params.get('at') ?? '0,0').split(',').map((v) => Math.floor(Number(v)) || 0);
+const spawn = world.generator.findLand(atX, atZ ?? 0);
 const player = new Player(camera, input, world, columnsLoaded, {
   x: spawn.x + 0.5,
   y: world.generator.height(spawn.x, spawn.z) + 1,
