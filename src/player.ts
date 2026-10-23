@@ -39,12 +39,15 @@ export class FlyCamera {
     return new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
   }
 
+  /** Fly by the keys. */
   update(dt: number): void {
     const k = (code: string) => (this.keys.has(code) ? 1 : 0);
-    const forward = k('KeyW') - k('KeyS');
-    const strafe = k('KeyD') - k('KeyA');
-    const lift = k('Space') - k('ShiftLeft');
-    const speed = TUNING.fly.speed * (this.keys.has('ControlLeft') ? TUNING.fly.sprintMultiplier : 1);
+    this.move(dt, k('KeyW') - k('KeyS'), k('KeyD') - k('KeyA'), k('Space') - k('ShiftLeft'), this.keys.has('ControlLeft'));
+  }
+
+  /** Fly with the given inputs (each -1..1) along the current yaw. `?autofly` drives this directly. */
+  move(dt: number, forward: number, strafe: number, lift: number, sprint: boolean): void {
+    const speed = TUNING.fly.speed * (sprint ? TUNING.fly.sprintMultiplier : 1);
 
     // Move on the horizontal plane by yaw only, so looking down doesn't slow you.
     const f = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));

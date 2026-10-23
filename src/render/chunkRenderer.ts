@@ -15,6 +15,8 @@ export class ChunkRenderer {
 
   /** Triangles currently in the scene, for the stats line. */
   triangles = 0;
+  /** Bytes of vertex and index data currently in the scene, for `?stats`. */
+  bytes = 0;
 
   set(key: string, data: ChunkMesh): void {
     this.remove(key);
@@ -28,6 +30,7 @@ export class ChunkRenderer {
     for (const m of list) {
       this.group.add(m);
       this.triangles += (m.geometry.index?.count ?? 0) / 3;
+      this.bytes += geometryBytes(m.geometry);
     }
     this.meshes.set(key, list);
   }
@@ -37,10 +40,15 @@ export class ChunkRenderer {
     if (!list) return;
     for (const m of list) {
       this.triangles -= (m.geometry.index?.count ?? 0) / 3;
+      this.bytes -= geometryBytes(m.geometry);
       this.group.remove(m);
       m.geometry.dispose();
     }
     this.meshes.delete(key);
+  }
+
+  get count(): number {
+    return this.meshes.size;
   }
 
   has(key: string): boolean {
@@ -61,4 +69,10 @@ export class ChunkRenderer {
     mesh.matrixAutoUpdate = false; // positions are already in world space
     return mesh;
   }
+}
+
+function geometryBytes(geo: THREE.BufferGeometry): number {
+  let bytes = geo.index?.array.byteLength ?? 0;
+  for (const a of Object.values(geo.attributes)) bytes += a.array.byteLength;
+  return bytes;
 }

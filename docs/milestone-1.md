@@ -1,6 +1,29 @@
 # Milestone 1 plan: fast engine
 
-## Status: planned, waiting for your OK
+## Status: in progress (step 1 of 5 done)
+
+Approved 2026-10-23: drop the brightness jitter, edits remesh synchronously on the main
+thread, radius 8 at the end if the numbers allow.
+
+## Results so far
+
+**Step 1 (measuring tools).** `npm run bench` on the scaffold (seed 20261022,
+radius 8: 1012 chunks generated, 788 meshed; median of 5 runs, ms per chunk):
+
+| | mean | p95 | max | |
+| --- | --- | --- | --- | --- |
+| generate | 0.98 | 1.56 | 3.62 | 506 of 1012 chunks are all air |
+| pad | 0.90 | 1.32 | 2.59 | |
+| mesh (culled) | 1.70 | 4.43 | 5.74 | 568k triangles, 32.5 MB vertex data |
+
+`?autofly` (30 s, radius 7) in the desktop app's browser pane on the dev machine
+(12 threads): first view 1.9 s, frames p50 16.7 / p99 16.9 / max 17.0 ms, none over
+20 ms, no holes, at most 39 chunks pending. A fast desktop already holds radius 7 with
+the scaffold, so the numbers that matter are radius 8 and the laptop. Runs taken while
+the pane was hidden froze (one 10–40 s frame) and are discarded; autofly now flags any
+gap over 500 ms as a stall.
+
+To do: the radius 8 browser baseline with the pane visible, and yours on the laptop.
 
 Goal: fly at sprint speed (36 blocks/s) with no frame over 20 ms, at view radius 8.
 Generation and meshing leave the main thread for a worker pool; the mesher becomes
@@ -37,8 +60,8 @@ overlay exists, before any engine change.
   cy range, so a taller world (Milestone 3) only changes the range. Output is still
   cubic chunks; nothing else changes shape.
 - **All-air chunks** come back as `null` (no transfer), are stored as zeros on the
-  main thread and are never meshed until edited. Most of the top layer (y 96–127)
-  should be all air; the bench will count them.
+  main thread and are never meshed until edited. The bench counts half of all
+  chunks as all air.
 - **The brightness jitter goes.** It makes every face unique, so nothing could merge.
   AO gives the ground its variation now; textures arrive in Milestone 3.
 - **Edits remesh synchronously on the main thread** (greedy is fast enough), so the

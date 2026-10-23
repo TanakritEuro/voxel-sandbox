@@ -1,17 +1,22 @@
 // Entry point: world, chunk loading, fly camera, block editing and the HUD.
 
 import * as THREE from 'three';
+import { Autofly } from './autofly';
 import { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
 import { FlyCamera } from './player';
 import { ChunkRenderer } from './render/chunkRenderer';
+import { Stats } from './stats';
 import { Block, BLOCKS, HOTBAR } from './world/blocks';
-import { CHUNK_SIZE, toChunk } from './world/coords';
+import { CHUNK_SIZE, CHUNK_VOLUME, toChunk } from './world/coords';
 import { raycast, type RayHit } from './world/raycast';
 import { World } from './world/world';
 
 const params = new URLSearchParams(location.search);
 const seed = Number(params.get('seed') ?? TUNING.world.seed);
+// `?radius=8` overrides the view radius, for measuring.
+const radiusParam = Number(params.get('radius'));
+if (Number.isInteger(radiusParam) && radiusParam > 0) TUNING.view.radius = radiusParam;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const info = document.querySelector<HTMLDivElement>('#info')!;
@@ -43,6 +48,30 @@ const fly = new FlyCamera(camera, canvas);
 // Spawn above dry land near the origin.
 const spawn = world.generator.findLand(0, 0);
 camera.position.set(spawn.x + 0.5, world.generator.height(spawn.x, spawn.z) + 12, spawn.z + 0.5);
+
+// Measuring: `?stats` overlay (F3), `?autofly` scripted flight.
+const autoflySeconds = Autofly.seconds(params);
+const stats = new Stats(
+  renderer,
+  () => ({
+    chunks: world.chunks.size,
+    meshed: chunks.count,
+    queued: loader.pending,
+    inFlight: 0,
+    workerBusy: null,
+    chunkBytes: world.chunks.size * CHUNK_VOLUME,
+    geometryBytes: chunks.bytes,
+    sceneTriangles: chunks.triangles,
+  }),
+  params.has('stats') || autoflySeconds !== null,
+);
+const autofly =
+  autoflySeconds === null
+    ? null
+    : new Autofly(fly, loader, autoflySeconds, (report, text) => {
+        stats.note = text;
+        console.log(`[autofly]\n${text}\n${JSON.stringify(report)}`);
+      });
 
 // Outline around the block you're looking at.
 const outline = new THREE.LineSegments(
@@ -102,11 +131,14 @@ let last = performance.now();
 let fps = 60;
 
 function frame(now: number): void {
-  const dt = Math.min((now - last) / 1000, 0.1);
+  const start = performance.now();
+  const interval = now - last;
+  const dt = Math.min(interval / 1000, 0.1);
   last = now;
   fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
 
-  fly.update(dt);
+  if (autofly?.active) autofly.update(now, dt, interval);
+  else fly.update(dt);
   loader.update(camera.position.x, camera.position.z);
 
   const dir = fly.direction();
@@ -123,6 +155,7 @@ function frame(now: number): void {
     (target ? ` · ${BLOCKS[target.block].name}` : '');
 
   renderer.render(scene, camera);
+  stats.frame(now, interval, performance.now() - start);
   requestAnimationFrame(frame);
 }
 

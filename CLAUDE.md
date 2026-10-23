@@ -20,6 +20,7 @@ relevant files there before writing something that already exists.
 - `npm run build` — typecheck + production build into `dist/`
 - `npm run typecheck` — types only
 - `npm test` — Vitest
+- `npm run bench` — headless generate / pad / mesh timings on a fixed chunk set
 
 Requires Node 20.19+ or 22.12+ (Vite 8).
 
@@ -97,6 +98,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/chunkLoader.ts` — load / mesh / unload scheduling.
 - `src/player.ts` — free-fly camera with pointer lock.
 - `src/main.ts` — entry point, editing, HUD, frame loop.
+- `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
+  sprint flight that reports frame times and holes. `?radius=8` overrides the view radius.
+- `bench/` — `npm run bench`.
 - `tests/` — world, generation, mesher and raycast tests (headless).
 
 ## Conventions

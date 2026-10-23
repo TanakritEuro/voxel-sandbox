@@ -24,6 +24,22 @@ export class ChunkLoader {
     return this.queue.length;
   }
 
+  /**
+   * Chunks within `radius` columns of the player's column that have no mesh yet: holes,
+   * if they're inside the fog. Measured by `?autofly`.
+   */
+  missing(radius: number): number {
+    const { cx, cz } = this.centre;
+    let n = 0;
+    for (let dz = -radius; dz <= radius; dz++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dz * dz > radius * radius) continue;
+        for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) if (!this.meshed.has(chunkKey(cx + dx, cy, cz + dz))) n++;
+      }
+    }
+    return n;
+  }
+
   update(x: number, z: number): void {
     const cx = toChunk(Math.floor(x));
     const cz = toChunk(Math.floor(z));
