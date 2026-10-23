@@ -41,6 +41,7 @@ export const TUNING = {
     /** Blocks per second. */
     walkSpeed: 4.3,
     sprintSpeed: 5.6,
+    crouchSpeed: 1.3,
     /** How fast the velocity turns towards the one you're asking for (blocks / s²): on the ground, and in the air. */
     groundAccel: 60,
     airAccel: 15,
@@ -50,8 +51,22 @@ export const TUNING = {
     jumpHeight: 1.25,
     /** Fastest fall, blocks per second. */
     terminalVelocity: 60,
-    /** Eye above the feet. */
+    /** Eye above the feet, standing and crouching. The box stays 1.8 high either way. */
     eyeHeight: 1.62,
+    crouchEyeHeight: 1.32,
+    /** How quickly the eye moves to its new height on crouching (per second; higher is snappier). */
+    eyeEase: 14,
+    swim: {
+      /** Blocks / s across the water, and up while Space is held. */
+      speed: 2.2,
+      upSpeed: 3.5,
+      /** Fastest sinking with nothing held, blocks / s. */
+      maxSink: 2,
+      /** Water pulls the velocity towards the wanted one at this rate (per second): higher is thicker water. */
+      drag: 4,
+      /** Upward speed from swimming against a wall with Space held: enough to jump out onto a bank one block above the water. */
+      exitBoost: 8.5,
+    },
   },
   fly: {
     /** Free-fly speed (blocks per second); Ctrl multiplies it. */
@@ -63,6 +78,12 @@ export const TUNING = {
   edit: {
     /** How far away you can break or place blocks. */
     reach: 7,
+  },
+  water: {
+    /** With the eye under water: fog colour and range (blocks). */
+    fogColour: 0x1f4f80,
+    fogNear: 1,
+    fogFar: 20,
   },
   sky: {
     colour: 0x9fd0ff,

@@ -190,3 +190,95 @@ describe('fixed step', () => {
     expect(clock.alpha).toBeLessThan(1);
   });
 });
+
+describe('crouching', () => {
+  // A 5 × 5 platform floating over nothing: blocks x, z in 0..4 at y = 40.
+  const platform = worldOf((x, y, z) => (y === 40 && x >= 0 && x <= 4 && z >= 0 && z <= 4 ? Block.Stone : Block.Air));
+  const onPlatform = (b: Body) => b.y === FLOOR && b.x - HALF_WIDTH < 5 && b.x + HALF_WIDTH > 0 && b.z - HALF_WIDTH < 5 && b.z + HALF_WIDTH > 0;
+
+  it('stays on the platform walking towards every edge and corner, up to the edge', () => {
+    const directions: [string, number, (b: Body) => boolean][] = [
+      ['+x', EAST, (b) => b.x > 5 + HALF_WIDTH - 0.02],
+      ['-x', Math.PI / 2, (b) => b.x < -HALF_WIDTH + 0.02],
+      ['+z', Math.PI, (b) => b.z > 5 + HALF_WIDTH - 0.02],
+      ['-z', 0, (b) => b.z < -HALF_WIDTH + 0.02],
+      ['corner', SOUTH_EAST, (b) => b.x > 5 + HALF_WIDTH - 0.02 && b.z > 5 + HALF_WIDTH - 0.02],
+    ];
+    for (const [name, yaw, atEdge] of directions) {
+      const body = standing(2.5, 2.5, platform);
+      run(body, platform, 6, input({ forward: 1, yaw, crouch: true }));
+      expect(onPlatform(body), name).toBe(true);
+      expect(atEdge(body), name).toBe(true);
+    }
+  });
+
+  it('slides along an edge', () => {
+    const body = standing(4.5, 0.5, platform);
+    run(body, platform, 2, input({ forward: 1, yaw: SOUTH_EAST, crouch: true }));
+    expect(body.x).toBeGreaterThan(5 + HALF_WIDTH - 0.02);
+    expect(body.z).toBeGreaterThan(1.5);
+    expect(body.z).toBeLessThan(3);
+    expect(onPlatform(body)).toBe(true);
+  });
+
+  it('walks off without crouching, and crouches at crouching speed', () => {
+    const body = standing(2.5, 2.5, platform);
+    run(body, platform, 3, input({ forward: 1, yaw: EAST }));
+    expect(body.y).toBeLessThan(FLOOR - 5);
+    const slow = standing(0.5, 0.5);
+    run(slow, flat, 1, input({ forward: 1, yaw: EAST, crouch: true }));
+    expect(slow.vx).toBeCloseTo(TUNING.player.crouchSpeed, 9);
+  });
+});
+
+describe('swimming', () => {
+  // A pool: floor top at 30, water up to 41 (blocks 30..40) for x < 10, a bank at x ≥ 10 whose top is 42.
+  const SURFACE = 41;
+  const pool = worldOf((x, y) => (y < 30 || (x >= 10 && y < SURFACE + 1) ? Block.Stone : y < SURFACE ? Block.Water : Block.Air));
+  const swim = TUNING.player.swim;
+
+  it('sinks slowly to the bottom', () => {
+    const body = createBody(5.5, 38, 0.5);
+    run(body, pool, 1, NO_INPUT);
+    expect(body.inWater).toBe(true);
+    expect(body.vy).toBeGreaterThanOrEqual(-swim.maxSink - 1e-9);
+    run(body, pool, 10, NO_INPUT);
+    expect(body.y).toBe(30);
+  });
+
+  it('is slowed down by the water when falling in', () => {
+    const body = createBody(5.5, 70, 0.5);
+    let wet = 0;
+    run(body, pool, 6, () => {
+      if (body.inWater) wet += TUNING.player.step;
+      if (wet > 1.5) expect(body.vy).toBeGreaterThan(-swim.maxSink - 0.5);
+      return NO_INPUT;
+    });
+    expect(body.y).toBe(30);
+  });
+
+  it('swims up to the surface and bobs there with Space held', () => {
+    const body = createBody(5.5, 30, 0.5);
+    let low = Infinity;
+    let high = -Infinity;
+    run(body, pool, 8, (t) => {
+      if (t > 6) {
+        low = Math.min(low, body.y);
+        high = Math.max(high, body.y);
+      }
+      return input({ jump: true });
+    });
+    expect(high).toBeGreaterThan(SURFACE - 0.1);
+    expect(high).toBeLessThan(SURFACE + 0.7);
+    expect(low).toBeGreaterThan(SURFACE - 1.5);
+  });
+
+  it('climbs out onto a bank one block above the water', () => {
+    const body = createBody(7.5, 36, 0.5);
+    run(body, pool, 5, input({ forward: 1, yaw: EAST, jump: true }));
+    run(body, pool, 1, NO_INPUT);
+    expect(body.x).toBeGreaterThan(10);
+    expect(body.y).toBe(SURFACE + 1);
+    expect(body.inWater).toBe(false);
+  });
+});

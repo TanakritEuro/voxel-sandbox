@@ -13,8 +13,8 @@ Open http://localhost:5173 and click to play.
 | --- | --- |
 | Mouse | Look |
 | W A S D | Walk (or fly) |
-| Space | Jump; flying: up |
-| Shift | Flying: down |
+| Space | Jump; in water: swim up; flying: up |
+| Shift | Crouch (won't walk off edges); flying: down |
 | Ctrl (tap) | Sprint until you stop moving forward; flying: faster |
 | F, or Space twice | Start or stop flying |
 | Left click | Break block |

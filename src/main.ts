@@ -7,6 +7,7 @@ import { TUNING } from './config';
 import { Input } from './input';
 import { Player } from './player';
 import { ChunkRenderer } from './render/chunkRenderer';
+import { WaterView } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import { Block, BLOCKS, HOTBAR } from './world/blocks';
@@ -41,6 +42,8 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+const waterView = new WaterView(scene);
 
 const world = new World(seed);
 const chunks = new ChunkRenderer();
@@ -157,6 +160,7 @@ function frame(now: number): void {
 
   if (autofly?.active) autofly.update(now, dt, interval);
   else player.update(dt);
+  waterView.update(player.eyeInWater);
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 

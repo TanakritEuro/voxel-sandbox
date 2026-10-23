@@ -14,6 +14,8 @@ export class ChunkRenderer {
   private readonly transparentMaterial = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
+    // Both sides, so the water's surface shows from underneath.
+    side: THREE.DoubleSide,
     opacity: 0.65,
     depthWrite: false,
   });

@@ -1,6 +1,6 @@
 # Milestone 2 plan: walking player
 
-## Status: in progress (steps 1–2 of 5 done)
+## Status: in progress (steps 1–3 of 5 done)
 
 Approved 2026-10-23 as proposed: fly mode collides with blocks, breaking takes time in fly
 mode too, sprint on Ctrl only.
@@ -47,6 +47,31 @@ page can't stop it, so holding Ctrl to sprint (or to fly fast, as in the scaffol
 then pressing W closes the game. Pressing W first and Ctrl second is safe. Decided
 2026-10-23: sprint is a toggle. A tap of Ctrl starts it (and fast flying), another tap or
 no longer moving forward ends it, so there is no reason to hold Ctrl.
+
+**Step 3 (crouching, swimming, underwater).** Shift while walking crouches: crouching
+speed 1.3, the eye eases down 0.3, sprinting stops, and on the ground any move that would
+leave nothing under the box is shortened (in 0.005-block steps, axis by axis), so you can
+walk right up to an edge and along it. In water (the box touching a `liquid` block) the
+velocity is pulled towards the wanted one at `drag` 4/s: across at 2.2, up at 3.5 with
+Space, otherwise down to a 2 blocks/s sink. Swimming into a wall with Space held pushes up
+at 8.5 blocks/s, enough to clear a bank one block above the water. With the eye in water
+the fog turns blue and closes to 1–20 blocks; water is drawn double-sided so its surface
+shows from below.
+
+7 more tests: crouching to all four edges and the corner of a floating platform (stays on,
+and gets within 0.02 of the edge), sliding along an edge, falling off without crouching,
+crouching speed; in a pool, sinking at no more than 2 blocks/s, a fall from 30 blocks
+slowed by the water, bobbing at the surface with Space held, and climbing out onto a bank
+(which fails with the boost set to 0, so the test does test it).
+
+Checked in the pane: crouching lowered the eye from 48.6 to 48.3; walking off the spawn
+into the sea sank to the eye at 40.6 with the blue underwater view; holding Space bobbed
+with the eye at 42.5–42.7 (head out); backing out with Space held climbed out onto the
+beach and up the terraces, and the sky came back. No console errors.
+
+Differs from the plan: water's pull is one rate (`drag`) for every direction instead of
+separate gravity and drag numbers, and the exit boost is 8.5, not 6 (6 doesn't reach a bank
+one block above the water).
 
 Goal: walk the world instead of flying over it. Gravity, an AABB that collides with the
 blocks, jumping, sprinting, crouching that won't walk off edges, swimming with an

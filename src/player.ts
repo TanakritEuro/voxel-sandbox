@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { TUNING } from './config';
 import type { Controls } from './input';
 import { FixedStep } from './math';
+import { BLOCKS } from './world/blocks';
 import { type BlockSource, type Body, createBody, type MoveInput, stepPlayer } from './world/physics';
 
 /** Two presses of Space closer together than this (seconds) start or stop flying. */
@@ -23,6 +24,10 @@ export class Player {
   sprinting = false;
   /** Holding still because the blocks around aren't loaded yet (so nobody falls through an unloaded world). */
   waiting = true;
+  /** The camera is inside a liquid block: draw the underwater view. */
+  eyeInWater = false;
+  /** Eye above the feet now: eases between standing and crouching heights. */
+  private eye = TUNING.player.eyeHeight;
   /** Where the body was before the last step; the camera is drawn between this and the body. */
   private readonly previous = { x: 0, y: 0, z: 0 };
   private readonly clock = new FixedStep(TUNING.player.step);
@@ -57,7 +62,9 @@ export class Player {
     const ctrlLeft = input.take('ControlLeft');
     const ctrlRight = input.take('ControlRight');
     if (ctrlLeft || ctrlRight) this.sprinting = !this.sprinting;
-    if (input.axis('KeyW') - input.axis('KeyS') <= 0) this.sprinting = false;
+    if (input.axis('KeyW') - input.axis('KeyS') <= 0 || this.crouching()) this.sprinting = false;
+    const eye = this.crouching() ? TUNING.player.crouchEyeHeight : TUNING.player.eyeHeight;
+    this.eye += (eye - this.eye) * (1 - Math.exp(-TUNING.player.eyeEase * dt));
 
     const steps = this.clock.advance(dt);
     this.waiting = !this.loaded(this.body.x, this.body.z);
@@ -72,6 +79,7 @@ export class Player {
     for (let i = 0; i < steps; i++) {
       this.keepPosition();
       move.flying = this.flying;
+      move.crouch = this.crouching();
       stepPlayer(this.body, move, this.world);
       move.jump = input.isHeld('Space');
       // Coming down onto the ground ends a flight, as it would anywhere.
@@ -94,6 +102,11 @@ export class Player {
     return new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.input.pitch, this.input.yaw, 0, 'YXZ'));
   }
 
+  /** Shift while walking crouches; while flying it goes down. */
+  private crouching(): boolean {
+    return !this.flying && (this.input.isHeld('ShiftLeft') || this.input.isHeld('ShiftRight'));
+  }
+
   private moveInput(): MoveInput {
     const i = this.input;
     return {
@@ -102,6 +115,7 @@ export class Player {
       yaw: i.yaw,
       jump: i.isHeld('Space'),
       sprint: this.sprinting,
+      crouch: this.crouching(),
       flying: this.flying,
       up: i.axis('Space') - Math.max(i.axis('ShiftLeft'), i.axis('ShiftRight')),
     };
@@ -117,7 +131,8 @@ export class Player {
   private placeCamera(t: number): void {
     const p = this.previous;
     const b = this.body;
-    this.camera.position.set(lerp(p.x, b.x, t), lerp(p.y, b.y, t) + TUNING.player.eyeHeight, lerp(p.z, b.z, t));
+    const c = this.camera.position.set(lerp(p.x, b.x, t), lerp(p.y, b.y, t) + this.eye, lerp(p.z, b.z, t));
     this.camera.rotation.set(this.input.pitch, this.input.yaw, 0, 'YXZ');
+    this.eyeInWater = BLOCKS[this.world.getBlock(Math.floor(c.x), Math.floor(c.y), Math.floor(c.z))].liquid;
   }
 }

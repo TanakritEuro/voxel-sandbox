@@ -34,13 +34,13 @@ front of the camera first, scheduled from the main thread, and unloaded when far
 (`chunkLoader.ts`). The mesher
 (`mesh/mesher.ts`) is greedy with per-vertex ambient occlusion, baked into vertex colours
 with directional shading; water and glass go in a separate transparent pass. A walking
-player with an AABB that collides with the blocks, jumping, sprinting and fly mode
-(`player.ts`, `world/physics.ts`, 120 Hz fixed step), a voxel raycast (`world/raycast.ts`) with a block
+player with an AABB that collides with the blocks, jumping, sprinting, crouching at edges,
+swimming with an underwater view, and fly mode (`player.ts`, `world/physics.ts`, 120 Hz
+fixed step), a voxel raycast (`world/raycast.ts`) with a block
 outline, left click to break, right click to place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: no crouching, swimming or timed breaking
-yet, no lighting, no textures, no trees or caves, and edits are lost on reload.
+Known limits, each fixed by a milestone below: no timed breaking yet, no lighting, no textures, no trees or caves, and edits are lost on reload.
 
 ## Architecture
 
@@ -96,12 +96,12 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (terrain by column with one heightmap, all-air chunks as null, sea level, spawn search),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit),
   `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
-  flying; `overlapsBlock` for placing).
+  crouching at edges, swimming, flying; `overlapsBlock` for placing).
 - `src/mesh/` — `padding.ts` (the 34³ padded copy, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colours, Uint16 indices),
   `mesher.ts` (greedy mesher with AO, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
-- `src/render/chunkRenderer.ts` — Three.js meshes per chunk.
+- `src/render/chunkRenderer.ts` — Three.js meshes per chunk. `water.ts` — the underwater fog.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
   (near first, in front before behind) up to the pool's capacity, drops stale or
   out-of-range results, remeshes edits on the main thread.
