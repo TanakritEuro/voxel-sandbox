@@ -17,7 +17,11 @@ export const SEA_LEVEL = 62;
 const STEEP = 3;
 /** Height map border around a column job's 32 × 32 columns. */
 const BORDER = 1;
-const SPAN = CHUNK_SIZE + 2 * BORDER;
+// Local copies: imported bindings can cost a lookup each time in the hot loops (they do under Vitest).
+const S = CHUNK_SIZE;
+const COLUMNS = S * S;
+const Y_SHIFT = 2 * CHUNK_BITS;
+const SPAN = S + 2 * BORDER;
 
 /** What decides a column's blocks. */
 export interface ColumnInfo {
@@ -33,27 +37,61 @@ export interface ColumnInfo {
 /** A run of one block in a column: world y in [from, to). */
 type Run = [from: number, to: number, block: Block];
 
-/** A column's blocks, bottom up, as runs. Everything above the last run is air. */
-export function columnLayers({ height: h, biome, slope, snowLine }: ColumnInfo): Run[] {
-  const runs: Run[] = [];
-  const steep = slope >= STEEP && biome !== Biome.Desert;
-  let top: Block;
-  let under: Block;
-  let depth: number; // blocks of `under` below the top
-  if (h < SEA_LEVEL - 4) [top, under, depth] = biome === Biome.Desert ? [Block.Sand, Block.Sand, 3] : [Block.Gravel, Block.Gravel, 2];
-  else if (h <= SEA_LEVEL + 1 && !(biome === Biome.Mountains && h >= snowLine)) [top, under, depth] = [Block.Sand, Block.Sand, 3];
-  else if (steep) [top, under, depth] = [Block.Stone, Block.Stone, 0];
-  else if (biome === Biome.Desert) [top, under, depth] = [Block.Sand, Block.Sand, 3];
-  else if (biome === Biome.Mountains) [top, under, depth] = h >= snowLine ? [Block.Snow, Block.Stone, 0] : [Block.SnowyGrass, Block.Dirt, 3];
-  else [top, under, depth] = [Block.Grass, Block.Dirt, 3];
+/** Most runs a column has (stone, sandstone, under, top, water). */
+const MAX_RUNS = 5;
 
+/**
+ * Write a column's blocks, bottom up, as runs of (from, to, block) into `out` starting at
+ * `at`; returns how many. Everything above the last run is air. Allocates nothing: the
+ * generator calls it for every column.
+ */
+export function writeLayers({ height: h, biome, slope, snowLine }: ColumnInfo, out: Int16Array, at: number): number {
+  const steep = slope >= STEEP && biome !== Biome.Desert;
+  let top: Block = Block.Grass;
+  let under: Block = Block.Dirt;
+  let depth = 3; // blocks of `under` below the top
+  if (h < SEA_LEVEL - 4) {
+    if (biome === Biome.Desert) top = under = Block.Sand;
+    else {
+      top = under = Block.Gravel;
+      depth = 2;
+    }
+  } else if (h <= SEA_LEVEL + 1 && !(biome === Biome.Mountains && h >= snowLine)) top = under = Block.Sand;
+  else if (steep) {
+    top = under = Block.Stone;
+    depth = 0;
+  } else if (biome === Biome.Desert) top = under = Block.Sand;
+  else if (biome === Biome.Mountains) {
+    if (h >= snowLine) {
+      top = Block.Snow;
+      under = Block.Stone;
+      depth = 0;
+    } else top = Block.SnowyGrass;
+  }
+
+  let n = 0;
+  const run = (from: number, to: number, block: Block) => {
+    out[at + n * 3] = from;
+    out[at + n * 3 + 1] = to;
+    out[at + n * 3 + 2] = block;
+    n++;
+  };
   // Desert sand sits on sandstone before the stone.
   const sandstone = biome === Biome.Desert && h >= SEA_LEVEL - 4 ? 4 : 0;
-  runs.push([0, h - depth - sandstone, Block.Stone]);
-  if (sandstone) runs.push([h - depth - sandstone, h - depth, Block.Sandstone]);
-  if (depth) runs.push([h - depth, h, under]);
-  runs.push([h, h + 1, top]);
-  if (h < SEA_LEVEL) runs.push([h + 1, SEA_LEVEL + 1, Block.Water]);
+  run(0, h - depth - sandstone, Block.Stone);
+  if (sandstone) run(h - depth - sandstone, h - depth, Block.Sandstone);
+  if (depth) run(h - depth, h, under);
+  run(h, h + 1, top);
+  if (h < SEA_LEVEL) run(h + 1, SEA_LEVEL + 1, Block.Water);
+  return n;
+}
+
+/** A column's blocks, bottom up, as runs (`writeLayers` as an array, for tests and tools). */
+export function columnLayers(info: ColumnInfo): Run[] {
+  const out = new Int16Array(MAX_RUNS * 3);
+  const n = writeLayers(info, out, 0);
+  const runs: Run[] = [];
+  for (let i = 0; i < n; i++) runs.push([out[i * 3], out[i * 3 + 1], out[i * 3 + 2]]);
   return runs;
 }
 
@@ -79,12 +117,13 @@ export class Generator {
    * frays instead of running straight.
    */
   biome(x: number, z: number, weights: Float64Array = this.climate.weights(x, z, this.weights)): Biome {
-    let first = 0;
-    let second = 1;
-    if (weights[second] > weights[first]) [first, second] = [second, first];
+    let first = weights[1] > weights[0] ? 1 : 0;
+    let second = 1 - first;
     for (let i = 2; i < weights.length; i++) {
-      if (weights[i] > weights[first]) [first, second] = [i, first];
-      else if (weights[i] > weights[second]) second = i;
+      if (weights[i] > weights[first]) {
+        second = first;
+        first = i;
+      } else if (weights[i] > weights[second]) second = i;
     }
     const chanceOfSecond = Math.max(0, 0.5 - (weights[first] - weights[second]) * 4);
     return hash3(this.seed, x, 7, z) < chanceOfSecond ? second : first;
@@ -127,11 +166,11 @@ export class Generator {
    * the cost). A chunk that would be all air comes back as null.
    */
   generateColumn(cx: number, cz: number, cyMin: number, cyMax: number): (Uint8Array | null)[] {
-    const x0 = cx * CHUNK_SIZE;
-    const z0 = cz * CHUNK_SIZE;
+    const x0 = cx * S;
+    const z0 = cz * S;
     // Heights over the columns and a border, and the biome of each inner column.
     const heights = new Int32Array(SPAN * SPAN);
-    const biomes = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
+    const biomes = new Uint8Array(COLUMNS);
     const weights = this.weights;
     for (let j = 0; j < SPAN; j++) {
       for (let i = 0; i < SPAN; i++) {
@@ -140,15 +179,16 @@ export class Generator {
         this.climate.weights(x, z, weights);
         heights[j * SPAN + i] = this.height(x, z, weights);
         const inner = i >= BORDER && j >= BORDER && i < SPAN - BORDER && j < SPAN - BORDER;
-        if (inner) biomes[(j - BORDER) * CHUNK_SIZE + (i - BORDER)] = this.biome(x, z, weights);
+        if (inner) biomes[(j - BORDER) * S + (i - BORDER)] = this.biome(x, z, weights);
       }
     }
 
     // Each column's runs, and the highest block anywhere (chunks above it are all air).
-    const columns: Run[][] = [];
+    const runs = new Int16Array(COLUMNS * MAX_RUNS * 3);
+    const counts = new Uint8Array(COLUMNS);
     let top = SEA_LEVEL;
-    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
-      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+    for (let lz = 0; lz < S; lz++) {
+      for (let lx = 0; lx < S; lx++) {
         const at = (lz + BORDER) * SPAN + lx + BORDER;
         const h = heights[at];
         const slope = Math.max(
@@ -157,26 +197,25 @@ export class Generator {
           Math.abs(heights[at + SPAN] - h),
           Math.abs(heights[at - SPAN] - h),
         );
-        const biome = biomes[lz * CHUNK_SIZE + lx] as Biome;
-        columns.push(columnLayers({ height: h, biome, slope, snowLine: this.snowLine(x0 + lx, z0 + lz) }));
+        const c = lz * S + lx;
+        const info = { height: h, biome: biomes[c] as Biome, slope, snowLine: this.snowLine(x0 + lx, z0 + lz) };
+        counts[c] = writeLayers(info, runs, c * MAX_RUNS * 3);
         top = Math.max(top, h);
       }
     }
 
     const out: (Uint8Array | null)[] = [];
     for (let cy = cyMin; cy <= cyMax; cy++) {
-      const y0 = cy * CHUNK_SIZE;
+      const y0 = cy * S;
       // Every column is filled up to its height or sea level, whichever is higher, so this is exact.
       if (y0 > top) {
         out.push(null);
         continue;
       }
       const blocks = new Uint8Array(CHUNK_VOLUME);
-      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
-        for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-          const column = (lz << CHUNK_BITS) | lx;
-          for (const [from, to, block] of columns[lz * CHUNK_SIZE + lx]) fillRun(blocks, column, y0, from, to, block);
-        }
+      for (let c = 0; c < COLUMNS; c++) {
+        // c is z * 32 + x, the same bits as a chunk index's column part.
+        for (let r = c * MAX_RUNS * 3, end = r + counts[c] * 3; r < end; r += 3) fillRun(blocks, c, y0, runs[r], runs[r + 1], runs[r + 2]);
       }
       out.push(blocks);
     }
@@ -186,6 +225,6 @@ export class Generator {
 
 /** Set world y in [from, to) of one column of a chunk whose bottom is y0. `column` is the local z and x bits. */
 function fillRun(blocks: Uint8Array, column: number, y0: number, from: number, to: number, block: Block): void {
-  const end = Math.min(to, y0 + CHUNK_SIZE) - y0;
-  for (let ly = Math.max(from, y0) - y0; ly < end; ly++) blocks[(ly << (2 * CHUNK_BITS)) | column] = block;
+  const end = Math.min(to, y0 + S) - y0;
+  for (let ly = Math.max(from, y0) - y0; ly < end; ly++) blocks[(ly << Y_SHIFT) | column] = block;
 }
