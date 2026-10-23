@@ -6,10 +6,12 @@
 // the work is split differently (columns instead of chunks, empty chunks skipped).
 
 import { it } from 'vitest';
+import { TUNING } from '../src/config';
 import { meshCulled } from '../src/mesh/culled';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks } from '../src/mesh/padding';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
+import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -121,4 +123,33 @@ it('bench', () => {
     '',
   ];
   console.log(lines.join('\n'));
+});
+
+it('player physics', () => {
+  // A walk over generated terrain: sprinting and jumping, turning every few seconds, through
+  // hills and into the sea, so the steps see slopes, walls and water.
+  const world = new World(SEED);
+  for (const [cx, cz] of columns(4)) world.ensureColumn(cx, cz);
+  const spawn = world.generator.findLand(0, 0);
+  const steps = Math.round(120 / TUNING.player.step);
+  const totals: number[] = [];
+  let walked = 0;
+  for (let run = 0; run <= RUNS; run++) {
+    walked = 0;
+    const body = createBody(spawn.x + 0.5, world.generator.height(spawn.x, spawn.z) + 1, spawn.z + 0.5);
+    const t0 = performance.now();
+    for (let i = 0; i < steps; i++) {
+      const yaw = Math.floor(i / 600) * 2.1;
+      const { x, z } = body;
+      stepPlayer(body, { ...NO_INPUT, forward: 1, yaw, jump: true, sprint: true }, world);
+      walked += Math.hypot(body.x - x, body.z - z);
+    }
+    if (run > 0) totals.push(performance.now() - t0);
+  }
+  const total = median(totals);
+  const perStep = (total / steps) * 1000;
+  console.log(
+    `player physics: ${steps} steps (120 s walking, sprinting, jumping: ${Math.round(walked)} blocks covered) in ${total.toFixed(1)} ms, ` +
+      `${perStep.toFixed(2)} µs a step; ${((perStep * 4) / 1000).toFixed(3)} ms for the 4 steps of a 30 fps frame\n`,
+  );
 });

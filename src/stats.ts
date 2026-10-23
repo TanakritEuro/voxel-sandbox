@@ -33,8 +33,8 @@ export class Stats {
   private readonly text: HTMLPreElement;
   private readonly graph: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  /** Recent frames: [time, interval ms, main-thread work ms]. */
-  private readonly frames: [number, number, number][] = [];
+  /** Recent frames: [time, interval ms, main-thread work ms, player physics ms, physics steps]. */
+  private readonly frames: [number, number, number, number, number][] = [];
   private lastText = 0;
   /** Extra lines under the numbers (the autofly report). */
   note = '';
@@ -69,11 +69,14 @@ export class Stats {
     this.el.hidden = !v;
   }
 
-  /** Call once per frame after rendering: `interval` since the previous frame, `work` spent in this one. */
-  frame(now: number, interval: number, work: number): void {
+  /**
+   * Call once per frame after rendering: `interval` since the previous frame, `work` spent in
+   * this one, of which `physicsMs` on the player's `physicsSteps` physics steps.
+   */
+  frame(now: number, interval: number, work: number, physicsMs = 0, physicsSteps = 0): void {
     // A hidden tab pauses rAF; that gap isn't a dropped frame.
     if (interval > LONG_FRAME_MS && document.visibilityState === 'visible') this.longFrames++;
-    this.frames.push([now, interval, work]);
+    this.frames.push([now, interval, work, physicsMs, physicsSteps]);
     while (this.frames.length && this.frames[0][0] < now - GRAPH_SECONDS * 1000) this.frames.shift();
     if (!this.visible) return;
     this.drawGraph(now);
@@ -90,12 +93,16 @@ export class Stats {
     const max = recent.reduce((m, f) => Math.max(m, f[1]), 0);
     const work = recent.reduce((s, f) => s + f[2], 0) / n;
     const workMax = recent.reduce((m, f) => Math.max(m, f[2]), 0);
+    const physics = recent.reduce((s, f) => s + f[3], 0) / n;
+    const physicsMax = recent.reduce((m, f) => Math.max(m, f[3]), 0);
+    const steps = recent.reduce((s, f) => s + f[4], 0) / n;
     const r = this.renderer.info.render;
     const c = this.counters();
     const heap = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize;
     this.text.textContent = [
       `${(1000 / avg).toFixed(0)} fps   frame ${avg.toFixed(1)} ms avg, ${max.toFixed(1)} max`,
       `main thread ${work.toFixed(1)} ms avg, ${workMax.toFixed(1)} max`,
+      `  player physics ${physics.toFixed(2)} ms avg, ${physicsMax.toFixed(2)} max (${steps.toFixed(1)} steps a frame)`,
       `over ${LONG_FRAME_MS} ms: ${this.longFrames} frames since load`,
       `draw calls ${r.calls}   triangles ${Math.round(r.triangles / 1000)}k drawn / ${Math.round(c.sceneTriangles / 1000)}k`,
       `chunks ${c.chunks} loaded, ${c.meshed} meshed`,

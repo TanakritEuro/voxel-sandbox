@@ -186,7 +186,7 @@ function frame(now: number): void {
 
   renderer.render(scene, camera);
   const work = performance.now() - start;
-  stats.frame(now, interval, work);
+  stats.frame(now, interval, work, player.physicsMs, player.physicsSteps);
   autofly?.frameWork(work);
   requestAnimationFrame(frame);
 }

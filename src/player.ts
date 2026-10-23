@@ -26,6 +26,9 @@ export class Player {
   waiting = true;
   /** The camera is inside a liquid block: draw the underwater view. */
   eyeInWater = false;
+  /** Time spent on physics steps in the last update (ms), and how many steps, for `?stats`. */
+  physicsMs = 0;
+  physicsSteps = 0;
   /** Eye above the feet now: eases between standing and crouching heights. */
   private eye = TUNING.player.eyeHeight;
   /** Where the body was before the last step; the camera is drawn between this and the body. */
@@ -69,10 +72,12 @@ export class Player {
     const steps = this.clock.advance(dt);
     this.waiting = !this.loaded(this.body.x, this.body.z);
     if (this.waiting) {
+      this.physicsMs = this.physicsSteps = 0;
       this.keepPosition();
       this.placeCamera(1);
       return;
     }
+    const start = performance.now();
     const move = this.moveInput();
     // A tap of Space between two steps still jumps, once.
     move.jump ||= space;
@@ -85,6 +90,8 @@ export class Player {
       // Coming down onto the ground ends a flight, as it would anywhere.
       if (this.flying && this.body.onGround) this.flying = false;
     }
+    this.physicsMs = performance.now() - start;
+    this.physicsSteps = steps;
     this.placeCamera(this.clock.alpha);
   }
 

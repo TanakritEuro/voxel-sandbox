@@ -14,8 +14,11 @@ export class ChunkRenderer {
   private readonly transparentMaterial = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    // Both sides, so the water's surface shows from underneath.
+    // Both sides, so the water's surface shows from underneath. In one pass: Three.js would
+    // otherwise draw transparent double-sided meshes twice (back faces, then front), adding
+    // a draw call per water mesh for nothing on flat water.
     side: THREE.DoubleSide,
+    forceSinglePass: true,
     opacity: 0.65,
     depthWrite: false,
   });

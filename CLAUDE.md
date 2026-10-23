@@ -26,7 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 1 built (`docs/milestone-1.md`); Milestone 2 in progress (`docs/milestone-2.md`). A seeded heightmap world
+Milestones 1 and 2 built (`docs/milestone-1.md`, `docs/milestone-2.md`), waiting for playtests. A seeded heightmap world
 (`world/generate.ts`: fractal Perlin noise, grass, dirt, stone, sand beaches, water to sea
 level) in 32³ chunks, 128 blocks tall, generated a column at a time. Chunks within
 8 chunks of the camera are generated and meshed in a pool of Web Workers, near and in

@@ -1,9 +1,56 @@
 # Milestone 2 plan: walking player
 
-## Status: in progress (steps 1–4 of 5 done)
+## Status: built; waiting for your playtest
 
 Approved 2026-10-23 as proposed: fly mode collides with blocks, breaking takes time in fly
-mode too, sprint on Ctrl only.
+mode too, sprint on Ctrl only (made a Ctrl tap toggle the same day: see step 2).
+
+All five steps are in. Walking, jumping, sprinting, crouching, swimming, flying, timed
+breaking and placing work and are tested headless (76 tests); the engine budget from
+Milestone 1 holds. What's left is feel, which only you can judge: the questions below.
+
+### Measurements (dev machine; the pane now runs at 120 Hz)
+
+| | Milestone 1 build | Milestone 2 build |
+| --- | --- | --- |
+| `?autofly` radius 8, main thread p50 / p99 / max (two runs each, same conditions) | 1.2–1.5 / 3.4–3.7 / 4.4–5.4 ms | 1.1–1.4 / 3.3–3.7 / 4.5–5.0 ms |
+| frames over 20 ms, holes | 0, 0 | 0, 0 |
+| draw calls at the end of the flight | 68 | 68 |
+| player physics while walking, sprinting, jumping (`?stats`) | | 0.04 ms a frame avg, 0.20 max |
+| `npm run bench` player physics | | 1.17 µs a step (14 400 steps, 511 blocks walked over terrain and water) |
+
+The engine numbers are unchanged; physics is too small to matter (four steps cost 0.005 ms).
+
+Found while measuring: the first Milestone 2 runs used 0.3–0.5 ms more main thread per
+frame. Making water double-sided (step 3) had made Three.js draw each transparent mesh
+twice, back faces then front: 81 draw calls instead of 68. `forceSinglePass` draws both
+sides in one pass, and the numbers came back to Milestone 1's; the surface still shows
+from below. `?stats` now has a "player physics" line (ms a frame, steps a frame).
+
+## Playtest questions
+
+Open https://tanakriteuro.github.io/voxel-sandbox/ (or `npm run dev`). Every number named
+here is in `TUNING.player` (`src/config.ts`) or `BLOCKS` (`src/world/blocks.ts`).
+
+1. **Walking and sprinting.** Walk 4.3, sprint 5.6 blocks/s. Too slow, too fast? Does the
+   start and stop feel snappy or slippery (`groundAccel` 60), and is steering in the air
+   enough (`airAccel` 15)?
+2. **Sprint toggle.** A tap of Ctrl starts sprinting until you stop going forward. Natural,
+   or do you keep forgetting it's on?
+3. **Jumping.** Jumps reach 1.25 blocks with gravity 32. Floaty or heavy? Is climbing a
+   one-block step by jumping fine, or do you want auto-step (would come with slabs)?
+4. **Crouching.** Shift at a cliff edge: does it stop you where you expect, and can you
+   look over the edge comfortably (eye 1.32)?
+5. **Swimming.** Sinking (2 blocks/s), swimming up (3.5), across (2.2): too thick or too
+   thin? Swim to a beach and hold Space against it: do you get out easily?
+6. **Underwater.** Is the blue fog (1–20 blocks) too murky or too clear?
+7. **Breaking.** Leaves 0.3 s, glass 0.4, dirt and sand 0.6, grass 0.7, wood and planks
+   1.5, stone 2.5. Does stone feel too slow without tools? Is the 0.2 s pause between
+   blocks when you keep holding right? Are the cracks readable?
+8. **Flying.** F or two quick Space taps. Landing ends a flight: wanted, or annoying when
+   you're building?
+9. **Placing.** Can you place under yourself mid-jump (pillar up), and is anything refused
+   that shouldn't be?
 
 ## Results so far
 
