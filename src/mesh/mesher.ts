@@ -6,17 +6,18 @@
 // and each of the 32 slices across it, a 32 × 32 mask records the visible faces as
 // block id + the AO level of their four corners. Runs of equal mask cells are merged into
 // rectangles, widest first then tallest, so faces merge only when block and AO match.
-// The block's texture follows from the block and the face direction, so it needs no place in
-// the key. Each vertex carries texture coordinates in blocks (the shader repeats the texture
-// across a merged quad) and its layer; the vertex colour is grey, directional shade × AO,
-// multiplied with the texture.
+// The key also holds the light of the block the face looks at (`light.ts`), so faces merge only
+// where it is the same. The block's texture follows from the block and the face direction, so
+// it needs no place in the key. Each vertex carries texture coordinates in blocks (the shader
+// repeats the texture across a merged quad) and its layer. Its colour holds directional shade
+// × AO in red, multiplied with the texture, and sunlight and block light in green and blue.
 
 import { TUNING } from '../config';
 import { Block, BLOCKS } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
 import { textureLayer } from '../world/textures';
 import { MeshBuilder, type MeshData } from './builder';
-import { PADDED } from './padding';
+import { ALL_SUNLIT, PADDED } from './padding';
 
 export interface ChunkMesh {
   opaque: MeshData;
@@ -65,11 +66,11 @@ const mask = new Int32Array(S * S);
 const pos = new Float64Array(3);
 
 /**
- * Mesh one chunk from its padded blocks. Positions are in world coordinates (chunk origin
- * added), so the mesh needs no transform. Each quad is four consecutive vertices,
- * counter-clockwise seen from outside.
+ * Mesh one chunk from its padded blocks and light. Positions are in world coordinates (chunk
+ * origin added), so the mesh needs no transform. Each quad is four consecutive vertices,
+ * counter-clockwise seen from outside. Without `light`, everything is in full sun.
  */
-export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number): ChunkMesh {
+export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array = ALL_SUNLIT): ChunkMesh {
   opaque.reset();
   transparent.reset();
   const origin = [cx * S, cy * S, cz * S];
@@ -92,7 +93,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
     const tv = d === 1 ? 2 : 1;
 
     for (let c = 0; c < S; c++) {
-      // The mask: block id | AO of corners 0–3 (2 bits each) << 8, or 0 for no face.
+      // The mask: block id | AO of corners 0–3 (2 bits each) << 8 | light in front << 16, or 0 for no face.
       let any = false;
       for (let v = 0; v < S; v++) {
         let i = (c + 1) * sd + (v + 1) * sv + su; // padded index at u = 0
@@ -103,7 +104,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
             const f = i + towards;
             const nb = padded[f];
             if (nb === AIR || (!OPAQUE[nb] && (nb !== b || CUTOUT[b]))) {
-              if (TRANSPARENT[b]) key = b | (NO_AO << 8);
+              if (TRANSPARENT[b]) key = b | (NO_AO << 8) | (light[f] << 16);
               else {
                 // Corners 0–3 are at (-u, -v), (+u, -v), (+u, +v), (-u, +v), in the layer the face looks at.
                 const l = OPAQUE[padded[f - su]];
@@ -115,7 +116,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
                   (vertexAO(r, dn, OPAQUE[padded[f + su - sv]]) << 2) |
                   (vertexAO(r, up, OPAQUE[padded[f + su + sv]]) << 4) |
                   (vertexAO(l, up, OPAQUE[padded[f - su + sv]]) << 6);
-                key = b | (ao << 8);
+                key = b | (ao << 8) | (light[f] << 16);
               }
               any = true;
             }
@@ -144,7 +145,10 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
           for (let dv = 0; dv < h; dv++) mask.fill(0, (v + dv) * S + u, (v + dv) * S + u + w);
 
           const b = key & 0xff;
-          const ao = key >> 8;
+          const ao = (key >> 8) & 0xff;
+          const lit = key >> 16;
+          const sun = (lit >> 4) * 17;
+          const glow = (lit & 15) * 17;
           const a0 = ao & 3;
           const a1 = (ao >> 2) & 3;
           const a2 = (ao >> 4) & 3;
@@ -156,10 +160,10 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
           const v0 = origin[va] + v;
           out.reserve(1);
           pos[d] = plane;
-          corner(out, origin, tu, tv, layer, ua, va, u0, v0, SHADED[shade + a0]);
-          corner(out, origin, tu, tv, layer, ua, va, u0 + w, v0, SHADED[shade + a1]);
-          corner(out, origin, tu, tv, layer, ua, va, u0 + w, v0 + h, SHADED[shade + a2]);
-          corner(out, origin, tu, tv, layer, ua, va, u0, v0 + h, SHADED[shade + a3]);
+          corner(out, origin, tu, tv, layer, ua, va, u0, v0, SHADED[shade + a0], sun, glow);
+          corner(out, origin, tu, tv, layer, ua, va, u0 + w, v0, SHADED[shade + a1], sun, glow);
+          corner(out, origin, tu, tv, layer, ua, va, u0 + w, v0 + h, SHADED[shade + a2], sun, glow);
+          corner(out, origin, tu, tv, layer, ua, va, u0, v0 + h, SHADED[shade + a3], sun, glow);
           // Split along the darker diagonal, so a lone dark corner shades both triangles
           // symmetrically instead of creasing (0fps).
           out.quad(a0 + a2 > a1 + a3);
@@ -183,9 +187,11 @@ function corner(
   u: number,
   v: number,
   shade: number,
+  sun: number,
+  glow: number,
 ): void {
   const p = pos;
   p[ua] = u;
   p[va] = v;
-  out.vertex(p[0], p[1], p[2], shade, shade, shade, p[tu] - origin[tu], p[tv] - origin[tv], layer);
+  out.vertex(p[0], p[1], p[2], shade, sun, glow, p[tu] - origin[tu], p[tv] - origin[tv], layer);
 }

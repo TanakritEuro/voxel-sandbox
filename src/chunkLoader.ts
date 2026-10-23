@@ -15,7 +15,7 @@
 
 import { TUNING } from './config';
 import { type ChunkMesh, meshChunk } from './mesh/mesher';
-import { paddedBlocks, PADDED_VOLUME } from './mesh/padding';
+import { paddedBlocks, paddedLight, PADDED_VOLUME } from './mesh/padding';
 import type { JobResult, JobRunner } from './workers/protocol';
 import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from './world/coords';
 import { ALL_CONNECTED, reachableChunks } from './world/visibility';
@@ -36,7 +36,7 @@ interface Column {
   mesh: boolean;
 }
 
-/** Padded copies kept for reuse when they come back from workers. */
+/** Padded copies (blocks, light) kept for reuse when they come back from workers. */
 const SPARE_PADDED = 32;
 
 const columnKey = (cx: number, cz: number): string => `${cx},${cz}`;
@@ -80,8 +80,10 @@ export class ChunkLoader {
   private heights: number[] = [];
   private readonly results: JobResult[] = [];
   private readonly spare: Uint8Array[] = [];
-  /** Padded copy for edits, meshed here. */
+  private readonly spareLight: Uint8Array[] = [];
+  /** Padded copies for edits, meshed here. */
   private readonly padded = new Uint8Array(PADDED_VOLUME);
+  private readonly paddedLight = new Uint8Array(PADDED_VOLUME);
   /** Work that was ready or waiting but not started on the last update. */
   queued = 0;
   /**
@@ -194,7 +196,7 @@ export class ChunkLoader {
     const chunk = this.world.getChunk(cx, cy, cz);
     if (!chunk || !this.meshed.has(key) || !this.neighboursLoaded(cx, cz)) return;
     if (chunk.empty) this.renderer.remove(key);
-    else this.renderer.set(key, cx, cy, cz, meshChunk(paddedBlocks(this.world, cx, cy, cz, this.padded), cx, cy, cz));
+    else this.renderer.set(key, cx, cy, cz, meshChunk(paddedBlocks(this.world, cx, cy, cz, this.padded), cx, cy, cz, paddedLight(this.world, cx, cy, cz, this.paddedLight)));
     this.meshed.set(key, chunk.version);
   }
 
@@ -203,7 +205,7 @@ export class ChunkLoader {
     if (result.kind === 'generate') {
       this.generating.delete(columnKey(result.cx, result.cz));
       if (this.inKeepRange(result.cx, result.cz)) {
-        this.world.addColumn(result.cx, result.cz, result.cyMin, result.chunks, result.connectivity);
+        this.world.addColumn(result.cx, result.cz, result.chunks, result.connectivity, result.light);
         this.walkSoon = true;
       }
       return;
@@ -211,6 +213,7 @@ export class ChunkLoader {
     const { cx, cy, cz, version } = result;
     const key = chunkKey(cx, cy, cz);
     if (this.spare.length < SPARE_PADDED) this.spare.push(result.padded);
+    if (this.spareLight.length < SPARE_PADDED) this.spareLight.push(result.paddedLight);
     if (this.meshing.get(key) === version) this.meshing.delete(key);
     // Gone, out of range, or edited since: drop it. If still wanted, `dispatch` meshes it again.
     const chunk = this.world.getChunk(cx, cy, cz);
@@ -283,9 +286,10 @@ export class ChunkLoader {
           continue;
         }
         const padded = paddedBlocks(world, cx, cy, cz, this.spare.pop() ?? new Uint8Array(PADDED_VOLUME));
+        const light = paddedLight(world, cx, cy, cz, this.spareLight.pop() ?? new Uint8Array(PADDED_VOLUME));
         this.meshing.set(key, chunk.version);
         this.running++;
-        this.runner.run({ kind: 'mesh', id: this.nextId++, cx, cy, cz, version: chunk.version, padded });
+        this.runner.run({ kind: 'mesh', id: this.nextId++, cx, cy, cz, version: chunk.version, padded, paddedLight: light });
       }
     }
     this.queued = queued;

@@ -4,7 +4,7 @@ import { createRng } from '../src/math';
 import type { MeshData } from '../src/mesh/builder';
 import { meshCulled } from '../src/mesh/culled';
 import { type ChunkMesh, meshChunk, SHADE } from '../src/mesh/mesher';
-import { paddedBlocks } from '../src/mesh/padding';
+import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { Block, BLOCKS } from '../src/world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
 import { SURFACE_ONLY } from '../src/world/generate';
@@ -82,8 +82,9 @@ const add = (p: Vec, axis: number, by: number): Vec => {
 
 /**
  * Check every quad against the world, independently of the mesher: it faces away from its
- * block, each unit face inside it has the AO the quad's corner colours say (so faces with
- * different AO were not merged), and it's split along the darker diagonal.
+ * block, each unit face inside it has the AO and the light (of the block in front) the quad's
+ * corner colours say (so faces with different AO or light were not merged), and it's split
+ * along the darker diagonal.
  */
 function checkAgainstWorld(world: World, m: ChunkMesh): void {
   for (const q of quadsOfMesh(m)) {
@@ -111,8 +112,9 @@ function checkAgainstWorld(world: World, m: ChunkMesh): void {
       if (levels) expect(faceLevels).toEqual(levels);
       levels = faceLevels;
 
-      // Grey: directional shade × AO, multiplied with the texture in the shader.
-      const expected = faceLevels.map((l) => Array(3).fill(Math.round(SHADE[dir] * TUNING.render.ao[l] * 255)));
+      // Directional shade × AO, then sunlight and block light, each 0–15 as 0–255.
+      const light = world.getLight(...front);
+      const expected = faceLevels.map((l) => [Math.round(SHADE[dir] * TUNING.render.ao[l] * 255), (light >> 4) * 17, (light & 15) * 17]);
       expect(q.colours).toEqual(expected);
     }
     const l = levels!;
@@ -123,7 +125,7 @@ function checkAgainstWorld(world: World, m: ChunkMesh): void {
   }
 }
 
-const mesh = (world: World, cx: number, cy: number, cz: number) => meshChunk(paddedBlocks(world, cx, cy, cz), cx, cy, cz);
+const mesh = (world: World, cx: number, cy: number, cz: number) => meshChunk(paddedBlocks(world, cx, cy, cz), cx, cy, cz, paddedLight(world, cx, cy, cz));
 const culled = (world: World, cx: number, cy: number, cz: number) => meshCulled(paddedBlocks(world, cx, cy, cz), cx, cy, cz);
 
 /** A world whose chunk (0, 1, 0) and all its neighbours are filled by `fill` (block for a world position). */

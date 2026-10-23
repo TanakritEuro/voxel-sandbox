@@ -1,6 +1,7 @@
 // The block textures on the GPU and the material that draws chunks with them: one texture
 // array, a layer per block texture, sampled by a small shader (vertex shade × texture, alpha
-// test for leaves, Three.js fog). Hotbar icons are drawn from the same pixels.
+// test for leaves, Three.js fog). Hotbar icons are drawn from the same pixels. `?light` draws
+// the light the mesher put in the vertices instead of the textures, for checking it.
 
 import * as THREE from 'three';
 import { makeTextures, TEXTURE_NAMES, TEXTURE_SIZE, type TextureName, textureLayer } from '../world/textures';
@@ -9,14 +10,17 @@ const vertexShader = /* glsl */ `
   attribute vec4 color;
   attribute vec4 uvl;
   varying vec3 vShade;
+  varying vec2 vLight;
   varying vec2 vUv;
   flat varying float vLayer;
   #include <fog_pars_vertex>
 
   void main() {
-    // The mesher's shade (directional × AO) is meant in display terms, like the flat colours
-    // it replaced: squared towards linear so it darkens textures as much as it did them.
-    vShade = pow(color.rgb, vec3(2.2));
+    // The mesher's shade (directional × AO, in red) is meant in display terms, like the flat
+    // colours it replaced: squared towards linear so it darkens textures as much as it did them.
+    vShade = vec3(pow(color.r, 2.2));
+    // Sunlight and block light, 0–1 for levels 0–15.
+    vLight = color.gb;
     vUv = uvl.xy;
     vLayer = uvl.z;
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
@@ -30,6 +34,7 @@ const fragmentShader = /* glsl */ `
   uniform sampler2DArray map;
   uniform float alphaTest;
   varying vec3 vShade;
+  varying vec2 vLight;
   varying vec2 vUv;
   flat varying float vLayer;
   #include <fog_pars_fragment>
@@ -40,6 +45,10 @@ const fragmentShader = /* glsl */ `
     vec2 tile = vec2(fract(vUv.x), 1.0 - fract(vUv.y)); // v runs up, image rows run down
     vec4 texel = textureGrad(map, vec3(tile, vLayer), dFdx(vUv), dFdy(vUv));
     if (texel.a < alphaTest) discard;
+    #ifdef LIGHT_VIEW
+      // The brighter of sunlight and block light as grey, shaded so shapes still read.
+      texel.rgb = vec3(pow(max(vLight.x, vLight.y), 2.2));
+    #endif
     #ifdef OPAQUE
       // Holes are cut by the alpha test; what's left is solid, so alpha 1 (see the blending below).
       gl_FragColor = vec4(texel.rgb * vShade, 1.0);
@@ -66,7 +75,10 @@ export function createBlockTextures(): THREE.DataArrayTexture {
 }
 
 /** A chunk material: `alphaTest` cuts holes (leaves) in the opaque pass. */
-export function createBlockMaterial(map: THREE.DataArrayTexture, options: { alphaTest: number; transparent: boolean }): THREE.ShaderMaterial {
+export function createBlockMaterial(
+  map: THREE.DataArrayTexture,
+  options: { alphaTest: number; transparent: boolean; lightView?: boolean },
+): THREE.ShaderMaterial {
   // Merged copies the fog uniforms; the texture is set after, since merging would clone it.
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { alphaTest: { value: options.alphaTest } }]);
   uniforms.map = { value: map };
@@ -74,7 +86,7 @@ export function createBlockMaterial(map: THREE.DataArrayTexture, options: { alph
     uniforms,
     vertexShader,
     fragmentShader,
-    defines: options.transparent ? {} : { OPAQUE: '' },
+    defines: { ...(!options.transparent && { OPAQUE: '' }), ...(options.lightView && { LIGHT_VIEW: '' }) },
     fog: true,
     transparent: options.transparent,
     depthWrite: !options.transparent,

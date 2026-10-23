@@ -13,14 +13,20 @@ export class ChunkRenderer {
   private readonly meshes = new Map<string, THREE.Mesh[]>();
   private readonly textures = createBlockTextures();
   /** Solid blocks, and leaves with their holes cut out (alpha test). */
-  private readonly opaqueMaterial = createBlockMaterial(this.textures, { alphaTest: 0.5, transparent: false });
+  private readonly opaqueMaterial: THREE.ShaderMaterial;
   /** Water and glass, blended. */
-  private readonly transparentMaterial = createBlockMaterial(this.textures, { alphaTest: 0.01, transparent: true });
+  private readonly transparentMaterial: THREE.ShaderMaterial;
 
   /** Triangles currently in the scene, for the stats line. */
   triangles = 0;
   /** Bytes of vertex and index data currently in the scene, for `?stats`. */
   bytes = 0;
+
+  /** With `lightView`, chunks show their light as grey instead of their textures (`?light`). */
+  constructor(lightView = false) {
+    this.opaqueMaterial = createBlockMaterial(this.textures, { alphaTest: 0.5, transparent: false, lightView });
+    this.transparentMaterial = createBlockMaterial(this.textures, { alphaTest: 0.01, transparent: true, lightView });
+  }
 
   /** Show a chunk's mesh, replacing any it had. */
   set(key: string, cx: number, cy: number, cz: number, data: ChunkMesh): void {

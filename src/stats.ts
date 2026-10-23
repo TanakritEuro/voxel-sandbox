@@ -15,6 +15,8 @@ export interface EngineCounters {
   /** Fraction of worker time spent on jobs, or null before there are workers. */
   workerBusy: number | null;
   chunkBytes: number;
+  /** Bytes of light arrays (the shared ones once). */
+  lightBytes: number;
   geometryBytes: number;
   /** Triangles in all chunk meshes, drawn or not. */
   sceneTriangles: number;
@@ -109,7 +111,7 @@ export class Stats {
       `draw calls ${r.calls}   triangles ${Math.round(r.triangles / 1000)}k drawn / ${Math.round(c.sceneTriangles / 1000)}k`,
       `chunks ${c.chunks} loaded, ${c.visible} could be seen, ${c.meshed} meshed`,
       `jobs ${c.queued} queued, ${c.inFlight} in flight` + (c.workerBusy === null ? '' : `, workers ${Math.round(c.workerBusy * 100)}% busy`),
-      `memory: chunks ${mb(c.chunkBytes)}, meshes ${mb(c.geometryBytes)}` + (heap ? `, JS heap ${mb(heap)}` : ''),
+      `memory: chunks ${mb(c.chunkBytes)}, light ${mb(c.lightBytes)}, meshes ${mb(c.geometryBytes)}` + (heap ? `, JS heap ${mb(heap)}` : ''),
       ...(this.note ? ['', this.note] : []),
     ].join('\n');
   }

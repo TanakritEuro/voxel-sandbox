@@ -49,6 +49,13 @@ export interface BlockInfo {
   liquid: boolean;
   /** Seconds of holding the button to break it (by hand; there are no tools). */
   hardness: number;
+  /** Light it gives, 0–15 (`light.ts`). */
+  light: number;
+  /**
+   * Extra light lost passing through it, beyond the 1 every step costs (leaves and water: 1,
+   * so forests are shaded and deep water is dark). Opaque blocks stop light whatever this is.
+   */
+  lightCost: number;
   textures: { top: TextureName; side: TextureName; bottom: TextureName };
   /** RGB 0–1 for the top, sides and bottom. */
   top: RGB;
@@ -66,6 +73,8 @@ const solid = (name: string, hardness: number, textures: BlockInfo['textures'], 
   cutout: false,
   liquid: false,
   hardness,
+  light: 0,
+  lightCost: 0,
   textures,
   top: hex(top),
   side: hex(side),
@@ -80,9 +89,9 @@ export const BLOCKS: readonly BlockInfo[] = [
   solid('Grass', 0.7, faces('grass_top', 'grass_side', 'dirt'), 0x6aa84f, 0x7d7a45, 0x86603e),
   solid('Sand', 0.6, faces('sand'), 0xdccb8e),
   // Not a raycast target, so never broken.
-  { ...solid('Water', Infinity, faces('water'), 0x3a78c9), opaque: false, passable: true, transparent: true, liquid: true },
+  { ...solid('Water', Infinity, faces('water'), 0x3a78c9), opaque: false, passable: true, transparent: true, liquid: true, lightCost: 1 },
   solid('Wood', 1.5, faces('wood_top', 'wood_side'), 0xa7854f, 0x6b4a2b),
-  { ...solid('Leaves', 0.3, faces('leaves'), 0x3f8a36), opaque: false, cutout: true },
+  { ...solid('Leaves', 0.3, faces('leaves'), 0x3f8a36), opaque: false, cutout: true, lightCost: 1 },
   solid('Planks', 1.5, faces('planks'), 0xb88c55),
   { ...solid('Glass', 0.4, faces('glass'), 0xcfe8f2), opaque: false, transparent: true },
   solid('Snow', 0.4, faces('snow'), 0xeef3f7),
@@ -92,9 +101,9 @@ export const BLOCKS: readonly BlockInfo[] = [
   solid('Coal ore', 3, faces('coal_ore'), 0x6d6f72),
   solid('Iron ore', 3.5, faces('iron_ore'), 0x958a80),
   solid('Copper ore', 3, faces('copper_ore'), 0x8f8577),
-  solid('Crystal ore', 4.5, faces('crystal_ore'), 0x8aa3ab),
+  { ...solid('Crystal ore', 4.5, faces('crystal_ore'), 0x8aa3ab), light: 6 },
   solid('Spruce wood', 1.5, faces('spruce_top', 'spruce_side'), 0x7a5a38, 0x3f2c1c),
-  { ...solid('Spruce leaves', 0.3, faces('spruce_leaves'), 0x2f5f3a), opaque: false, cutout: true },
+  { ...solid('Spruce leaves', 0.3, faces('spruce_leaves'), 0x2f5f3a), opaque: false, cutout: true, lightCost: 1 },
   solid('Cactus', 0.4, faces('cactus_top', 'cactus_side'), 0x5c9a3c, 0x4f8a33),
 ];
 

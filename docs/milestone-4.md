@@ -1,11 +1,77 @@
 # Milestone 4 plan: light and saving
 
-## Status: plan, waiting for your OK
+## Status: in progress (step 1 done; smooth lighting next)
+
+Approved 2026-10-23 as proposed: caves fully dark without torches, crystal ore glows faintly
+(light 6), torches on the floor only, a 20-minute day, automatic saving, `fake-indexeddb` for
+the store tests.
 
 Goal from the roadmap: sunlight and block light with BFS propagation (torches, a glowing
 block), smooth lighting in the mesher, a day / night cycle; edited chunks saved to IndexedDB
 (RLE), named worlds with a world-select menu. Playable after every step, and still inside
 the budget (60 fps on your laptop at radius 8, no frame over 20 ms flying).
+
+## Results so far
+
+**Step 1 (light data).**
+- **`world/light.ts`, in the worker:** `lightColumn` lights a generated column on its own.
+  - It works on the column's 8 chunks laid end to end: one 256 KB array, since chunks are
+    stored y-major.
+  - The open sky is filled from the top down. A BFS then starts only where sun meets shade:
+    sunlit blocks next to a column shaded at that height, and the lowest sunlit block of each
+    column (into leaves or water). It doesn't start from all 180k sunlit blocks.
+  - Block light comes from crystal ore, which now gives light 6, as approved.
+- **On the main thread:** `lightBorders` runs when a column is added. It compares the facing
+  layers across each border with a loaded neighbour. Pairs of chunks that are both all sun
+  or both all dark are skipped. Light flows from the brighter side, and a BFS carries it on
+  through loaded chunks.
+- **Shared arrays:** a chunk wholly in sun shares `FULL_SUN`, and one wholly dark shares
+  `DARK`. Either is copied on the first write.
+- **Into the mesher:**
+  - The generate result carries each chunk's light, as an array or as a fill value, and
+    transfers the arrays.
+  - The mesh job carries a padded copy of the light (34³).
+  - The greedy mesher puts the light of the block in front of each face into the merge key,
+    and into the vertex colour: sunlight in green, block light in blue. Shade × AO moves to
+    red only.
+  - Smoothing per corner is step 2. Until then the game looks as before.
+- **`?light`:** draws the brighter of the two lights as grey instead of the textures.
+  Checked in the pane at the cave mouth (`?at=-48,71`): bright at the opening, fading to
+  black down the tunnel, face by face.
+- **Tests (6 new, 122 in all):**
+  - Full sun in the open and none in the ground; shared arrays.
+  - Water losing 2 a block (13, 11, … 1, then 0 at 7 deep).
+  - Light across column borders equals lighting a whole 3 × 2-column area at once, in three
+    load orders, at a cave mouth and in a forest. The reference is written independently: a
+    bucket per level, brightest first, instead of flood fills that raise blocks repeatedly.
+  - Crystal glow across a border.
+  - Copy on write of the shared arrays.
+  - The greedy mesher's AO check now also checks each quad's light against the world.
+
+| bench (radius 8, 253 columns, 724 meshed chunks) | before | after |
+| --- | --- | --- |
+| generate | 1014 ms (machine busy; 701 in the run after) | 701 ms |
+| light, in the worker | | 225 ms (0.89 per column, p95 1.6, max 3.1) |
+| light across borders, main thread | | 74 ms (0.29 per column, p95 0.6, max 2.3) |
+| pad (now blocks and light) | 73 ms | 136 ms |
+| greedy mesh | 855 ms, 2118k triangles, 92.9 MB | 915 ms, 2225k triangles (+5 %), 97.6 MB |
+| seen from spawn | 1721k triangles | 1819k |
+| light data | | 609 of 2024 chunks with their own array, 19.1 MB; 1063 all sun, 352 all dark |
+
+`?autofly` at radius 8 (production build). The machine was slower than when the Milestone 3
+numbers were taken, so the deployed Milestone 3 build was measured again alongside:
+
+| | Milestone 3 (live site, today) | step 1 |
+| --- | --- | --- |
+| main thread p50 / p99 / max | 3.1 / 8.4 / 11.3 ms | 3.4 / 8.1 / 9.6 ms |
+| frames over 20 ms, holes | 0, 0 | 0, 0 |
+| first view, all | 4.13 s (over the network) | 2.79 s |
+| triangles drawn / in the scene | 406k / 3030k | 429k / 3211k |
+| memory after the flight | chunks 40.8, meshes 132.9 MB | chunks 40.8, light 25.5, meshes 140.9 MB |
+
+Light costs about 0.9 ms of worker time per column (a quarter more than generating it), and
+under 0.3 ms of main thread per column. Merging loses 5 % to faces whose light differs; per
+corner smoothing in step 2 will lose more in shade and caves.
 
 ## Scope decisions
 
@@ -197,7 +263,7 @@ interface WorldRecord {
 6. Named worlds: world list, new, rename, delete, pause menu.
 7. Notes, measurements, deploy, playtest questions.
 
-## Questions for you
+## Questions asked (answered above)
 
 1. Caves fully dark without torches, as is usual (proposed), or a faint minimum so you can
    always make out walls?

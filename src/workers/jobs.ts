@@ -3,6 +3,7 @@
 
 import { meshChunk } from '../mesh/mesher';
 import { Generator } from '../world/generate';
+import { lightColumn } from '../world/light';
 import { ALL_CONNECTED, chunkConnectivity } from '../world/visibility';
 import type { Job, JobResult } from './protocol';
 
@@ -18,9 +19,10 @@ export function handleJob(job: Job): JobResult {
     }
     const chunks = generator.generateColumn(job.cx, job.cz, job.cyMin, job.cyMax);
     const connectivity = chunks.map((c) => (c ? chunkConnectivity(c) : ALL_CONNECTED));
-    return { kind: 'generate', id: job.id, cx: job.cx, cz: job.cz, cyMin: job.cyMin, chunks, connectivity, ms: performance.now() - t0 };
+    const light = lightColumn(chunks);
+    return { kind: 'generate', id: job.id, cx: job.cx, cz: job.cz, cyMin: job.cyMin, chunks, connectivity, light, ms: performance.now() - t0 };
   }
-  const mesh = meshChunk(job.padded, job.cx, job.cy, job.cz);
-  const { id, cx, cy, cz, version, padded } = job;
-  return { kind: 'mesh', id, cx, cy, cz, version, mesh, padded, ms: performance.now() - t0 };
+  const mesh = meshChunk(job.padded, job.cx, job.cy, job.cz, job.paddedLight);
+  const { id, cx, cy, cz, version, padded, paddedLight } = job;
+  return { kind: 'mesh', id, cx, cy, cz, version, mesh, padded, paddedLight, ms: performance.now() - t0 };
 }

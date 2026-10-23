@@ -4,6 +4,7 @@
 import { Block } from './blocks';
 import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
 import { Generator, type GeneratorOptions } from './generate';
+import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, SUNLIT, unpackLight } from './light';
 import { ALL_CONNECTED, chunkConnectivity } from './visibility';
 
 /**
@@ -19,6 +20,8 @@ export class Chunk {
   modified = false;
   /** Which faces see each other through open space (`visibility.ts`); -1 until worked out. */
   private connections = -1;
+  /** Sun << 4 | block light per block (`light.ts`); `FULL_SUN` or `DARK` (shared, read-only) until it differs. */
+  light: Uint8Array = DARK;
 
   constructor(
     readonly cx: number,
@@ -43,6 +46,12 @@ export class Chunk {
   set connectivity(mask: number) {
     this.connections = mask;
   }
+
+  /** The light array, made the chunk's own first if it was a shared one: call before writing to it. */
+  ownLight(): Uint8Array {
+    if (this.light === FULL_SUN || this.light === DARK) this.light = this.light.slice();
+    return this.light;
+  }
 }
 
 export class World {
@@ -57,16 +66,16 @@ export class World {
     return this.chunks.get(chunkKey(cx, cy, cz));
   }
 
-  /** The chunk, generating it first if needed. Undefined outside the world's vertical range. */
+  /** The chunk, generating its column first if needed (light needs the whole column). Undefined outside the world's vertical range. */
   ensureChunk(cx: number, cy: number, cz: number): Chunk | undefined {
     if (cy < MIN_CHUNK_Y || cy > MAX_CHUNK_Y) return undefined;
-    if (!this.chunks.has(chunkKey(cx, cy, cz))) this.addGenerated(cx, cy, cz, this.generator.generateColumn(cx, cz, cy, cy)[0]);
+    this.ensureColumn(cx, cz);
     return this.getChunk(cx, cy, cz);
   }
 
   /** Generate whatever is missing of the column (cx, cz), all heights at once. */
   ensureColumn(cx: number, cz: number): void {
-    if (!this.hasColumn(cx, cz)) this.addColumn(cx, cz, MIN_CHUNK_Y, this.generator.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y));
+    if (!this.hasColumn(cx, cz)) this.addColumn(cx, cz, this.generator.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y));
   }
 
   /** Whether every chunk of the column (cx, cz) is loaded. */
@@ -76,15 +85,21 @@ export class World {
   }
 
   /**
-   * Store generated chunks cyMin.. upwards of a column (from `generateColumn`, here or in a
-   * worker), except those already loaded: edited chunks stay as they are.
+   * Store a generated column (from `generateColumn`, here or in a worker), except chunks
+   * already loaded: edited chunks stay as they are. Its light, if not given, is worked out
+   * here; then light flows across its borders with the loaded columns beside it. Returns the
+   * number of blocks that flow lit or brightened.
    */
-  addColumn(cx: number, cz: number, cyMin: number, chunks: (Uint8Array | null)[], connectivity?: number[]): void {
+  addColumn(cx: number, cz: number, chunks: (Uint8Array | null)[], connectivity?: number[], light: PackedLight[] = lightColumn(chunks)): number {
     chunks.forEach((blocks, i) => {
-      if (this.chunks.has(chunkKey(cx, cyMin + i, cz))) return;
-      this.addGenerated(cx, cyMin + i, cz, blocks);
-      if (connectivity) this.getChunk(cx, cyMin + i, cz)!.connectivity = connectivity[i];
+      const cy = MIN_CHUNK_Y + i;
+      if (this.chunks.has(chunkKey(cx, cy, cz))) return;
+      this.addGenerated(cx, cy, cz, blocks);
+      const chunk = this.getChunk(cx, cy, cz)!;
+      chunk.light = unpackLight(light[i]);
+      if (connectivity) chunk.connectivity = connectivity[i];
     });
+    return lightBorders(this, cx, cz);
   }
 
   /** Store a freshly generated chunk; null means all air. */
@@ -103,6 +118,15 @@ export class World {
     if (cy > MAX_CHUNK_Y) return Block.Air;
     const chunk = this.chunks.get(chunkKey(toChunk(x), cy, toChunk(z)));
     return chunk ? (chunk.blocks[localIndex(toLocal(x), toLocal(y), toLocal(z))] as Block) : Block.Air;
+  }
+
+  /** Light at world (x, y, z), packed (sun << 4 | block light): full sun above the world, none below it or in unloaded chunks. */
+  getLight(x: number, y: number, z: number): number {
+    const cy = toChunk(y);
+    if (cy < MIN_CHUNK_Y) return 0;
+    if (cy > MAX_CHUNK_Y) return SUNLIT;
+    const chunk = this.chunks.get(chunkKey(toChunk(x), cy, toChunk(z)));
+    return chunk ? chunk.light[localIndex(toLocal(x), toLocal(y), toLocal(z))] : 0;
   }
 
   /**
@@ -143,6 +167,13 @@ export class World {
     let owned = 0;
     for (const chunk of this.chunks.values()) if (chunk.blocks !== EMPTY_BLOCKS) owned++;
     return (owned + 1) * CHUNK_VOLUME;
+  }
+
+  /** Bytes of light data held: chunks with their own arrays, plus the two shared ones. */
+  get lightBytes(): number {
+    let owned = 0;
+    for (const chunk of this.chunks.values()) if (chunk.light !== FULL_SUN && chunk.light !== DARK) owned++;
+    return (owned + 2) * CHUNK_VOLUME;
   }
 
   /** Remove a chunk's data (when far away). Modified chunks should be saved first (Milestone 4). */

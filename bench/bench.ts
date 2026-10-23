@@ -9,8 +9,9 @@ import { it } from 'vitest';
 import { TUNING } from '../src/config';
 import { meshCulled } from '../src/mesh/culled';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
-import { paddedBlocks } from '../src/mesh/padding';
+import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
+import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, reachableChunks } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { World } from '../src/world/world';
@@ -21,7 +22,7 @@ const RADIUS = 8;
 const RUNS = 5;
 const CHUNKS_PER_COLUMN = MAX_CHUNK_Y - MIN_CHUNK_Y + 1;
 
-type Mesher = (padded: Uint8Array, cx: number, cy: number, cz: number) => ChunkMesh;
+type Mesher = (padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array) => ChunkMesh;
 const MESHERS: Record<string, Mesher> = { culled: meshCulled, greedy: meshChunk };
 
 function columns(radius: number): [number, number][] {
@@ -53,31 +54,44 @@ it('bench', () => {
   const genColumns = columns(RADIUS + 1);
   const meshColumns = columns(RADIUS);
   const gen = newTiming();
+  const light = newTiming();
+  const borders = newTiming();
   const pad = newTiming();
   const mesh: Record<string, Timing> = Object.fromEntries(Object.keys(MESHERS).map((k) => [k, newTiming()]));
   const sizes: Record<string, { triangles: number; bytes: number }> = {};
   let emptyChunks = 0;
   let meshedChunks = 0;
   let seenLine = '';
+  let lightLine = '';
 
   // One warm-up run (JIT), then RUNS measured ones.
   for (let run = 0; run <= RUNS; run++) {
     const world = new World(SEED);
+    // Generation and light (in the workers), and light across column borders (on the main thread).
     const genTimes: number[] = [];
+    const lightTimes: number[] = [];
+    const borderTimes: number[] = [];
+    let raised = 0;
     for (const [cx, cz] of genColumns) {
       const t0 = performance.now();
-      world.ensureColumn(cx, cz);
-      genTimes.push(performance.now() - t0);
+      const chunks = world.generator.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);
+      const t1 = performance.now();
+      const lit = lightColumn(chunks);
+      const t2 = performance.now();
+      raised += world.addColumn(cx, cz, chunks, undefined, lit);
+      genTimes.push(t1 - t0);
+      lightTimes.push(t2 - t1);
+      borderTimes.push(performance.now() - t2);
     }
 
     // As the loader does: all-air chunks are neither padded nor meshed.
     const padTimes: number[] = [];
-    const padded: [Uint8Array, number, number, number][] = [];
+    const padded: [Uint8Array, number, number, number, Uint8Array][] = [];
     for (const [cx, cz] of meshColumns) {
       for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
         if (world.getChunk(cx, cy, cz)!.empty) continue;
         const t0 = performance.now();
-        padded.push([paddedBlocks(world, cx, cy, cz), cx, cy, cz]);
+        padded.push([paddedBlocks(world, cx, cy, cz), cx, cy, cz, paddedLight(world, cx, cy, cz)]);
         padTimes.push(performance.now() - t0);
       }
     }
@@ -87,9 +101,9 @@ it('bench', () => {
       const times: number[] = [];
       let triangles = 0;
       let bytes = 0;
-      for (const [p, cx, cy, cz] of padded) {
+      for (const [p, cx, cy, cz, l] of padded) {
         const t0 = performance.now();
-        const m = mesher(p, cx, cy, cz);
+        const m = mesher(p, cx, cy, cz, l);
         times.push(performance.now() - t0);
         for (const d of [m.opaque, m.transparent]) {
           triangles += d.indices.length / 3;
@@ -113,16 +127,21 @@ it('bench', () => {
       );
       let seenChunks = 0;
       let seenTriangles = 0;
-      for (const [p, cx, cy, cz] of padded) {
+      for (const [p, cx, cy, cz, l] of padded) {
         if (!seen.has(chunkKey(cx, cy, cz))) continue;
-        const m = meshChunk(p, cx, cy, cz);
+        const m = meshChunk(p, cx, cy, cz, l);
         seenChunks++;
         seenTriangles += (m.opaque.indices.length + m.transparent.indices.length) / 3;
       }
       seenLine = `seen from spawn (visibility culling): ${seenChunks} of ${meshedChunks} chunks, ${Math.round(seenTriangles / 1000)}k of ${Math.round(sizes.greedy.triangles / 1000)}k greedy triangles`;
+      const all = [...world.chunks.values()];
+      const shared = (a: Uint8Array) => all.filter((c) => c.light === a).length;
+      lightLine = `light: ${all.length - shared(FULL_SUN) - shared(DARK)} chunks with their own array (${(world.lightBytes / 2 ** 20).toFixed(1)} MB), ${shared(FULL_SUN)} all sun, ${shared(DARK)} all dark; ${raised} blocks lit across column borders`;
       continue;
     }
     record(gen, genTimes);
+    record(light, lightTimes);
+    record(borders, borderTimes);
     record(pad, padTimes);
     for (const name of Object.keys(MESHERS)) record(mesh[name], meshTimes[name]);
   }
@@ -135,11 +154,14 @@ it('bench', () => {
     `seed ${SEED}, radius ${RADIUS}: ${genChunks} chunks generated (${emptyChunks} all air), ${meshedChunks} meshed; median of ${RUNS} runs`,
     `${''.padEnd(16)}${'total ms'.padStart(9)}${'mean'.padStart(9)}${'p95'.padStart(9)}${'max'.padStart(9)}  per`,
     row('generate', gen, genColumns.length, 'columns'),
+    row('light', light, genColumns.length, 'columns'),
+    row('light borders', borders, genColumns.length, 'columns', ' (main thread)'),
     row('pad', pad, meshedChunks, 'chunks'),
     ...Object.entries(mesh).map(([name, t]) =>
       row(`mesh (${name})`, t, meshedChunks, 'chunks', `: ${Math.round(sizes[name].triangles / 1000)}k triangles, ${(sizes[name].bytes / 2 ** 20).toFixed(1)} MB vertex data`),
     ),
     seenLine,
+    lightLine,
     '',
   ];
   console.log(lines.join('\n'));

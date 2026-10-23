@@ -49,7 +49,8 @@ window.addEventListener('resize', () => {
 const waterView = new WaterView(scene);
 
 const world = new World(seed);
-const chunks = new ChunkRenderer();
+// `?light` shows light as grey instead of textures.
+const chunks = new ChunkRenderer(params.has('light'));
 scene.add(chunks.group);
 // `?workers=1` runs fewer workers, to see how a machine with fewer cores loads.
 const workersParam = Number(params.get('workers'));
@@ -86,6 +87,7 @@ const stats = new Stats(
     inFlight: loader.inFlight,
     workerBusy: pool.busy(),
     chunkBytes: world.blockBytes,
+    lightBytes: world.lightBytes,
     geometryBytes: chunks.bytes,
     sceneTriangles: chunks.triangles,
   }),

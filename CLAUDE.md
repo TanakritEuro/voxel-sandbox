@@ -107,15 +107,17 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
   border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
-  `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `visibility.ts` (chunk face connectivity
+  `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `light.ts` (sunlight and block
+  light per block: `lightColumn` in the worker, `lightBorders` when a column arrives, shared
+  `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
   and the walk from the player's chunk that decides what to mesh and draw),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
   crouching at edges, swimming, flying; `overlapsBlock` for placing), `mining.ts` (break
   timing and crack stage).
-- `src/mesh/` — `padding.ts` (the 34³ padded copy, whole rows at a time), `builder.ts` (growable
-  typed-array output, `MeshData`: Float32 positions, RGBA8 shade, uvl (u, v in blocks, layer),
+- `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
+  typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
   Uint16 indices),
   `mesher.ts` (greedy mesher with AO and texture coordinates, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
@@ -136,7 +138,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/main.ts` — entry point, editing, HUD, frame loop.
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count, `?at=x,z` where you spawn.
+  `?workers=1` the worker count, `?at=x,z` where you spawn, `?light` shows light as grey.
 - `bench/` — `npm run bench`.
 - `tests/` — world, generation, padding, mesher (greedy against culled, AO against the world)
   raycast, physics and player tests (headless).

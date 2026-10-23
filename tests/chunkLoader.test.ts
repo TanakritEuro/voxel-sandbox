@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChunkLoader, type ChunkSink, columnPriority } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
-import { paddedBlocks } from '../src/mesh/padding';
+import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { handleJob } from '../src/workers/jobs';
 import type { Job, JobResult, JobRunner } from '../src/workers/protocol';
 import { Block } from '../src/world/blocks';
@@ -93,7 +93,7 @@ function inView(cx: number, cz: number): [number, number, number][] {
   return out;
 }
 
-const fresh = (world: World, cx: number, cy: number, cz: number) => meshChunk(paddedBlocks(world, cx, cy, cz), cx, cy, cz);
+const fresh = (world: World, cx: number, cy: number, cz: number) => meshChunk(paddedBlocks(world, cx, cy, cz), cx, cy, cz, paddedLight(world, cx, cy, cz));
 
 describe('chunk loader', () => {
   it('meshes every chunk in view that could be seen, once, the same as meshing on the main thread', () => {

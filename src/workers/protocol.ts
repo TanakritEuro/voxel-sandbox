@@ -2,6 +2,7 @@
 // travel as transferables (moved, not copied); the sender loses them.
 
 import type { ChunkMesh } from '../mesh/mesher';
+import type { PackedLight } from '../world/light';
 
 export type Job =
   | { kind: 'generate'; id: number; seed: number; cx: number; cz: number; cyMin: number; cyMax: number }
@@ -15,6 +16,8 @@ export type Job =
       version: number;
       /** `paddedBlocks` output; comes back in the result to be reused. */
       padded: Uint8Array;
+      /** `paddedLight` output; comes back too. */
+      paddedLight: Uint8Array;
     };
 
 export type JobResult =
@@ -28,10 +31,12 @@ export type JobResult =
       chunks: (Uint8Array | null)[];
       /** Each chunk's face connectivity (`visibility.ts`), worked out here rather than on the main thread. */
       connectivity: number[];
+      /** Each chunk's light, the column lit on its own (`lightColumn`). */
+      light: PackedLight[];
       /** Time the worker spent on the job. */
       ms: number;
     }
-  | { kind: 'mesh'; id: number; cx: number; cy: number; cz: number; version: number; mesh: ChunkMesh; padded: Uint8Array; ms: number };
+  | { kind: 'mesh'; id: number; cx: number; cy: number; cz: number; version: number; mesh: ChunkMesh; padded: Uint8Array; paddedLight: Uint8Array; ms: number };
 
 /** Runs jobs somewhere (a worker pool, or synchronously in tests) and hands back results. */
 export interface JobRunner {
@@ -45,10 +50,13 @@ export interface JobRunner {
 // The buffers to transfer with each message. Every one is a whole buffer of its own (the
 // mesher's `build()` and the generator allocate exactly-sized arrays).
 
-export const jobTransferables = (job: Job): ArrayBuffer[] => (job.kind === 'mesh' ? [job.padded.buffer as ArrayBuffer] : []);
+export const jobTransferables = (job: Job): ArrayBuffer[] => (job.kind === 'mesh' ? [job.padded.buffer as ArrayBuffer, job.paddedLight.buffer as ArrayBuffer] : []);
 
 export function resultTransferables(result: JobResult): ArrayBuffer[] {
-  if (result.kind === 'generate') return result.chunks.flatMap((c) => (c ? [c.buffer as ArrayBuffer] : []));
+  if (result.kind === 'generate') {
+    const arrays = [...result.chunks, ...result.light].filter((a): a is Uint8Array => a instanceof Uint8Array);
+    return arrays.map((a) => a.buffer as ArrayBuffer);
+  }
   const { opaque, transparent } = result.mesh;
-  return [result.padded, ...[opaque, transparent].flatMap((d) => [d.positions, d.colors, d.uvl, d.indices])].map((a) => a.buffer as ArrayBuffer);
+  return [result.padded, result.paddedLight, ...[opaque, transparent].flatMap((d) => [d.positions, d.colors, d.uvl, d.indices])].map((a) => a.buffer as ArrayBuffer);
 }
