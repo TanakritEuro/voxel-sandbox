@@ -26,20 +26,20 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Scaffold. A seeded heightmap world (`world/generate.ts`: fractal Perlin noise, grass, dirt,
-stone, sand beaches, water to sea level) in 32³ chunks, 128 blocks tall. Chunks within
+Milestone 1 in progress (`docs/milestone-1.md`). A seeded heightmap world
+(`world/generate.ts`: fractal Perlin noise, grass, dirt, stone, sand beaches, water to sea
+level) in 32³ chunks, 128 blocks tall, generated a column at a time. Chunks within
 7 chunks of the camera are generated and meshed on the main thread within a time budget
 per frame, nearest first, and unloaded when far away (`chunkLoader.ts`). The mesher
-(`mesh/mesher.ts`) emits one quad per visible face with baked directional shading and
-vertex colours; water and glass go in a separate transparent pass. A free-fly camera
+(`mesh/mesher.ts`) is greedy with per-vertex ambient occlusion, baked into vertex colours
+with directional shading; water and glass go in a separate transparent pass. A free-fly camera
 with pointer lock (`player.ts`), a voxel raycast (`world/raycast.ts`) with a block
 outline, left click to break, right click to place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known scaffold limits, each fixed by a milestone below: generation and meshing stall
-the main thread (frame drops while flying), far more triangles than needed (~400k at
-radius 7), no ambient occlusion or lighting, no textures, no gravity or collision,
-no trees or caves, and edits are lost on reload.
+Known limits, each fixed by a milestone below: generation and meshing still run on the
+main thread (workers are Milestone 1 step 4), no lighting, no textures, no gravity or
+collision, no trees or caves, and edits are lost on reload.
 
 ## Architecture
 
@@ -96,7 +96,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `raycast.ts` (grid traversal).
 - `src/mesh/` — `padding.ts` (the 34³ padded copy, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colours, Uint16 indices),
-  `mesher.ts` (culled-face mesher, opaque and transparent passes).
+  `mesher.ts` (greedy mesher with AO, opaque and transparent passes), `culled.ts` (the
+  scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — Three.js meshes per chunk.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling.
 - `src/player.ts` — free-fly camera with pointer lock.
@@ -104,7 +105,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `?radius=8` overrides the view radius.
 - `bench/` — `npm run bench`.
-- `tests/` — world, generation, padding, mesher and raycast tests (headless).
+- `tests/` — world, generation, padding, mesher (greedy against culled, AO against the world)
+  and raycast tests (headless).
 
 ## Conventions
 

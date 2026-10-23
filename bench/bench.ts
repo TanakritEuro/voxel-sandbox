@@ -6,6 +6,7 @@
 // the work is split differently (columns instead of chunks, empty chunks skipped).
 
 import { it } from 'vitest';
+import { meshCulled } from '../src/mesh/culled';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks } from '../src/mesh/padding';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
@@ -18,7 +19,7 @@ const RUNS = 5;
 const CHUNKS_PER_COLUMN = MAX_CHUNK_Y - MIN_CHUNK_Y + 1;
 
 type Mesher = (padded: Uint8Array, cx: number, cy: number, cz: number) => ChunkMesh;
-const MESHERS: Record<string, Mesher> = { culled: meshChunk };
+const MESHERS: Record<string, Mesher> = { culled: meshCulled, greedy: meshChunk };
 
 function columns(radius: number): [number, number][] {
   const out: [number, number][] = [];

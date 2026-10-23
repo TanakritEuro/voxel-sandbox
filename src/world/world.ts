@@ -75,7 +75,8 @@ export class World {
 
   /**
    * Set a block. Returns the chunks whose meshes are now stale: the block's own chunk, plus
-   * neighbours when the block is on a chunk face (their border faces may appear or vanish).
+   * every neighbour whose padded copy includes it (up to 7 at a chunk corner). Face
+   * neighbours' border faces may appear or vanish; diagonal ones' corner AO may change.
    */
   setBlock(x: number, y: number, z: number, block: Block): Chunk[] {
     const chunk = this.getChunk(toChunk(x), toChunk(y), toChunk(z));
@@ -87,23 +88,19 @@ export class World {
     chunk.modified = true;
     chunk.empty = false;
 
-    const stale = [chunk];
-    const lx = toLocal(x);
-    const ly = toLocal(y);
-    const lz = toLocal(z);
-    const touch = (dx: number, dy: number, dz: number) => {
-      const n = this.getChunk(chunk.cx + dx, chunk.cy + dy, chunk.cz + dz);
-      if (n) {
-        n.version++;
-        stale.push(n);
+    // Per axis, the chunk offsets whose border reaches this block: 0, and -1 or +1 at an edge.
+    const sides = (l: number) => (l === 0 ? [0, -1] : l === CHUNK_MASK ? [0, 1] : [0]);
+    const stale: Chunk[] = [];
+    for (const dy of sides(toLocal(y))) {
+      for (const dz of sides(toLocal(z))) {
+        for (const dx of sides(toLocal(x))) {
+          const n = this.getChunk(chunk.cx + dx, chunk.cy + dy, chunk.cz + dz);
+          if (!n) continue;
+          if (n !== chunk) n.version++;
+          stale.push(n);
+        }
       }
-    };
-    if (lx === 0) touch(-1, 0, 0);
-    if (lx === CHUNK_MASK) touch(1, 0, 0);
-    if (ly === 0) touch(0, -1, 0);
-    if (ly === CHUNK_MASK) touch(0, 1, 0);
-    if (lz === 0) touch(0, 0, -1);
-    if (lz === CHUNK_MASK) touch(0, 0, 1);
+    }
     return stale;
   }
 

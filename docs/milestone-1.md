@@ -1,6 +1,6 @@
 # Milestone 1 plan: fast engine
 
-## Status: in progress (steps 1–2 of 5 done)
+## Status: in progress (steps 1–3 of 5 done)
 
 Approved 2026-10-23: drop the brightness jitter, edits remesh synchronously on the main
 thread, radius 8 at the end if the numbers allow.
@@ -55,6 +55,41 @@ Found on the way: under Vitest an imported constant costs a property lookup on e
 (imports become getters on a module object), so the first builder version benched 50 %
 slower until the mesher copied `PADDED` into a local constant, as the scaffold did with
 its own sizes. Hot loops keep local copies of imported constants.
+
+**Step 3 (greedy meshing with AO).** Bench, radius 8, the 394 non-empty chunks:
+
+| | culled (scaffold) | greedy with AO |
+| --- | --- | --- |
+| mesh total | 1694 ms | 280 ms (6×) |
+| per chunk mean / p95 / max | 4.30 / 6.93 / 16.2 ms | 0.71 / 1.12 / 2.14 ms |
+| triangles | 568k | 207k |
+| vertex data | 20.6 MB | 7.5 MB |
+
+`?autofly&radius=8`: first view 1.1 → 0.8 s, most chunks pending 7 → 0, main thread p99
+10.5 → 9.5 ms and max 13.7 → 11.0 ms, meshes in memory 25 → 9.6 MB, no frame over 20 ms.
+No cracks or holes seen, and no console errors.
+
+Where it differs from the plan:
+
+- **Files:** `meshChunk` in `mesher.ts` is now the greedy mesher (no `greedy.ts`), so no
+  caller changed; the scaffold mesher lives on as `meshCulled` in `culled.ts`.
+- **AO halves the merging.** On a 17 × 17 column square at radius 8, opaque quads go from
+  370k culled faces to 77k greedy without AO (4.8×) but 151k with it (2.45×): AO bands
+  along every one-block terrace step split the floors (top faces 32k → 93k). That is the
+  known cost of baking AO into vertices; the triangle count is far from being the limit,
+  so it stays. The regression guard is "under half the culled faces", not a quarter.
+  Lighting in Milestone 4 is the place to revisit it (AO as part of the light values, or
+  computed in the shader, would let faces merge again).
+- **Diagonal:** split along the pair of opposite corners with the lower AO sum, i.e. a
+  lone dark corner sits on the diagonal.
+- **The tests** check the greedy mesher against the world rather than against hand
+  counts: every quad is rasterised back to unit faces, which must equal the culled
+  mesher's set (terrain, block soups of every kind, empty and full chunks) with none twice;
+  every unit face inside a quad must have, computed independently from `World.getBlock`,
+  exactly the AO its corner colours show; triangles face away from their block; quads
+  split along the darker diagonal. Plus hand-checked cases: a slab is 6 quads, a block on a
+  floor darkens the right corners, an inside corner is level 0, AO across a diagonal chunk
+  corner, and an edit at a chunk corner marks all 7 neighbours stale.
 
 Goal: fly at sprint speed (36 blocks/s) with no frame over 20 ms, at view radius 8.
 Generation and meshing leave the main thread for a worker pool; the mesher becomes

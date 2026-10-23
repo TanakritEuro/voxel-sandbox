@@ -14,6 +14,13 @@ export const TUNING = {
     meshBudgetMs: 8,
     fov: 75,
   },
+  render: {
+    /**
+     * Brightness of a face corner by ambient occlusion level: 0 = in an inside corner (both
+     * side neighbours solid) .. 3 = nothing around it. Baked into vertex colours by the mesher.
+     */
+    ao: [0.5, 0.68, 0.84, 1],
+  },
   fly: {
     /** Free-fly speed (blocks per second); Ctrl multiplies it. */
     speed: 12,
