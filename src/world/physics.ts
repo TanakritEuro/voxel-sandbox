@@ -115,6 +115,18 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource): bool
   return stop !== null;
 }
 
+/** Would a block at (x, y, z) overlap the body's box? Touching isn't overlapping. For placing blocks. */
+export function overlapsBlock(body: Body, x: number, y: number, z: number): boolean {
+  return (
+    x < body.x + HALF_WIDTH - EPS &&
+    x + 1 > body.x - HALF_WIDTH + EPS &&
+    y < body.y + HEIGHT - EPS &&
+    y + 1 > body.y + EPS &&
+    z < body.z + HALF_WIDTH - EPS &&
+    z + 1 > body.z - HALF_WIDTH + EPS
+  );
+}
+
 /** Advance the body by one physics step. */
 export function stepPlayer(body: Body, input: MoveInput, world: BlockSource, dt = TUNING.player.step): void {
   const P = TUNING.player;

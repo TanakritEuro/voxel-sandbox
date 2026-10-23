@@ -5,11 +5,11 @@
 
 import type { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
-import type { FlyCamera } from './player';
+import type { Player } from './player';
 import { LONG_FRAME_MS } from './stats';
 
 const DEFAULT_SECONDS = 30;
-/** High enough to clear nearly all terrain, so the path never depends on what's below. */
+/** Eye height: high enough to clear nearly all terrain. The flight passes through anything anyway. */
 const ALTITUDE = 112;
 /** Diagonal (+x, +z): crosses chunk borders on both axes, the most loading per block flown. */
 const YAW = (-3 * Math.PI) / 4;
@@ -66,14 +66,15 @@ export class Autofly {
   private stalled = false;
 
   constructor(
-    private readonly fly: FlyCamera,
+    private readonly player: Player,
     private readonly loader: ChunkLoader,
     private readonly seconds: number,
     private readonly onReport: (report: AutoflyReport, text: string) => void,
   ) {
-    fly.camera.position.y = ALTITUDE;
-    fly.yaw = YAW;
-    fly.pitch = PITCH;
+    player.body.y = ALTITUDE - TUNING.player.eyeHeight;
+    player.flying = true;
+    player.input.yaw = YAW;
+    player.input.pitch = PITCH;
   }
 
   /** `?autofly` or `?autofly=60` → the flight's length in seconds; null when absent. */
@@ -83,7 +84,7 @@ export class Autofly {
     return s > 0 ? s : DEFAULT_SECONDS;
   }
 
-  /** True until the report is out; while true it flies the camera instead of the keys. */
+  /** True until the report is out; while true it flies the player instead of the keys. */
   get active(): boolean {
     return this.phase !== 'done';
   }
@@ -92,7 +93,7 @@ export class Autofly {
   update(now: number, dt: number, interval: number): void {
     if (document.visibilityState !== 'visible' || interval > STALL_MS) this.stalled = true;
     if (this.phase === 'loading') {
-      this.fly.move(dt, 0, 0, 0, false);
+      this.player.autopilot(dt, 0);
       if (!this.frontViewMs && this.loader.missing(TUNING.view.radius, this.frontCos()) === 0) this.frontViewMs = now;
       if (this.loader.pending === 0 && this.loader.missing(TUNING.view.radius) === 0) {
         this.firstViewMs = now;
@@ -102,7 +103,7 @@ export class Autofly {
     }
     if (this.phase !== 'flying') return;
 
-    this.fly.move(dt, 1, 0, 0, true);
+    this.player.autopilot(dt, 1);
     this.intervals.push(interval);
     this.flown += dt;
     if (this.flown >= this.nextSample) {
@@ -123,7 +124,7 @@ export class Autofly {
 
   /** Cosine of the angle from the look direction that counts as "in front": half the horizontal field of view, plus a little. */
   private frontCos(): number {
-    const { fov, aspect } = this.fly.camera;
+    const { fov, aspect } = this.player.camera;
     const halfWidth = Math.atan(Math.tan(((fov / 2) * Math.PI) / 180) * aspect);
     return Math.cos(Math.min(Math.PI, halfWidth + 0.2));
   }

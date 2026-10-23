@@ -1,6 +1,6 @@
 # Milestone 2 plan: walking player
 
-## Status: in progress (step 1 of 5 done)
+## Status: in progress (steps 1–2 of 5 done)
 
 Approved 2026-10-23 as proposed: fly mode collides with blocks, breaking takes time in fly
 mode too, sprint on Ctrl only.
@@ -21,6 +21,31 @@ identical bodies after 2 s of changing input at 30, 60 and 144 fps.
 
 Differs from the plan: fly speeds stay in `TUNING.fly` (with the mouse sensitivity) rather
 than moving into `TUNING.player`. The game doesn't use the new physics until step 2.
+
+**Step 2 (the player in the game).** `input.ts` holds keys, keeps presses until taken
+(a tap of Space between two physics steps still jumps) and does mouse look; `Player` runs
+`stepPlayer` at 120 Hz through `FixedStep`, draws the camera between the last two steps,
+toggles flying on F or two taps of Space within 0.3 s, ends a flight on landing, and holds
+still until the 3 × 3 columns around it are loaded. You spawn standing on the dry-land
+column. Placing a solid block is refused where it would overlap the player (water still
+goes anywhere). `?autofly` flies through the same player with collision off.
+
+Checked in the pane by sending held keys from the page: W for a second walked 4.7 blocks
+and stepped down a 3-block ledge, Space jumped and landed, F + Space flew up 12 blocks,
+Shift came down and landing switched back to walking, two quick Space taps flew again.
+`?autofly` at radius 8 unchanged: main thread p99 3.7 ms, max 4.3 ms, nothing over 20 ms,
+no holes. 7 more tests: waiting for loaded columns, a tap shorter than a step jumps,
+double-tap vs two slow taps, F / Space / Shift / landing, the interpolated camera, and
+placement (feet, head, straddling, next to, above, under, mid-jump, touching a face).
+
+Differs from the plan: placement moved here from step 4 (it was needed as soon as you
+could stand somewhere). `Player` reads a small `Controls` interface rather than `Input`,
+so the tests drive it without a DOM.
+
+**Found on the way: Ctrl+W closes the tab.** Browsers keep Ctrl+W for themselves and a
+page can't stop it, so holding Ctrl to sprint (or to fly fast, as in the scaffold) and
+then pressing W closes the game. Pressing W first and Ctrl second is safe. Options are in
+the step 2 report; until then sprint stays on Ctrl as agreed.
 
 Goal: walk the world instead of flying over it. Gravity, an AABB that collides with the
 blocks, jumping, sprinting, crouching that won't walk off edges, swimming with an

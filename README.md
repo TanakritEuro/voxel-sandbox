@@ -12,9 +12,11 @@ Open http://localhost:5173 and click to play.
 | Input | Action |
 | --- | --- |
 | Mouse | Look |
-| W A S D | Move |
-| Space / Shift | Up / down |
-| Ctrl | Fly faster |
+| W A S D | Walk (or fly) |
+| Space | Jump; flying: up |
+| Shift | Flying: down |
+| Ctrl | Sprint; flying: faster |
+| F, or Space twice | Start or stop flying |
 | Left click | Break block |
 | Right click | Place block |
 | 1–9 or wheel | Pick a block |

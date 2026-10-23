@@ -26,20 +26,21 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 1 in progress (`docs/milestone-1.md`). A seeded heightmap world
+Milestone 1 built (`docs/milestone-1.md`); Milestone 2 in progress (`docs/milestone-2.md`). A seeded heightmap world
 (`world/generate.ts`: fractal Perlin noise, grass, dirt, stone, sand beaches, water to sea
 level) in 32³ chunks, 128 blocks tall, generated a column at a time. Chunks within
 8 chunks of the camera are generated and meshed in a pool of Web Workers, near and in
 front of the camera first, scheduled from the main thread, and unloaded when far away
 (`chunkLoader.ts`). The mesher
 (`mesh/mesher.ts`) is greedy with per-vertex ambient occlusion, baked into vertex colours
-with directional shading; water and glass go in a separate transparent pass. A free-fly camera
-with pointer lock (`player.ts`), a voxel raycast (`world/raycast.ts`) with a block
+with directional shading; water and glass go in a separate transparent pass. A walking
+player with an AABB that collides with the blocks, jumping, sprinting and fly mode
+(`player.ts`, `world/physics.ts`, 120 Hz fixed step), a voxel raycast (`world/raycast.ts`) with a block
 outline, left click to break, right click to place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: no lighting, no textures, no gravity or
-collision, no trees or caves, and edits are lost on reload.
+Known limits, each fixed by a milestone below: no crouching, swimming or timed breaking
+yet, no lighting, no textures, no trees or caves, and edits are lost on reload.
 
 ## Architecture
 
@@ -87,13 +88,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 
 ## Layout
 
-- `src/config.ts` — `TUNING`: seed, view radius, frame budget, fly speed, reach, sky.
+- `src/config.ts` — `TUNING`: seed, view radius, frame budget, player movement, fly speed,
+  reach, sky.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties, colours, hotbar), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `generate.ts`
   (terrain by column with one heightmap, all-air chunks as null, sea level, spawn search),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit),
-  `raycast.ts` (grid traversal).
+  `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
+  flying; `overlapsBlock` for placing).
 - `src/mesh/` — `padding.ts` (the 34³ padded copy, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colours, Uint16 indices),
   `mesher.ts` (greedy mesher with AO, opaque and transparent passes), `culled.ts` (the
@@ -105,14 +108,16 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`),
   `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
   `pool.ts` (`WorkerPool`).
-- `src/player.ts` — free-fly camera with pointer lock.
+- `src/input.ts` — keys held, presses kept until taken, mouse look and pointer lock.
+- `src/player.ts` — the player: physics at a fixed step, interpolated camera, fly toggle,
+  waiting for the ground to load; `autopilot` for `?autofly`.
 - `src/main.ts` — entry point, editing, HUD, frame loop.
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
   `?workers=1` the worker count.
 - `bench/` — `npm run bench`.
 - `tests/` — world, generation, padding, mesher (greedy against culled, AO against the world)
-  and raycast tests (headless).
+  raycast, physics and player tests (headless).
 
 ## Conventions
 
