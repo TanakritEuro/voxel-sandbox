@@ -35,6 +35,24 @@ export const TUNING = {
      */
     ao: [0.5, 0.68, 0.84, 1],
   },
+  player: {
+    /** Physics step (seconds): fixed, so movement is the same at any frame rate. */
+    step: 1 / 120,
+    /** Blocks per second. */
+    walkSpeed: 4.3,
+    sprintSpeed: 5.6,
+    /** How fast the velocity turns towards the one you're asking for (blocks / s²): on the ground, and in the air. */
+    groundAccel: 60,
+    airAccel: 15,
+    /** Blocks / s². */
+    gravity: 32,
+    /** Blocks the feet rise in a jump (the jump speed follows from it and gravity). */
+    jumpHeight: 1.25,
+    /** Fastest fall, blocks per second. */
+    terminalVelocity: 60,
+    /** Eye above the feet. */
+    eyeHeight: 1.62,
+  },
   fly: {
     /** Free-fly speed (blocks per second); Ctrl multiplies it. */
     speed: 12,

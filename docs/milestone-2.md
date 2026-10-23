@@ -1,6 +1,26 @@
 # Milestone 2 plan: walking player
 
-## Status: planned, waiting for your OK
+## Status: in progress (step 1 of 5 done)
+
+Approved 2026-10-23 as proposed: fly mode collides with blocks, breaking takes time in fly
+mode too, sprint on Ctrl only.
+
+## Results so far
+
+**Step 1 (physics).** `world/physics.ts`: `moveBody` sweeps y, x, z, checking every layer
+of blocks crossed and setting the position to the face it stops at (so resting heights are
+exact: feet at 41, not 40.99999); `stepPlayer` walks, sprints, jumps and flies. Position
+moves by the average of the step's start and end velocity, which is exact under steady
+gravity, so the jump peaks at `jumpHeight` (1.25) at any step length. `FixedStep` (in
+`math.ts`) turns frame times into steps and drops the backlog after a stall. 13 tests: exact
+landing, no tunnelling through a one-block floor even in a single 1000-block move,
+terminal velocity, stopping at a wall face, sliding along a wall at √½ of walking speed,
+inside corners, a 1 × 2 gap passable and 1 × 1 not, jump apex, a 1-block step climbable
+and 2 not, a ceiling 0.2 above the head, flying without gravity but with collision, and
+identical bodies after 2 s of changing input at 30, 60 and 144 fps.
+
+Differs from the plan: fly speeds stay in `TUNING.fly` (with the mouse sensitivity) rather
+than moving into `TUNING.player`. The game doesn't use the new physics until step 2.
 
 Goal: walk the world instead of flying over it. Gravity, an AABB that collides with the
 blocks, jumping, sprinting, crouching that won't walk off edges, swimming with an

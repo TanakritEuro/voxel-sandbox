@@ -22,3 +22,35 @@ export function hash3(seed: number, x: number, y: number, z: number): number {
 }
 
 export const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+
+/**
+ * Turns frame times into whole fixed steps. The time left over says how far the drawing is
+ * between the last step and the next (`alpha`), for interpolating.
+ */
+export class FixedStep {
+  private accumulator = 0;
+
+  constructor(
+    readonly step: number,
+    /** After a long stall (a hidden tab), drop the backlog rather than run hundreds of steps. */
+    private readonly maxSteps = 8,
+  ) {}
+
+  /** Steps to run for a frame `dt` seconds long. */
+  advance(dt: number): number {
+    this.accumulator += dt;
+    // The small slack keeps sums of frame times that land on a step boundary from rounding just short of it.
+    let steps = Math.floor(this.accumulator / this.step + 1e-9);
+    if (steps > this.maxSteps) {
+      steps = this.maxSteps;
+      this.accumulator = steps * this.step;
+    }
+    this.accumulator = Math.max(0, this.accumulator - steps * this.step);
+    return steps;
+  }
+
+  /** 0..1: how far the present is from the last step towards the next. */
+  get alpha(): number {
+    return Math.min(1, this.accumulator / this.step);
+  }
+}
