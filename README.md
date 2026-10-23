@@ -15,7 +15,7 @@ Open http://localhost:5173 and click to play.
 | W A S D | Walk (or fly) |
 | Space | Jump; flying: up |
 | Shift | Flying: down |
-| Ctrl | Sprint; flying: faster |
+| Ctrl (tap) | Sprint until you stop moving forward; flying: faster |
 | F, or Space twice | Start or stop flying |
 | Left click | Break block |
 | Right click | Place block |

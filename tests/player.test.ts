@@ -97,6 +97,33 @@ describe('player', () => {
     expect(player.flying).toBe(false); // landing ends the flight
   });
 
+  it('sprints from a tap of Ctrl until it stops moving forward', () => {
+    const { input, player, frames } = setup();
+    const speed = () => Math.hypot(player.body.vx, player.body.vz);
+    frames(0.2);
+    input.tap('ControlLeft'); // standing still: nothing to sprint
+    frames(0.1);
+    input.held.add('KeyW');
+    frames(1);
+    expect(speed()).toBeCloseTo(TUNING.player.walkSpeed, 9);
+    input.tap('ControlLeft');
+    frames(1);
+    expect(player.sprinting).toBe(true);
+    expect(speed()).toBeCloseTo(TUNING.player.sprintSpeed, 9);
+    input.held.delete('KeyW');
+    frames(0.5);
+    input.held.add('KeyW');
+    frames(1);
+    expect(player.sprinting).toBe(false);
+    expect(speed()).toBeCloseTo(TUNING.player.walkSpeed, 9);
+    input.tap('ControlRight');
+    frames(0.2);
+    input.tap('ControlLeft'); // a second tap ends it too
+    frames(1);
+    expect(player.sprinting).toBe(false);
+    expect(speed()).toBeCloseTo(TUNING.player.walkSpeed, 9);
+  });
+
   it('puts the camera at the eye, between the last two steps', () => {
     const { input, camera, player, frames } = setup();
     frames(0.2);

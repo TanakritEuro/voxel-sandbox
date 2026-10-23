@@ -16,6 +16,11 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 export class Player {
   readonly body: Body;
   flying = false;
+  /**
+   * Sprinting, or flying fast: a tap of Ctrl starts it (holding Ctrl and pressing W would close
+   * the tab: browsers keep Ctrl+W), another tap or no longer moving forward ends it.
+   */
+  sprinting = false;
   /** Holding still because the blocks around aren't loaded yet (so nobody falls through an unloaded world). */
   waiting = true;
   /** Where the body was before the last step; the camera is drawn between this and the body. */
@@ -49,6 +54,10 @@ export class Player {
         this.lastSpace = -Infinity;
       } else this.lastSpace = this.time;
     }
+    const ctrlLeft = input.take('ControlLeft');
+    const ctrlRight = input.take('ControlRight');
+    if (ctrlLeft || ctrlRight) this.sprinting = !this.sprinting;
+    if (input.axis('KeyW') - input.axis('KeyS') <= 0) this.sprinting = false;
 
     const steps = this.clock.advance(dt);
     this.waiting = !this.loaded(this.body.x, this.body.z);
@@ -92,7 +101,7 @@ export class Player {
       strafe: i.axis('KeyD') - i.axis('KeyA'),
       yaw: i.yaw,
       jump: i.isHeld('Space'),
-      sprint: i.isHeld('ControlLeft') || i.isHeld('ControlRight'),
+      sprint: this.sprinting,
       flying: this.flying,
       up: i.axis('Space') - Math.max(i.axis('ShiftLeft'), i.axis('ShiftRight')),
     };

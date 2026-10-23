@@ -44,8 +44,9 @@ so the tests drive it without a DOM.
 
 **Found on the way: Ctrl+W closes the tab.** Browsers keep Ctrl+W for themselves and a
 page can't stop it, so holding Ctrl to sprint (or to fly fast, as in the scaffold) and
-then pressing W closes the game. Pressing W first and Ctrl second is safe. Options are in
-the step 2 report; until then sprint stays on Ctrl as agreed.
+then pressing W closes the game. Pressing W first and Ctrl second is safe. Decided
+2026-10-23: sprint is a toggle. A tap of Ctrl starts it (and fast flying), another tap or
+no longer moving forward ends it, so there is no reason to hold Ctrl.
 
 Goal: walk the world instead of flying over it. Gravity, an AABB that collides with the
 blocks, jumping, sprinting, crouching that won't walk off edges, swimming with an
@@ -95,7 +96,7 @@ so every number is in `TUNING.player`.
 | W A S D | Walk | Fly |
 | Space | Jump; swim up in water | Up |
 | Shift | Crouch | Down |
-| Ctrl (hold) | Sprint | Fly faster |
+| Ctrl (tap) | Sprint, until you stop moving forward or tap again | Fly faster, the same way |
 | F, or Space twice quickly | Start flying | Stop flying (and fall) |
 | Left button (hold) | Break, takes time | Break, takes time |
 | Right button | Place | Place |
