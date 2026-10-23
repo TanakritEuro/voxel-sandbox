@@ -30,7 +30,8 @@ Milestones 1 and 2 built (`docs/milestone-1.md`, `docs/milestone-2.md`), waiting
 Milestone 3 in progress (`docs/milestone-3.md`). A seeded world of four biomes
 (`world/biomes.ts`: plains, forest, desert, snowy mountains from temperature and humidity
 noise, heights blended across borders; `world/generate.ts`: surface layers by biome and
-slope, beaches, sea floors, water to sea level 62) in 32³ chunks, 256 blocks tall, generated a column at a time; all-air chunks
+slope, beaches, sea floors, water to sea level 62; `world/caves.ts`: tunnels and caverns from
+coarse-sampled 3D noise; `world/features.ts`: ore veins) in 32³ chunks, 256 blocks tall, generated a column at a time; all-air chunks
 share one empty array until edited. Chunks within
 8 chunks of the camera are generated and meshed in a pool of Web Workers, near and in
 front of the camera first, scheduled from the main thread, and unloaded when far away
@@ -46,7 +47,8 @@ outline, hold the left button to break (time by block `hardness`, with cracks), 
 place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: no trees, caves or ores yet, no lighting,
+Known limits, each fixed by a milestone below: no trees yet, cave walls are all drawn
+(no visibility culling yet), no lighting,
 and edits are lost on reload.
 
 ## Architecture
@@ -102,7 +104,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
-  border for slopes, `columnLayers` per column, all-air chunks as null, spawn search),
+  border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
+  search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
+  `features.ts` (ore veins across chunk borders),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,

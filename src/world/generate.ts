@@ -7,6 +7,8 @@
 // to sea level. Caves and trees come in later steps of Milestone 3.
 
 import { Biome, Climate } from './biomes';
+import { Caves } from './caves';
+import { placeOres } from './features';
 import { Block } from './blocks';
 import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, WORLD_HEIGHT } from './coords';
 import { hash3 } from '../math';
@@ -95,13 +97,34 @@ export function columnLayers(info: ColumnInfo): Run[] {
   return runs;
 }
 
+/** Generation passes that can be switched off, for tests that compare with and without them. */
+export interface GeneratorOptions {
+  caves: boolean;
+  ores: boolean;
+}
+
+/**
+ * How high caves may carve in a column: up to its surface on dry land, but never within 4
+ * blocks below water in it or a neighbour, so no water hangs over or beside air (water
+ * doesn't flow). `h` is the column's height, `lowest` the lowest of it and its 4 neighbours.
+ */
+/** Just the terrain's layers: for tests of the surface. */
+export const SURFACE_ONLY: GeneratorOptions = { caves: false, ores: false };
+
+export const caveLimit = (h: number, lowest: number): number => (lowest <= SEA_LEVEL ? lowest - 4 : h);
+
 export class Generator {
   readonly climate: Climate;
+  readonly caves: Caves;
   private readonly detail: Noise;
   private readonly weights = new Float64Array(4);
 
-  constructor(readonly seed: number) {
+  constructor(
+    readonly seed: number,
+    readonly options: GeneratorOptions = { caves: true, ores: true },
+  ) {
     this.climate = new Climate(seed);
+    this.caves = new Caves(seed);
     this.detail = new Noise(seed ^ 0x51e7);
   }
 
@@ -186,6 +209,7 @@ export class Generator {
     // Each column's runs, and the highest block anywhere (chunks above it are all air).
     const runs = new Int16Array(COLUMNS * MAX_RUNS * 3);
     const counts = new Uint8Array(COLUMNS);
+    const limits = new Int16Array(COLUMNS);
     let top = SEA_LEVEL;
     for (let lz = 0; lz < S; lz++) {
       for (let lx = 0; lx < S; lx++) {
@@ -200,6 +224,7 @@ export class Generator {
         const c = lz * S + lx;
         const info = { height: h, biome: biomes[c] as Biome, slope, snowLine: this.snowLine(x0 + lx, z0 + lz) };
         counts[c] = writeLayers(info, runs, c * MAX_RUNS * 3);
+        limits[c] = caveLimit(h, Math.min(h, heights[at + 1], heights[at - 1], heights[at + SPAN], heights[at - SPAN]));
         top = Math.max(top, h);
       }
     }
@@ -217,6 +242,8 @@ export class Generator {
         // c is z * 32 + x, the same bits as a chunk index's column part.
         for (let r = c * MAX_RUNS * 3, end = r + counts[c] * 3; r < end; r += 3) fillRun(blocks, c, y0, runs[r], runs[r + 1], runs[r + 2]);
       }
+      if (this.options.caves) this.caves.carve(blocks, cx, cy, cz, limits);
+      if (this.options.ores) placeOres(blocks, cx, cy, cz, this.seed);
       out.push(blocks);
     }
     return out;

@@ -3,7 +3,7 @@
 
 import { Block } from './blocks';
 import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
-import { Generator } from './generate';
+import { Generator, type GeneratorOptions } from './generate';
 
 /**
  * The blocks of every all-air chunk until it's edited: one shared array, so the half of the
@@ -36,8 +36,8 @@ export class World {
   readonly chunks = new Map<string, Chunk>();
   readonly generator: Generator;
 
-  constructor(seed: number) {
-    this.generator = new Generator(seed);
+  constructor(seed: number, options?: GeneratorOptions) {
+    this.generator = new Generator(seed, options);
   }
 
   getChunk(cx: number, cy: number, cz: number): Chunk | undefined {

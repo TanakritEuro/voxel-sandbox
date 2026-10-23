@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Block } from '../src/world/blocks';
 import { CHUNK_SIZE, localIndex, toChunk, toLocal } from '../src/world/coords';
-import { Generator, SEA_LEVEL } from '../src/world/generate';
+import { Generator, SEA_LEVEL, SURFACE_ONLY } from '../src/world/generate';
 import { World } from '../src/world/world';
 
 describe('coordinates', () => {
@@ -27,7 +27,7 @@ describe('generation', () => {
   });
 
   it('builds columns of stone, then dirt or sand, a surface block, then water or air', () => {
-    const world = new World(42);
+    const world = new World(42, SURFACE_ONLY);
     for (let cy = 0; cy <= 3; cy++) world.ensureChunk(0, cy, 0);
     for (const [x, z] of [[3, 5], [17, 9], [30, 30]]) {
       const h = world.generator.height(x, z);

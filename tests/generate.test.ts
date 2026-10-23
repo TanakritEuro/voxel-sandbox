@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Block } from '../src/world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
-import { columnLayers, Generator } from '../src/world/generate';
+import { columnLayers, Generator, SURFACE_ONLY } from '../src/world/generate';
 import { EMPTY_BLOCKS, World } from '../src/world/world';
 
 /** Each block on its own, from the column's layers: what the run-filling generator must reproduce. */
@@ -21,7 +21,7 @@ function generateReference(g: Generator, cx: number, cy: number, cz: number): Ui
 
 describe('column generation', () => {
   it('matches generating each block on its own, with all-air chunks as null', () => {
-    const g = new Generator(20261022);
+    const g = new Generator(20261022, SURFACE_ONLY);
     let nulls = 0;
     for (const [cx, cz] of [[0, 0], [-3, 2], [5, -7], [12, 12]]) {
       const column = g.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);

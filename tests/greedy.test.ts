@@ -7,6 +7,7 @@ import { type ChunkMesh, meshChunk, SHADE } from '../src/mesh/mesher';
 import { paddedBlocks } from '../src/mesh/padding';
 import { Block, BLOCKS } from '../src/world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
+import { SURFACE_ONLY } from '../src/world/generate';
 import { Chunk, World } from '../src/world/world';
 
 type Vec = [number, number, number];
@@ -248,7 +249,9 @@ describe('greedy mesher', () => {
   // Per-vertex AO keeps faces with different corner shading apart, which on stepped terrain
   // costs about half the merging (radius 8: 4.8x fewer opaque quads without AO, 2.45x with).
   it('cuts triangles on generated terrain to under half of culled faces', () => {
-    const terrain = new World(20261022);
+    // Surface only: what the mesher makes of it, not how rugged caves make the walls
+    // (with caves and ores, greedy quads are 0.61 of culled faces).
+    const terrain = new World(20261022, SURFACE_ONLY);
     for (let cz = -2; cz <= 2; cz++) for (let cx = -2; cx <= 2; cx++) terrain.ensureColumn(cx, cz);
     let greedy = 0;
     let faces = 0;

@@ -21,6 +21,10 @@ export enum Block {
   SnowyGrass = 11,
   Sandstone = 12,
   Gravel = 13,
+  CoalOre = 14,
+  IronOre = 15,
+  CopperOre = 16,
+  CrystalOre = 17,
 }
 
 type RGB = [number, number, number];
@@ -82,6 +86,10 @@ export const BLOCKS: readonly BlockInfo[] = [
   solid('Snowy grass', 0.7, faces('snow', 'snowy_grass_side', 'dirt'), 0xeef3f7, 0xa99886, 0x86603e),
   solid('Sandstone', 1.2, faces('sandstone_top', 'sandstone_side'), 0xd3bf86),
   solid('Gravel', 0.7, faces('gravel'), 0x8d8680),
+  solid('Coal ore', 3, faces('coal_ore'), 0x6d6f72),
+  solid('Iron ore', 3.5, faces('iron_ore'), 0x958a80),
+  solid('Copper ore', 3, faces('copper_ore'), 0x8f8577),
+  solid('Crystal ore', 4.5, faces('crystal_ore'), 0x8aa3ab),
 ];
 
 /** Blocks the player can place, in hotbar order (keys 1–9). */

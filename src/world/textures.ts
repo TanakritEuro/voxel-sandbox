@@ -26,6 +26,10 @@ export const TEXTURE_NAMES = [
   'sandstone_top',
   'sandstone_side',
   'gravel',
+  'coal_ore',
+  'iron_ore',
+  'copper_ore',
+  'crystal_ore',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -193,6 +197,18 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
     c.spots(10, hex(0xa8a19a));
     c.spots(6, hex(0x5a5550));
   },
+  coal_ore(c) {
+    ore(c, [hex(0x232323), hex(0x3a3a3a)]);
+  },
+  iron_ore(c) {
+    ore(c, [hex(0xc99b7a), hex(0xe0b896)]);
+  },
+  copper_ore(c) {
+    ore(c, [hex(0xc96b32), hex(0x4fa38c)]);
+  },
+  crystal_ore(c) {
+    ore(c, [hex(0x5fe3f2), hex(0xb8f6ff)]);
+  },
   glass(c) {
     // Nearly clear, a light frame and a few highlights.
     const pane = hex(0xcfe8f2);
@@ -204,6 +220,17 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
     for (const [x, y] of [[3, 3], [4, 4], [5, 5], [3, 5], [10, 11], [11, 12]]) c.set(x, y, hex(0xffffff), 1, 130);
   },
 };
+
+/** Stone with clusters of mineral in the given colours (a main one and a highlight). */
+function ore(c: Canvas, [main, light]: RGB[]): void {
+  PAINTERS.stone(c);
+  for (let n = 0; n < 6; n++) {
+    const x = 1 + Math.floor(c.rng() * (TEXTURE_SIZE - 3));
+    const y = 1 + Math.floor(c.rng() * (TEXTURE_SIZE - 3));
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) if (c.rng() < 0.8) c.set(x + dx, y + dy, main, 1 + (c.rng() - 0.5) * 0.15);
+    c.set(x + (c.rng() < 0.5 ? 0 : 1), y, light);
+  }
+}
 
 /** A seed per texture name, so each looks the same every time and differs from the others. */
 function seedOf(name: string): number {

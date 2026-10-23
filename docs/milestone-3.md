@@ -1,6 +1,6 @@
 # Milestone 3 plan: richer world
 
-## Status: in progress (steps 1–3 of 6 done)
+## Status: in progress (steps 1–4 of 6 done; cave culling proposed before step 5)
 
 Approved 2026-10-23 as proposed: 256-block world with sea level 62, 16 × 16 pixel-art
 textures, no per-biome tint for now, ores coal / iron / copper / crystal.
@@ -114,6 +114,64 @@ runs in the workers; its cost is mostly noise: every biome's shape is evaluated 
 weight is above 1e-4, which with this blend is nearly everywhere. Worth trimming in step 4,
 when caves add their own noise; the main thread's p99 (applying more and bigger meshes) is
 the number to watch on the laptop.
+
+**Step 4 (generation cost, caves, ores).**
+
+*Generation cost first.* Profiling a column job (headless): the noise everyone suspected
+was only 0.37 ms of 1.53; the rest was filling chunks, whose inner loop read imported
+constants (`CHUNK_SIZE`, `CHUNK_BITS`: a property lookup per block under Vitest, the trap
+from Milestone 1) and walked per-column run arrays through the iterator protocol. Local
+constants plus `writeLayers` (runs straight into one typed array, nothing allocated per
+column; `columnLayers` stays as the array form for tests) took the bench from 721 to 296 ms
+at radius 8. Flooring biome weights so far-off biomes skip their noise measured no gain
+(most columns blend two or more biomes) and changed the terrain, so it was reverted.
+
+*Caves* (`world/caves.ts`): tunnels where two 3D noises (stretched sideways: 48 blocks across,
+28 up) are both within 0.07 of zero, caverns where a third is above 0.55 below y 40; the bottom
+4 layers never carved. Sampled every 4 blocks per chunk (9³ samples a field), interpolated
+across x and z per column then along y per block. `carvedAt(x, y, z, limit)` answers for one
+block with the same samples and float32 rounding, so it always agrees with the chunk carve
+(tested block by block): trees will use it for their ground. `caveLimit` keeps caves out of
+the 4 blocks below any water in a column or its 4 neighbours, and lets them open onto dry
+land elsewhere. Measured: 5.4 % of the underground (from y 4 to 8 below the surface) is open.
+
+*Ores* (`world/features.ts`): veins that start at seeded places in each chunk and wander up to
+3 blocks, replacing only stone; each chunk replays its own and its 26 neighbours' veins and
+keeps what lands inside, so a vein across a border is whole whichever chunk loads first.
+Coal (y 5–200), iron (5–100), copper (5–70, bigger blobs), crystal (5–24, rare). Per 5 × 5 columns:
+coal 3981, iron 1492, copper 1297, crystal 20 blocks. Textured as stone with mineral clusters.
+
+| radius 8 | step 3 | step 4 |
+| --- | --- | --- |
+| bench: generate | 721 ms | 296 ms after the trim; 678 ms with caves and ores |
+| bench: triangles, vertex data | 520k, 22.8 MB | 1857k, 81.5 MB |
+| bench: greedy meshing | 655 ms | 979 ms |
+| `?autofly` (build) main thread p50 / p99 / max | 2.3 / 6.9 / 8.1 ms | 2.9 / 7.8 / 9.0 ms |
+| `?autofly` triangles drawn / in the scene, draw calls | 83k / 730k, 114 | 412k / 2744k, 204 |
+| meshes in memory after the flight | 32 MB | 120 MB |
+
+**Caves are expensive to draw.** Triangles by feature (headless, 9 × 9 columns): surface 178k,
+ores 178k (they hardly break merging), caves 639k, 45 % of it in chunks wholly underground.
+Cave walls are a lot of surface, and every one is meshed and drawn when it's in the view
+frustum, though from the surface almost none can be seen. Frames held on the dev machine
+(nothing over 20 ms, no holes), but five times the drawn triangles and 120 MB of meshes is
+not something to send to a laptop. The fix that keeps the caves is visibility culling:
+record per chunk which of its faces connect through open space (computed with the mesh),
+and each time the player changes chunk, walk outwards from the player's chunk through
+connected faces; chunks the walk never reaches aren't drawn (and needn't be meshed yet).
+Not in the plan; proposed as the next step.
+
+Screenshot in the pane: spawning at a cave mouth (`?at=-48,71`) drops you 10 blocks into a
+narrow cut through the stone with grass and sky above; caves are lit like the surface until
+Milestone 4. The greedy-merging regression guard now measures surface-only terrain (with
+caves and ores, greedy quads are 0.61 of culled faces).
+
+Tests (7 more): caves only turn solid blocks into air, exactly where `carvedAt` says, never in
+the bottom layers; 2–15 % of the underground open; no air beside or under any water (fails
+when the cave limit is removed); entrances on dry land; ores only replace stone, each in its
+depth range, all four found, coal > iron > crystal; a vein across a chunk border with each
+chunk placing its own part, independently; the same chunks whichever order columns load in.
+`Generator` and `World` take options to switch caves and ores off, for the surface tests.
 
 Differs from the plan: the biome weights are Gaussians of the distance in climate space
 rather than smoothsteps of thresholds, which gave smoother borders and fewer tuning knobs;
