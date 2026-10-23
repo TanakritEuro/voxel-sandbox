@@ -35,6 +35,10 @@ export const TEXTURE_NAMES = [
   'spruce_leaves',
   'cactus_side',
   'cactus_top',
+  'torch',
+  'torch_top',
+  'torch_item',
+  'lamp',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -88,6 +92,9 @@ const SNOW = hex(0xeef3f7);
 const SPRUCE_BARK = hex(0x3f2c1c);
 const CACTUS = hex(0x4f8a33);
 const SANDSTONE = hex(0xd3bf86);
+const FLAME = hex(0xffc24a);
+const FLAME_CORE = hex(0xfff2b0);
+const STICK = hex(0x7a5532);
 
 const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   stone(c) {
@@ -256,6 +263,38 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   cactus_top(c) {
     c.speckle(hex(0x5c9a3c), 0.12);
     for (const [x, y] of [[4, 4], [11, 4], [4, 11], [11, 11], [7, 7], [8, 8]]) c.set(x, y, hex(0xe8e2b8));
+  },
+  torch(c) {
+    // The torch's sides are 2 pixels wide in the world but take the whole texture across, so
+    // every row is one colour: flame at the top, the stick below.
+    for (let y = 0; y < TEXTURE_SIZE; y++) {
+      const [colour, shade] = y < 2 ? [FLAME_CORE, 1] : y < 4 ? [FLAME, 1] : [STICK, y % 3 === 0 ? 0.85 : 1];
+      for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, colour, shade);
+    }
+  },
+  torch_top(c) {
+    c.speckle(FLAME_CORE, 0.08);
+  },
+  torch_item(c) {
+    // The hotbar icon: a stick with a flame, on nothing.
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, STICK, 1, 0);
+    for (let y = 6; y < TEXTURE_SIZE; y++) for (const x of [7, 8]) c.set(x, y, STICK, x === 8 ? 0.8 : 1);
+    for (const [x, y, colour] of [[7, 2, FLAME], [8, 2, FLAME], [6, 3, FLAME], [7, 3, FLAME_CORE], [8, 3, FLAME_CORE], [9, 3, FLAME], [6, 4, FLAME], [7, 4, FLAME_CORE], [8, 4, FLAME_CORE], [9, 4, FLAME], [7, 5, FLAME], [8, 5, FLAME]] as [number, number, RGB][])
+      c.set(x, y, colour);
+  },
+  lamp(c) {
+    // Warm glass panes in a dark metal frame with a cross bar.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const frame = x === 0 || y === 0 || x === TEXTURE_SIZE - 1 || y === TEXTURE_SIZE - 1 || x === 7 || x === 8 || y === 7 || y === 8;
+        if (frame) c.set(x, y, hex(0x4a4640), 1 + (c.rng() - 0.5) * 0.1);
+        else {
+          // Brighter towards each pane's middle.
+          const px = x < 7 ? x - 3.5 : x - 11.5;
+          const py = y < 7 ? y - 3.5 : y - 11.5;
+          c.set(x, y, hex(0xffd27a), 1.12 - Math.hypot(px, py) * 0.07 + (c.rng() - 0.5) * 0.06);
+        }
+      }
   },
   glass(c) {
     // Nearly clear, a light frame and a few highlights.

@@ -28,6 +28,8 @@ export enum Block {
   SpruceWood = 18,
   SpruceLeaves = 19,
   Cactus = 20,
+  Torch = 21,
+  Lamp = 22,
 }
 
 type RGB = [number, number, number];
@@ -36,8 +38,12 @@ export interface BlockInfo {
   name: string;
   /** Opaque blocks hide the faces of whatever is next to them. */
   opaque: boolean;
-  /** Can be walked through and is not a raycast target (air, water). */
+  /** Can be walked through (air, water, torches). */
   passable: boolean;
+  /** The raycast stops at it, so it can be broken and built against (not air or water). */
+  targetable: boolean;
+  /** A full cube, or a torch: a small stick standing on the block below, never merged. */
+  shape: 'cube' | 'torch';
   /** Drawn in the transparent pass (sorted, blended). */
   transparent: boolean;
   /**
@@ -57,6 +63,8 @@ export interface BlockInfo {
    */
   lightCost: number;
   textures: { top: TextureName; side: TextureName; bottom: TextureName };
+  /** The hotbar icon, if not the side texture. */
+  icon?: TextureName;
   /** RGB 0–1 for the top, sides and bottom. */
   top: RGB;
   side: RGB;
@@ -69,6 +77,8 @@ const solid = (name: string, hardness: number, textures: BlockInfo['textures'], 
   name,
   opaque: true,
   passable: false,
+  targetable: true,
+  shape: 'cube',
   transparent: false,
   cutout: false,
   liquid: false,
@@ -83,13 +93,13 @@ const solid = (name: string, hardness: number, textures: BlockInfo['textures'], 
 
 export const BLOCKS: readonly BlockInfo[] = [
   // Never drawn; its textures are only there to fill the table.
-  { ...solid('Air', 0, faces('stone'), 0), opaque: false, passable: true },
+  { ...solid('Air', 0, faces('stone'), 0), opaque: false, passable: true, targetable: false },
   solid('Stone', 2.5, faces('stone'), 0x8a8d91),
   solid('Dirt', 0.6, faces('dirt'), 0x86603e),
   solid('Grass', 0.7, faces('grass_top', 'grass_side', 'dirt'), 0x6aa84f, 0x7d7a45, 0x86603e),
   solid('Sand', 0.6, faces('sand'), 0xdccb8e),
   // Not a raycast target, so never broken.
-  { ...solid('Water', Infinity, faces('water'), 0x3a78c9), opaque: false, passable: true, transparent: true, liquid: true, lightCost: 1 },
+  { ...solid('Water', Infinity, faces('water'), 0x3a78c9), opaque: false, passable: true, targetable: false, transparent: true, liquid: true, lightCost: 1 },
   solid('Wood', 1.5, faces('wood_top', 'wood_side'), 0xa7854f, 0x6b4a2b),
   { ...solid('Leaves', 0.3, faces('leaves'), 0x3f8a36), opaque: false, cutout: true, lightCost: 1 },
   solid('Planks', 1.5, faces('planks'), 0xb88c55),
@@ -105,6 +115,15 @@ export const BLOCKS: readonly BlockInfo[] = [
   solid('Spruce wood', 1.5, faces('spruce_top', 'spruce_side'), 0x7a5a38, 0x3f2c1c),
   { ...solid('Spruce leaves', 0.3, faces('spruce_leaves'), 0x2f5f3a), opaque: false, cutout: true, lightCost: 1 },
   solid('Cactus', 0.4, faces('cactus_top', 'cactus_side'), 0x5c9a3c, 0x4f8a33),
+  {
+    ...solid('Torch', 0.05, faces('torch_top', 'torch'), 0xffc24a, 0x7a5532),
+    opaque: false,
+    passable: true,
+    shape: 'torch',
+    light: 14,
+    icon: 'torch_item',
+  },
+  { ...solid('Lamp', 0.6, faces('lamp'), 0xe8c070), light: 15 },
 ];
 
 /** Blocks the player can place, in hotbar order (keys 1–9). */
@@ -112,10 +131,10 @@ export const HOTBAR: readonly Block[] = [
   Block.Grass,
   Block.Dirt,
   Block.Stone,
-  Block.Sand,
+  Block.Torch,
   Block.Planks,
   Block.Wood,
-  Block.Leaves,
+  Block.Lamp,
   Block.Glass,
   Block.Water,
 ];

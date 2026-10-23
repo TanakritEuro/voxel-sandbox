@@ -34,6 +34,13 @@ export const TUNING = {
      * side neighbours solid) .. 3 = nothing around it. Baked into vertex colours by the mesher.
      */
     ao: [0.5, 0.68, 0.84, 1],
+    /**
+     * Brightness of each light level is this times the one above (15 is 1), and level 0 is
+     * black: caves are dark without torches.
+     */
+    lightFalloff: 0.8,
+    /** Colour of block light (torches, lamps) at full strength; sunlight is white. */
+    blockLightColour: [1, 0.86, 0.66],
   },
   player: {
     /** Physics step (seconds): fixed, so movement is the same at any frame rate. */

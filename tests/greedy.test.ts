@@ -43,7 +43,9 @@ function quadsOf(data: MeshData, pass: Quad['pass']): Quad[] {
   return out;
 }
 
-const quadsOfMesh = (m: ChunkMesh) => [...quadsOf(m.opaque, 'opaque'), ...quadsOf(m.transparent, 'transparent')];
+/** The quads on the block grid (not torches, whose corners are within their blocks). */
+const quadsOfMesh = (m: ChunkMesh) =>
+  [...quadsOf(m.opaque, 'opaque'), ...quadsOf(m.transparent, 'transparent')].filter((q) => q.corners.every((c) => c.every(Number.isInteger)));
 
 const otherAxes = (axis: number): [number, number] => [(axis + 1) % 3, (axis + 2) % 3];
 
@@ -82,9 +84,9 @@ const add = (p: Vec, axis: number, by: number): Vec => {
 
 /**
  * Check every quad against the world, independently of the mesher: it faces away from its
- * block, each unit face inside it has the AO and the light (of the block in front) the quad's
- * corner colours say (so faces with different AO or light were not merged), and it's split
- * along the darker diagonal.
+ * block, each unit face inside it has the AO and the smooth light the quad's corner colours
+ * say (so faces with different AO or light were not merged), and it's split along the darker
+ * diagonal (by AO, else by light).
  */
 function checkAgainstWorld(world: World, m: ChunkMesh): void {
   for (const q of quadsOfMesh(m)) {
@@ -92,6 +94,7 @@ function checkAgainstWorld(world: World, m: ChunkMesh): void {
     const centre = [0, 1, 2].map((a) => q.corners.reduce((s, c) => s + c[a], 0) / 4);
     const dir = q.axis * 2 + (q.sign > 0 ? 0 : 1);
     let levels: number[] | null = null;
+    let lights: number[][] | null = null;
     for (const { block } of unitFaces(q)) {
       const b = world.getBlock(...block);
       const front = add(block, q.axis, q.sign);
@@ -100,21 +103,36 @@ function checkAgainstWorld(world: World, m: ChunkMesh): void {
       expect(b).not.toBe(Block.Air);
       expect(nb === Block.Air || (!BLOCKS[nb].opaque && (nb !== b || BLOCKS[b].cutout))).toBe(true);
 
-      const faceLevels = q.corners.map((c) => {
-        if (BLOCKS[b].transparent) return 3;
+      // Per corner: AO level, and sunlight and block light averaged over the block in front and
+      // the three around the corner that aren't opaque (the diagonal only if a side is open),
+      // 0–15 as 0–255; a block that gives light shows at least that. Water and glass: flat.
+      const glows = BLOCKS[b].light * 17;
+      const faceCorners = q.corners.map((c): [number, number, number] => {
+        const lf = world.getLight(...front);
+        if (BLOCKS[b].transparent) return [3, (lf >> 4) * 17, Math.max((lf & 15) * 17, glows)];
         const s1 = add(front, a1, Math.sign(c[a1] - centre[a1]));
         const s2 = add(front, a2, Math.sign(c[a2] - centre[a2]));
+        const diagonal = add(s1, a2, Math.sign(c[a2] - centre[a2]));
         const side1 = opaqueAt(world, s1);
         const side2 = opaqueAt(world, s2);
-        const corner = opaqueAt(world, add(s1, a2, Math.sign(c[a2] - centre[a2])));
-        return side1 && side2 ? 0 : 3 - side1 - side2 - corner;
+        const corner = opaqueAt(world, diagonal);
+        const samples = [front];
+        if (!side1) samples.push(s1);
+        if (!side2) samples.push(s2);
+        if (!corner && !(side1 && side2)) samples.push(diagonal);
+        const ls = samples.map((p) => world.getLight(...p));
+        const average = (f: (l: number) => number) => Math.round((ls.reduce((s, l) => s + f(l), 0) * 17) / ls.length);
+        return [side1 && side2 ? 0 : 3 - side1 - side2 - corner, average((l) => l >> 4), Math.max(average((l) => l & 15), glows)];
       });
+      const faceLevels = faceCorners.map((k) => k[0]);
+      const faceLights = faceCorners.map((k) => [k[1], k[2]]);
       if (levels) expect(faceLevels).toEqual(levels);
+      if (lights) expect(faceLights).toEqual(lights);
       levels = faceLevels;
+      lights = faceLights;
 
-      // Directional shade × AO, then sunlight and block light, each 0–15 as 0–255.
-      const light = world.getLight(...front);
-      const expected = faceLevels.map((l) => [Math.round(SHADE[dir] * TUNING.render.ao[l] * 255), (light >> 4) * 17, (light & 15) * 17]);
+      // Directional shade × AO, sunlight, block light.
+      const expected = faceCorners.map(([l, sun, glow]) => [Math.round(SHADE[dir] * TUNING.render.ao[l] * 255), sun, glow]);
       expect(q.colours).toEqual(expected);
     }
     const l = levels!;
@@ -122,6 +140,10 @@ function checkAgainstWorld(world: World, m: ChunkMesh): void {
     expect(Math.abs(i - j)).toBe(2);
     const other = i === 0 || i === 2 ? [1, 3] : [0, 2];
     expect(l[i] + l[j]).toBeLessThanOrEqual(l[other[0]] + l[other[1]]);
+    if (l[i] + l[j] === l[other[0]] + l[other[1]]) {
+      const bright = lights!.map(([sun, glow]) => Math.max(sun, glow));
+      expect(bright[i] + bright[j]).toBeLessThanOrEqual(bright[other[0]] + bright[other[1]]);
+    }
   }
 }
 

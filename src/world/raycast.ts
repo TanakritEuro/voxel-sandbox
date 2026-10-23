@@ -17,7 +17,7 @@ export interface RayHit {
   distance: number;
 }
 
-/** First non-passable block along the ray from `origin` in unit direction `dir`, within `maxDistance`. */
+/** First targetable block (solid, or a torch) along the ray from `origin` in unit direction `dir`, within `maxDistance`. */
 export function raycast(
   world: World,
   origin: { x: number; y: number; z: number },
@@ -46,7 +46,7 @@ export function raycast(
   let t = 0;
   while (t <= maxDistance) {
     const block = world.getBlock(x, y, z);
-    if (!BLOCKS[block].passable) return { x, y, z, block, nx, ny, nz, distance: t };
+    if (BLOCKS[block].targetable) return { x, y, z, block, nx, ny, nz, distance: t };
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {
       x += stepX;
       t = tMaxX;

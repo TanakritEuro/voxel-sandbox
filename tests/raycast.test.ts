@@ -37,4 +37,11 @@ describe('raycast', () => {
     expect(raycast(world, { x: 5.5, y: 40.5, z: 2.5 }, { x: 0, y: 0, z: 1 }, 5)).toBeNull();
     expect(raycast(world, { x: 5.5, y: 40.5, z: 2.5 }, { x: 0, y: 0, z: 1 }, 8)!.z).toBe(10);
   });
+
+  it('stops at a torch, which can be walked through but is targetable', () => {
+    const world = worldWith([[5, 40, 10]]);
+    world.setBlock(5, 40, 6, Block.Torch);
+    const hit = raycast(world, { x: 5.5, y: 40.5, z: 2.5 }, { x: 0, y: 0, z: 1 }, 20)!;
+    expect([hit.z, hit.block]).toEqual([6, Block.Torch]);
+  });
 });

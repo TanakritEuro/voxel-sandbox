@@ -64,6 +64,8 @@ export function meshCulled(padded: Uint8Array, cx: number, cy: number, cz: numbe
         const b = at(x, y, z);
         if (b === Block.Air) continue;
         const info = BLOCKS[b];
+        // Torches are their own small boxes, not faces of the grid.
+        if (info.shape !== 'cube') continue;
         const out = info.transparent ? transparent : opaque;
         const wx = x0 + x - 1;
         const wy = y0 + y - 1;

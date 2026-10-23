@@ -1,9 +1,10 @@
 // The block textures on the GPU and the material that draws chunks with them: one texture
-// array, a layer per block texture, sampled by a small shader (vertex shade × texture, alpha
-// test for leaves, Three.js fog). Hotbar icons are drawn from the same pixels. `?light` draws
+// array, a layer per block texture, sampled by a small shader (vertex shade × light ×
+// texture, alpha test for leaves, Three.js fog). Hotbar icons are drawn from the same pixels. `?light` draws
 // the light the mesher put in the vertices instead of the textures, for checking it.
 
 import * as THREE from 'three';
+import { TUNING } from '../config';
 import { makeTextures, TEXTURE_NAMES, TEXTURE_SIZE, type TextureName, textureLayer } from '../world/textures';
 
 const vertexShader = /* glsl */ `
@@ -33,6 +34,10 @@ const fragmentShader = /* glsl */ `
   precision highp sampler2DArray;
   uniform sampler2DArray map;
   uniform float alphaTest;
+  uniform float lightFalloff;
+  uniform vec3 blockLightColour;
+  /** How bright the sky is (1 by day); multiplies sunlight, not block light. */
+  uniform float daylight;
   varying vec3 vShade;
   varying vec2 vLight;
   varying vec2 vUv;
@@ -48,6 +53,15 @@ const fragmentShader = /* glsl */ `
     #ifdef LIGHT_VIEW
       // The brighter of sunlight and block light as grey, shaded so shapes still read.
       texel.rgb = vec3(pow(max(vLight.x, vLight.y), 2.2));
+    #else
+      // Light levels (smoothly interpolated, 0–15) to brightness: each level lightFalloff times
+      // the one above, rescaled so level 0 is black. In display terms like the shade, so squared
+      // towards linear the same way.
+      vec2 level = vLight * 15.0;
+      float darkest = pow(lightFalloff, 15.0);
+      vec2 bright = (pow(vec2(lightFalloff), 15.0 - level) - darkest) / (1.0 - darkest);
+      vec3 lit = max(vec3(bright.x * daylight), bright.y * blockLightColour);
+      texel.rgb *= pow(lit, vec3(2.2));
     #endif
     #ifdef OPAQUE
       // Holes are cut by the alpha test; what's left is solid, so alpha 1 (see the blending below).
@@ -80,7 +94,15 @@ export function createBlockMaterial(
   options: { alphaTest: number; transparent: boolean; lightView?: boolean },
 ): THREE.ShaderMaterial {
   // Merged copies the fog uniforms; the texture is set after, since merging would clone it.
-  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { alphaTest: { value: options.alphaTest } }]);
+  const uniforms = THREE.UniformsUtils.merge([
+    THREE.UniformsLib.fog,
+    {
+      alphaTest: { value: options.alphaTest },
+      lightFalloff: { value: TUNING.render.lightFalloff },
+      blockLightColour: { value: new THREE.Vector3(...TUNING.render.blockLightColour) },
+      daylight: { value: 1 },
+    },
+  ]);
   uniforms.map = { value: map };
   return new THREE.ShaderMaterial({
     uniforms,

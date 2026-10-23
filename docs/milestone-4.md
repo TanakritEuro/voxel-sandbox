@@ -1,6 +1,6 @@
 # Milestone 4 plan: light and saving
 
-## Status: in progress (step 1 done; smooth lighting next)
+## Status: in progress (steps 1–2 done; light on edits next)
 
 Approved 2026-10-23 as proposed: caves fully dark without torches, crystal ore glows faintly
 (light 6), torches on the floor only, a 20-minute day, automatic saving, `fake-indexeddb` for
@@ -72,6 +72,65 @@ numbers were taken, so the deployed Milestone 3 build was measured again alongsi
 Light costs about 0.9 ms of worker time per column (a quarter more than generating it), and
 under 0.3 ms of main thread per column. Merging loses 5 % to faces whose light differs; per
 corner smoothing in step 2 will lose more in shade and caves.
+
+**Step 2 (smooth lighting, torch and lamp).**
+- **Smooth lighting in the mesher:**
+  - Each corner of a face averages the light of the block in front of it and the three
+    around that corner (the blocks AO looks at). Opaque ones are left out, and the diagonal
+    one too when both sides are opaque. Sunlight and block light are averaged separately.
+  - Two more 32 × 32 masks hold a face's four corner values, a byte each. Faces merge only
+    where block, AO and all eight light bytes match.
+  - Where AO doesn't decide which diagonal to split a quad along, light does.
+  - Blocks that give light show at least that light on their own faces: lamps glow in the
+    dark, and crystal ore glows faintly.
+  - Water and glass keep flat light, as they keep no AO.
+- **Shader:**
+  - Each light level is 0.8× as bright as the one above, rescaled so level 0 is black (caves
+    fully dark, as approved). This is worked out per pixel from the interpolated levels, so
+    gradients are smooth.
+  - Brightness is the larger of sunlight × `daylight` (a uniform, 1 until step 4) and block
+    light tinted warm (`TUNING.render.blockLightColour`). The falloff is
+    `TUNING.render.lightFalloff`.
+- **New blocks:**
+  - *Torch* (light 14): a 2 × 10 × 2-sixteenths box on the floor, five faces, never merged.
+    Its side texture has one colour per row (flame, then stick), so stretching it across the
+    narrow face loses nothing. The hotbar uses an icon texture of its own.
+    - It can be walked through but is targetable: the raycast stops at `targetable` blocks
+      now, not at non-passable ones.
+    - It can only be placed in air on top of an opaque block, and goes when that block is
+      broken.
+  - *Lamp* (light 15): a full block of warm panes in a dark frame.
+  - *Hotbar:* torch and lamp take the sand and leaves slots.
+- **Placed lights don't light their surroundings yet.** A torch or lamp you place shows its
+  own glow but lights nothing around it until edits update light in step 3. Torches and
+  lamps in generated chunks (none so far) and crystal ore are lit at generation.
+- **Checked in the pane:**
+  - The cave at `?at=-48,71` fades smoothly from the opening into black.
+  - A placed lamp glows warm in the dark tunnel, and a placed torch stands on the floor with
+    its flame on top.
+  - In the forest, shade falls under the canopy.
+  - No console errors.
+- **Tests (3 new, 125 in all):**
+  - The greedy mesher's world check now works out each corner's smooth light on its own
+    (samples, average, glow) for every quad on terrain and block soups. Quads must agree
+    corner by corner, so differently lit faces never merge. The diagonal follows light when
+    AO ties.
+  - A torch's box, light and texture.
+  - A lamp at full glow with no light around it.
+  - The raycast stops at a torch.
+  - The culled reference mesher leaves torches out, as they aren't grid faces.
+
+| bench | step 1 | step 2 |
+| --- | --- | --- |
+| greedy mesh | 915 ms, 2225k triangles, 97.6 MB | 910 ms, 2321k triangles (+4 %), 101.8 MB |
+| seen from spawn | 1819k | 1910k |
+
+Against Milestone 3, smooth light costs 10 % more triangles (2118k → 2321k) and no mesh time
+that the bench can tell apart.
+
+`?autofly` at radius 8 (production build, the machine quieter than in step 1): first view in
+front 1.45 s, all 2.07 s; main thread p50 2.0, p99 5.4, max 6.3 ms; no frame over 20 ms; no
+holes; 468k triangles drawn of 3386k; meshes 148.5 MB, light 25.5 MB.
 
 ## Scope decisions
 

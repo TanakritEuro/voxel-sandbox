@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { meshChunk } from '../src/mesh/mesher';
-import { paddedBlocks } from '../src/mesh/padding';
+import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { Block } from '../src/world/blocks';
 import { CHUNK_VOLUME } from '../src/world/coords';
+import { textureLayer } from '../src/world/textures';
 import { Chunk, World } from '../src/world/world';
 
 /** A world with empty (all-air) chunks at the given chunk coordinates. */
@@ -64,6 +65,48 @@ describe('mesher', () => {
       const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
       const out = p[0].map((v, a) => v - centre[a]);
       expect(n[0] * out[0] + n[1] * out[1] + n[2] * out[2]).toBeGreaterThan(0);
+    }
+  });
+
+  it('draws a torch as a small stick on the floor, lit by itself, without hiding the floor', () => {
+    const world = emptyWorld([0, 1, 0]);
+    for (let z = 0; z < 32; z++) for (let x = 0; x < 32; x++) world.setBlock(x, 40, z, Block.Stone);
+    const floor = mesh(world, 0, 1, 0).quads;
+    world.setBlock(5, 41, 7, Block.Torch);
+    const m = meshChunk(paddedBlocks(world, 0, 1, 0), 0, 1, 0, paddedLight(world, 0, 1, 0));
+    // Five faces of its own (no bottom), and the floor still whole beneath it.
+    expect(m.quads).toBe(floor + 5);
+    const torch: number[][] = [];
+    for (let v = 0; v < m.opaque.positions.length / 3; v++) {
+      const p = [...m.opaque.positions.subarray(v * 3, v * 3 + 3)];
+      if (p.some((c) => !Number.isInteger(c))) torch.push([v, ...p]);
+    }
+    // Every corner of its box is inside the block (x and z between 7/16 and 9/16).
+    expect(torch.length).toBe(5 * 4);
+    const xs = torch.map((t) => t[1]);
+    const ys = torch.map((t) => t[2]);
+    expect(Math.min(...xs)).toBeCloseTo(5 + 7 / 16);
+    expect(Math.max(...xs)).toBeCloseTo(5 + 9 / 16);
+    expect(Math.min(...ys)).toBe(41);
+    expect(Math.max(...ys)).toBeCloseTo(41 + 10 / 16);
+    // Its own light shows on it (14 as 0–255), its texture spans each face.
+    for (const [v] of torch) {
+      expect(m.opaque.colors[v * 4 + 2]).toBe(14 * 17);
+      expect([textureLayer('torch'), textureLayer('torch_top')]).toContain(m.opaque.uvl[v * 4 + 2]);
+      expect(m.opaque.uvl[v * 4]).toBeLessThanOrEqual(1);
+      expect(m.opaque.uvl[v * 4 + 1]).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('shows a lamp at full block light on its own faces, even in the dark', () => {
+    const world = emptyWorld([0, 1, 0]);
+    world.setBlock(5, 40, 5, Block.Lamp);
+    // Light was never worked out in this world: all dark around it.
+    const m = meshChunk(paddedBlocks(world, 0, 1, 0), 0, 1, 0, paddedLight(world, 0, 1, 0));
+    expect(m.quads).toBe(6);
+    for (let v = 0; v < m.opaque.colors.length / 4; v++) {
+      expect(m.opaque.colors[v * 4 + 1]).toBe(0);
+      expect(m.opaque.colors[v * 4 + 2]).toBe(255);
     }
   });
 });

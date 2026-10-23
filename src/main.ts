@@ -117,8 +117,8 @@ let selected = 0;
 let target: RayHit | null = null;
 const mining = new Mining();
 
-/** Each hotbar block shown by its side texture. */
-const hotbarIcons = HOTBAR.map((b) => textureIcon(BLOCKS[b].textures.side));
+/** Each hotbar block shown by its icon, or else its side texture. */
+const hotbarIcons = HOTBAR.map((b) => textureIcon(BLOCKS[b].icon ?? BLOCKS[b].textures.side));
 
 function renderHotbar(): void {
   hotbarEl.innerHTML = HOTBAR.map(
@@ -134,14 +134,20 @@ function edit(x: number, y: number, z: number, block: Block): void {
 /** Breaking (hold the left button) and placing (a click of the right one), once per frame. */
 function editing(dt: number): void {
   const broken = mining.update(target, input.isHeld('Mouse0'), dt);
-  if (broken) edit(broken.x, broken.y, broken.z, Block.Air);
+  if (broken) {
+    edit(broken.x, broken.y, broken.z, Block.Air);
+    // A torch goes with the block it stood on.
+    if (world.getBlock(broken.x, broken.y + 1, broken.z) === Block.Torch) edit(broken.x, broken.y + 1, broken.z, Block.Air);
+  }
   if (input.take('Mouse2') && target) {
     const x = target.x + target.nx;
     const y = target.y + target.ny;
     const z = target.z + target.nz;
     const block = HOTBAR[selected];
-    // Not inside the player (water and other passable blocks can go there).
-    if (BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) edit(x, y, z, block);
+    // Not inside the player (water and other passable blocks can go there); torches only on
+    // top of a solid block, in air.
+    const torchFits = BLOCKS[world.getBlock(x, y - 1, z)].opaque && world.getBlock(x, y, z) === Block.Air;
+    if (block === Block.Torch ? torchFits : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) edit(x, y, z, block);
   }
   cracks.show(mining.target, mining.stage);
 }

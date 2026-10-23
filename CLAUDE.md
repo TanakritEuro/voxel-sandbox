@@ -49,7 +49,8 @@ outline, hold the left button to break (time by block `hardness`, with cracks), 
 place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: visibility culling is per chunk and coarse, so many cave walls are still meshed and drawn; no lighting,
+Known limits, each fixed by a milestone below: visibility culling is per chunk and coarse, so many cave walls are still meshed and drawn; light
+doesn't follow edits yet (Milestone 4 step 3: a placed torch glows but lights nothing), no day and night,
 and edits are lost on reload.
 
 ## Architecture
@@ -119,7 +120,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
   Uint16 indices),
-  `mesher.ts` (greedy mesher with AO and texture coordinates, opaque and transparent passes), `culled.ts` (the
+  `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — Three.js meshes per chunk. `blockMaterial.ts` — the texture
   array, the chunk shader, hotbar icons. `water.ts` — the underwater fog.
