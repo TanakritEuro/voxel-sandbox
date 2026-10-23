@@ -3,9 +3,9 @@
 ## Status: built; waiting for the laptop measurement and your playtest
 
 All five steps are in. On the dev machine the radius 8 budget holds with room to spare
-(main thread p99 at most 3.7 ms, no frame over 20 ms, even with one worker); what's left is
-checking that on your laptop
-(`?autofly`, now at radius 8 by default) and trying edits by hand.
+(main thread p99 at most 3.7 ms, no frame over 20 ms, even with one worker); what's left
+is checking that on your laptop (`?autofly`, now at radius 8 by default) and trying
+edits by hand.
 
 ### Before and after (radius 8, dev machine, 12 threads)
 
