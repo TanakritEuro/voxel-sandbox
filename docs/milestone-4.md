@@ -1,6 +1,6 @@
 # Milestone 4 plan: light and saving
 
-## Status: in progress (steps 1–6 done; notes and playtest next)
+## Status: built; waiting for your playtest
 
 Approved 2026-10-23 as proposed: caves fully dark without torches, crystal ore glows faintly
 (light 6), torches on the floor only, a 20-minute day, automatic saving, `fake-indexeddb` for
@@ -11,7 +11,78 @@ block), smooth lighting in the mesher, a day / night cycle; edited chunks saved 
 (RLE), named worlds with a world-select menu. Playable after every step, and still inside
 the budget (60 fps on your laptop at radius 8, no frame over 20 ms flying).
 
-## Results so far
+All seven steps are in:
+- sunlight and block light per block, worked out with generation, across column borders and
+  after every edit;
+- smooth lighting;
+- torches, lamps and glowing crystal ore;
+- a 20-minute day with dawn, dusk and night;
+- saving to IndexedDB;
+- named worlds with a world list and a pause menu.
+
+There are 153 tests, and light is checked block for block against an independent
+reference. The game is live at https://tanakriteuro.github.io/voxel-sandbox/.
+
+### Before and after
+
+Measured back to back on 2026-10-26, on this machine (12 threads, the pane at 60 Hz). The
+end of Milestone 3 (`97ea61b`) was built alongside so both ran under the same conditions;
+`?autofly` alternated M3, M4, M3, M4.
+
+| | end of Milestone 3 | end of Milestone 4 |
+| --- | --- | --- |
+| bench: generate (253 columns) | 526 ms | 535 ms |
+| bench: light in the worker, borders on the main thread | | 180 ms (0.71 a column), 58 ms (0.23 a column) |
+| bench: greedy mesh | 609 ms, 2118k triangles, 92.9 MB | 772 ms (+27 %), 2321k triangles (+10 %), 101.8 MB |
+| bench: triangles seen from spawn | 1721k | 1910k |
+| bench: worst edit (a light near a chunk corner) | | about 10 ms, 1 ms of it light, 8 chunks remeshed |
+| bench: a saved chunk | | 1.8 KB on average (5.5 % of raw); encode 0.06 ms |
+| `?autofly` main thread p50 / p99 / max | 2.1 / 5.3 / 6.9 ms, 2.0 / 5.3 / 6.6 ms | 2.2 / 5.6 / 6.7 ms, 2.2 / 5.5 / 6.4 ms |
+| `?autofly` frames over 20 ms, holes | 0, 0 | 0, 0 |
+| `?autofly` first view (in front / all) | 1.11 / 1.47 s, 1.17 / 1.49 s | 1.58 / 2.13 s, 1.42 / 1.89 s |
+| `?autofly` triangles drawn / in the scene | 406k / 3030k | 468k / 3386k |
+| memory after the flight | chunks 40.8, meshes 132.9 MB; JS heap 196–226 MB | chunks 40.8, light 25.5, meshes 148.5 MB; JS heap 243–250 MB |
+| `?autofly&workers=1`: first view, holes | 5.05 / 7.60 s; up to 2 chunks in 6 of 30 s | 4.97 / 7.52 s; up to 2 chunks in 6 of 30 s |
+
+What light costs:
+- **Meshing:** about a quarter more mesh time and a tenth more triangles, because faces with
+  different corner light don't merge.
+- **Workers:** about a third more work per column (light after generation).
+- **Main thread:** a quarter of a millisecond per arriving column for the borders, and about
+  0.3 ms more per frame.
+- **Memory:** about 40 MB more: light arrays (most chunks share `FULL_SUN` or `DARK`) and
+  bigger meshes.
+- **First view:** about 0.4 s later.
+- **What doesn't change:** frames stay where they were. Nothing goes over 20 ms, there are no
+  holes, and p99 is still under 6 ms. With one worker the two milestones load the same, so
+  light isn't what limits a machine with few cores.
+
+## Playtest questions
+
+Open https://tanakriteuro.github.io/voxel-sandbox/, make a world (or play "My world" if you
+saved one in step 5), and press Play. The torch is on 4 and the lamp on 7.
+
+1. **Laptop performance.** `?autofly&stats` once more: frames over 20 ms, main thread p99,
+   holes, memory. Then place a few torches next to each other in a cave, near where two
+   chunks meet: does any placement stutter? `?stats` shows "last edit … ms".
+2. **Caves.** Fully dark without light, as agreed. Too dark to find your way back, or right?
+   Is crystal's faint glow (6) enough to notice, or should it be brighter?
+3. **Torches and lamps.** Is a torch's reach right (14, fading over about 13 blocks)? Is the
+   warm colour right, or too orange? Are torches the right size? Is placing them only on the
+   floor too limiting?
+4. **Smooth light and shade.** Under trees, inside overhangs, in caves: any light that looks
+   wrong, such as dark seams, bright spots or banding where chunks meet?
+5. **Day and night.** Is a 20-minute day right? Night is dark at 0.2: `?time=0` on a saved
+   world (or `?seed=20261022&time=0`) shows midnight, `?daylength=60` a whole day in a
+   minute. Brighter nights, as 0.3 would give? Do dawn and dusk (peach) look good?
+6. **Water.** Deep water gets dark (light loses 2 a block). Too dark under the sea?
+7. **Saving.** Build something, close the tab, open the site again: is everything there,
+   and are you where you were? Anything missing after flying far away and back?
+8. **World list and pause.** Is anything awkward: making, renaming, deleting, the pause
+   menu, getting back to the list? Would you want the seed shown in the game, or a way to
+   copy it?
+
+## Results by step
 
 **Step 1 (light data).**
 - **`world/light.ts`, in the worker:** `lightColumn` lights a generated column on its own.
@@ -125,8 +196,10 @@ corner smoothing in step 2 will lose more in shade and caves.
 | greedy mesh | 915 ms, 2225k triangles, 97.6 MB | 910 ms, 2321k triangles (+4 %), 101.8 MB |
 | seen from spawn | 1819k | 1910k |
 
-Against Milestone 3, smooth light costs 10 % more triangles (2118k → 2321k) and no mesh time
-that the bench can tell apart.
+Against Milestone 3, smooth light costs 10 % more triangles (2118k → 2321k). Mesh time looked
+unchanged here, but that compared with step 1, which already had flat light in the key. Measured
+back to back against Milestone 3 at the end of the milestone, meshing costs 27 % more (see
+"Before and after").
 
 `?autofly` at radius 8 (production build, the machine quieter than in step 1): first view in
 front 1.45 s, all 2.07 s; main thread p50 2.0, p99 5.4, max 6.3 ms; no frame over 20 ms; no

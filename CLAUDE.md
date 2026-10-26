@@ -26,9 +26,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1–3 built (`docs/milestone-1.md` to `docs/milestone-3.md`), waiting for playtests
-(the laptop measurement is in: inside the budget). Milestone 4 in progress (`docs/milestone-4.md`):
-light is in (sunlight and block light, smooth, following edits; torches and lamps), day and night, and saving
+Milestones 1–4 built (`docs/milestone-1.md` to `docs/milestone-4.md`), waiting for playtests
+(Milestone 3's laptop measurement is in: inside the budget). Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
+saving
 (edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
 A seeded world of four biomes
 (`world/biomes.ts`: plains, forest, desert, snowy mountains from temperature and humidity
