@@ -27,7 +27,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestones 1–4 built (`docs/milestone-1.md` to `docs/milestone-4.md`), waiting for playtests
-(Milestone 3's laptop measurement is in: inside the budget). Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
+(Milestone 3's laptop measurement is in: inside the budget). Milestone 5 planned (`docs/milestone-5.md`), waiting for approval. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
 saving
 (edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
 A seeded world of four biomes
