@@ -1,6 +1,6 @@
 # Milestone 4 plan: light and saving
 
-## Status: in progress (steps 1–5 done; named worlds next)
+## Status: in progress (steps 1–6 done; notes and playtest next)
 
 Approved 2026-10-23 as proposed: caves fully dark without torches, crystal ore glows faintly
 (light 6), torches on the floor only, a 20-minute day, automatic saving, `fake-indexeddb` for
@@ -282,6 +282,55 @@ queue.
 
 Encoding happens on the main thread when chunks are written: well under a millisecond for
 the few chunks an edit touches.
+
+**Step 6 (named worlds and menus).**
+- **`main.ts` is now a small router:**
+  - `?world=<id>` plays a saved world;
+  - `?seed=`, `?at=` or `?autofly` play an unsaved one;
+  - anything else shows the world list.
+
+  The game moved to `game.ts`, loaded with a dynamic import only when a world is played, so
+  the list comes up without Three.js or workers. Every world starts in a fresh page: Play
+  loads `?world=<id>`, and quitting loads the page without it.
+- **The world list (`ui/worldList.ts`):**
+  - The saved worlds, last played first, each with its name, seed and when it was last
+    played ("5 min ago").
+  - Play (or double-click), New world, Rename, Delete. Delete asks first, and removes the
+    world's chunks with it.
+  - *New world:* a name (free default "New world", "New world 2"…) and a seed. A number is
+    used as it is, any other text is hashed (the same word, the same world), and empty picks
+    one at random. The world is made and played at once.
+  - With no worlds, the list opens on New world. Where IndexedDB is unavailable it says so
+    and offers to play without saving.
+  - Step 5's world turns up in the list as "My world".
+- **The pause menu (`ui/pauseMenu.ts`)** replaces the old help box. It shows whenever the mouse
+  isn't captured (at the start and after Esc), titled with the world's name:
+  - Play captures the mouse.
+  - "Save and quit to the world list" writes the edited chunks and the record, then goes
+    back.
+  - The keys are listed underneath.
+  - Unsaved worlds say they aren't kept. `?autofly` never shows the menu.
+- **While paused:**
+  - The player and the clock stand still, and the status line says "paused". The world
+    keeps loading.
+  - Keys only count with the mouse captured, and anything held or pressed is forgotten when
+    it's released, so nothing typed in a menu walks the player afterwards.
+- **`save/worlds.ts`:** the pure rules (unsaved URLs, seeds from text, new ids and names, last
+  played first, "ago"), tested.
+- **Checked in the pane (production build):**
+  - The list showed "My world".
+  - New world "Hills test" with the seed "hills" (4022750299) was made and opened behind
+    its pause menu.
+  - Play hid the menu and W walked; releasing the mouse brought the menu back, and W then
+    did nothing.
+  - Save and quit returned to the list with both worlds, the new one first.
+  - Rename to "Rolling hills" took effect. Delete asked first, then left only "My world"
+    and its chunk in IndexedDB.
+  - `?seed=5` skipped the list with an "Unsaved world" pause menu.
+  - `?autofly=3` flew with no menu (main thread p99 5.1 ms).
+  - No console errors.
+- **Tests (4 new, 153 in all):** the world rules. The menus are DOM, checked by hand in the pane.
+  Store renames and deletes were already tested in step 5.
 
 ## Scope decisions
 

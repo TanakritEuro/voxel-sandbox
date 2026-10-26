@@ -22,10 +22,7 @@ export class Input implements Controls {
   private readonly pressed = new Set<string>();
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    canvas.addEventListener('click', () => {
-      // Some embedded browsers refuse; say so rather than leave an unhandled rejection.
-      if (!this.locked) canvas.requestPointerLock().catch((e: Error) => console.warn('Pointer lock refused:', e.message));
-    });
+    canvas.addEventListener('click', () => this.lock());
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
       const s = TUNING.fly.mouseSensitivity;
@@ -33,6 +30,8 @@ export class Input implements Controls {
       this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch - e.movementY * s));
     });
     window.addEventListener('keydown', (e) => {
+      // Keys count only with the mouse captured (otherwise a menu is up).
+      if (!this.locked) return;
       // Space would scroll; Ctrl+S, D and A (save, bookmark, select all) would fire while
       // sprinting. Ctrl+W can't be stopped: browsers keep it for closing the tab.
       if (e.code === 'Space' || (e.ctrlKey && ['KeyS', 'KeyD', 'KeyA'].includes(e.code))) e.preventDefault();
@@ -51,8 +50,16 @@ export class Input implements Controls {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('pointerlockchange', () => {
       if (this.locked) return;
-      for (const code of [...this.held]) if (code.startsWith('Mouse')) this.held.delete(code);
+      this.held.clear();
+      this.pressed.clear();
     });
+  }
+
+  /** Capture the mouse (from a click). */
+  lock(): void {
+    // Some embedded browsers refuse, and browsers refuse for a moment after Esc; say so rather
+    // than leave an unhandled rejection.
+    if (!this.locked) this.canvas.requestPointerLock().catch((e: Error) => console.warn('Pointer lock refused:', e.message));
   }
 
   get locked(): boolean {

@@ -29,7 +29,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 Milestones 1–3 built (`docs/milestone-1.md` to `docs/milestone-3.md`), waiting for playtests
 (the laptop measurement is in: inside the budget). Milestone 4 in progress (`docs/milestone-4.md`):
 light is in (sunlight and block light, smooth, following edits; torches and lamps), day and night, and saving
-(edited chunks in IndexedDB, RLE; the player and time of day). A seeded world of four biomes
+(edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
+A seeded world of four biomes
 (`world/biomes.ts`: plains, forest, desert, snowy mountains from temperature and humidity
 noise, heights blended across borders; `world/generate.ts`: surface layers by biome and
 slope, beaches, sea floors, water to sea level 62; `world/caves.ts`: tunnels and caverns from
@@ -50,8 +51,7 @@ outline, hold the left button to break (time by block `hardness`, with cracks), 
 place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: visibility culling is per chunk and coarse, so many cave walls are still meshed and drawn; one
-saved world only, until the world list (Milestone 4 step 6).
+Known limits, each fixed by a milestone below: visibility culling is per chunk and coarse, so many cave walls are still meshed and drawn.
 
 ## Architecture
 
@@ -132,15 +132,20 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   edits on the main thread; reads a column's saved chunks before generating it.
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory), `saver.ts` (`WorldSaver`: which chunks a world
-  has, writing edited ones soon after an edit and before unloading, the player and time).
+  has, writing edited ones soon after an edit and before unloading, the player and time),
+  `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
 - `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`),
   `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
   `pool.ts` (`WorkerPool`).
-- `src/input.ts` — keys and mouse buttons held, presses kept until taken, mouse look and
-  pointer lock.
+- `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
+  until taken, mouse look and pointer lock.
 - `src/player.ts` — the player: physics at a fixed step, interpolated camera, fly toggle,
   waiting for the ground to load; `autopilot` for `?autofly`.
-- `src/main.ts` — entry point: opening the world, editing, HUD, frame loop, autosave.
+- `src/main.ts` — entry point: the world list, or the game for `?world=<id>` (or an unsaved
+  world). `src/game.ts` — the game: opening the world, editing, HUD, frame loop, pause,
+  autosave.
+- `src/ui/` — `worldList.ts` (play, new, rename, delete), `pauseMenu.ts` (play, save and quit,
+  keys), `dom.ts` (small DOM helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
@@ -149,7 +154,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `bench/` — `npm run bench`.
 - `tests/` — world, generation, padding, mesher (greedy against culled, AO and light against
   the world), light (against a whole-area reference), raycast, physics, player, sky, RLE, store
-  and saving tests (headless; IndexedDB through `fake-indexeddb`).
+  saving and world-list rule tests (headless; IndexedDB through `fake-indexeddb`).
 
 ## Conventions
 

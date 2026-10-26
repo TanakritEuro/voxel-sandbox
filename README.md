@@ -7,7 +7,9 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 and click to play.
+Open http://localhost:5173, pick a world or make a new one (a name, and a seed: a number, any
+word, or nothing for a random one), and press Play. Worlds are saved in your browser as you
+play: what you build, where you are and the time of day.
 
 | Input | Action |
 | --- | --- |
@@ -20,10 +22,14 @@ Open http://localhost:5173 and click to play.
 | Left button (hold) | Break block (stone takes longest) |
 | Right click | Place block |
 | 1–9 or wheel | Pick a block |
-| Esc | Release the mouse |
+| Esc | Pause (play on, or save and go back to the world list) |
 
-Add `?seed=123` to the URL for a different world, `?at=x,z` to start somewhere else (with
-the default seed: desert `?at=384,0`, snowy mountains `?at=0,192`, forest `?at=-121,-226`).
+Torches (4) and lamps (7) light caves and nights. A day lasts 20 minutes.
+
+To look around without the world list or saving: `?seed=123` plays that world, `?at=x,z`
+starts somewhere else (with the default seed: desert `?at=384,0`, snowy mountains
+`?at=0,192`, forest `?at=-121,-226`, a cave `?at=-48,71`). `?time=0.5` holds the time of day
+(0 midnight, 0.5 noon), `?daylength=60` makes a day last a minute, `?light` shows light as grey.
 
 Measuring: `?stats` shows the performance overlay (F3 toggles it), `?autofly` flies a fixed
 path at sprint speed for 30 s and prints a frame-time report, `?radius=12` sets the view
