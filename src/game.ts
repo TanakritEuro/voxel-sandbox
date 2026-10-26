@@ -17,9 +17,10 @@ import { textureIcon } from './render/blockMaterial';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
 import { Clouds } from './render/clouds';
+import { blendFog, easeFog, fogColour } from './render/fog';
 import { clock, skyAt } from './render/sky';
 import { SkyDome } from './render/skyDome';
-import { WaterView } from './render/water';
+import { WaterView, waterFlow } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import { Block, BLOCKS, HOTBAR } from './world/blocks';
@@ -84,6 +85,8 @@ const skyDome = new SkyDome(TUNING.sky.sunTilt);
 scene.add(skyDome.group);
 const clouds = new Clouds(record.seed, TUNING.sky.cloudCover, TUNING.sky.cloudHeight, TUNING.sky.cloudCell);
 scene.add(clouds.mesh);
+/** The fog where the player is (`fog.ts`), eased towards the biomes there each frame. */
+let fog: ReturnType<typeof blendFog> | null = null;
 // `?light` shows light as grey instead of textures.
 const chunks = new ChunkRenderer(params.has('light'));
 scene.add(chunks.group);
@@ -247,8 +250,15 @@ function frame(now: number): void {
   if (!timeHeld && !paused()) time = (time + dt / TUNING.day.length) % 1;
   const sky = skyAt(time);
   chunks.setSunlight(sky.sunlight);
-  waterView.update(player.eyeInWater, sky.colour, sky.daylight);
-  skyDome.update(camera, sky, TUNING.sky.glow, player.eyeInWater);
+  chunks.setWaterFlow(waterFlow(now / 1000, TUNING.water.flow));
+  // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).
+  const air = blendFog(world.generator.climate.weights(camera.position.x, camera.position.z));
+  fog = fog ? easeFog(fog, air, dt, TUNING.fog.ease) : air;
+  const horizon = fogColour(sky.colour, fog, sky.daylight);
+  const distance = TUNING.view.radius * CHUNK_SIZE;
+  waterView.setRange(distance * fog.start, distance * 0.95);
+  waterView.update(player.eyeInWater, horizon, sky.daylight);
+  skyDome.update(camera, { ...sky, colour: horizon }, TUNING.sky.glow, player.eyeInWater);
   clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, TUNING.view.radius * CHUNK_SIZE, player.eyeInWater);
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
@@ -286,7 +296,6 @@ function applySettings(s: Settings): void {
     loader.radiusChanged();
   }
   const distance = TUNING.view.radius * CHUNK_SIZE;
-  waterView.setRange(distance * TUNING.sky.fogStartFraction, distance * 0.95);
   camera.far = distance * 1.5;
   camera.fov = s.fov;
   camera.updateProjectionMatrix();

@@ -1,6 +1,6 @@
 # Milestone 5 plan: polish
 
-## Status: in progress (steps 1–2 done; fog by biome and water next)
+## Status: in progress (steps 1–3 done; sounds next)
 
 Approved 2026-10-26 as proposed: blocky clouds at y = 192, a creative inventory with the
 hotbar saved per world, the settings as listed with view distance up to 16, a held block
@@ -116,6 +116,52 @@ easier.
   - clouds: the same for a seed and different for another, covering the share asked for, no
     seam across the repeat (it changes no more there than inside), clumps rather than salt
     and pepper, and the drift.
+
+**Step 3 (fog by biome, animated water).**
+- **`render/fog.ts`** (pure):
+  - Each biome has a tint, how much of it shows by day, and where the fog starts
+    (`TUNING.fog`):
+    - plains: none, at 0.55;
+    - forest: a slight green, 0.3, at 0.5;
+    - desert: a sandy haze, 0.6, at 0.35;
+    - mountains: pale cold blue-white, 0.45, at 0.65.
+  - `blendFog` mixes them by the climate's biome weights at the camera. Tints are weighted by
+    how much each shows, so plains (no tint) next to the desert halve the haze's strength
+    rather than greying its colour.
+  - `easeFog` follows a change exponentially (`TUNING.fog.ease`, 3 s).
+  - `fogColour` mixes the tint, darkened to the daylight, into the time of day's horizon:
+    fully by day, not at all at night.
+  - The result is the horizon for the fog, the background and the sky dome together, so the
+    edge of the world still meets the sky without a line. The fog's start follows the biome
+    each frame (`WaterView.setRange`).
+- **Animated water:**
+  - The transparent chunk material (`#define WATER`) draws water faces from two copies of the
+    water texture, drifting different ways (`TUNING.water.flow`, 0.12 blocks a second), and
+    blends them.
+  - The second copy is 4/3 the size: 32 blocks are a whole number of its tiles, so there are
+    no seams at chunk borders.
+  - A slow ripple of brightness (±7 %) runs over them.
+  - `water.ts`'s pure `waterFlow(seconds, flow)` gives the offsets, kept within one block, so
+    the shader never sees large numbers.
+  - Nothing is remeshed, and the surface stays flush with the shore. Glass is drawn as before.
+- **Checked in the pane (production build, at 10:48):**
+  - *Over the desert* (`?at=384,0`) the horizon is a pale sandy haze, and the fog closes in
+    sooner.
+  - *Over plains and sea* (`?at=36,53`) the horizon is clear blue as before.
+  - *In shallow water,* looking down: overlapping light streaks that move between two shots
+    3 s apart.
+  - No console errors.
+- **Cost:** `?autofly` at radius 8 had main thread p50 2.4, p99 5.7, max 6.4 ms, no frame over
+  20 ms and no holes, the same as after step 2. The climate weights at the camera are a few
+  microseconds a frame.
+- **Tests (5 new, 167 in all):**
+  - each biome's own fog where only it is; plains leaves the horizon alone; the desert is
+    nearer and the mountains further;
+  - blends (a tintless biome doesn't wash out its neighbour's colour), and the climate's
+    weights give fogs in range;
+  - easing: 63 % in `ease` seconds, there after 30;
+  - full tint by day, none at night;
+  - water flow starts still, stays within a block, and moves smoothly from frame to frame.
 
 ## Scope decisions
 

@@ -1,6 +1,8 @@
 // The block textures on the GPU and the material that draws chunks with them: one texture
 // array, a layer per block texture, sampled by a small shader (vertex shade × light ×
-// texture, alpha test for leaves, Three.js fog). Hotbar icons are drawn from the same pixels. `?light` draws
+// texture, alpha test for leaves, Three.js fog). In the transparent pass, water moves: two
+// copies of its texture drift different ways and are blended, and its brightness ripples
+// slowly (`water.ts` works out the offsets); nothing is remeshed. Hotbar icons are drawn from the same pixels. `?light` draws
 // the light the mesher put in the vertices instead of the textures, for checking it.
 
 import * as THREE from 'three';
@@ -38,17 +40,40 @@ const fragmentShader = /* glsl */ `
   uniform vec3 blockLightColour;
   /** Sunlight's colour and brightness for the time of day (sky.ts); block light doesn't change. */
   uniform vec3 sunlight;
+  #ifdef WATER
+    uniform float waterLayer;
+    uniform vec2 flowA;
+    uniform vec2 flowB;
+    uniform float ripple;
+  #endif
   varying vec3 vShade;
   varying vec2 vLight;
   varying vec2 vUv;
   flat varying float vLayer;
   #include <fog_pars_fragment>
 
+  /** The texture at uv (in blocks), repeated every block; v runs up, image rows run down. */
+  vec4 sampleTile(vec2 uv, vec2 dx, vec2 dy) {
+    return textureGrad(map, vec3(fract(uv.x), 1.0 - fract(uv.y), vLayer), dx, dy);
+  }
+
   void main() {
     // UVs are in blocks across a merged quad: repeat the texture every block. Mip level from
     // the unwrapped UVs, so it doesn't jump at every block seam (thin lines in the distance).
-    vec2 tile = vec2(fract(vUv.x), 1.0 - fract(vUv.y)); // v runs up, image rows run down
-    vec4 texel = textureGrad(map, vec3(tile, vLayer), dFdx(vUv), dFdy(vUv));
+    vec2 dx = dFdx(vUv);
+    vec2 dy = dFdy(vUv);
+    vec4 texel;
+    #ifdef WATER
+    if (abs(vLayer - waterLayer) < 0.5) {
+      // Two copies drifting different ways (the second 4/3 the size: 32 blocks of a chunk are a
+      // whole number of its tiles, so no seam at chunk borders), and a slow ripple of light.
+      texel = mix(sampleTile(vUv + flowA, dx, dy), sampleTile(vUv * 0.75 + flowB, dx * 0.75, dy * 0.75), 0.5);
+      float a = 6.2832 * (vUv.x + vUv.y) / 8.0 + ripple;
+      float b = 6.2832 * (vUv.x - vUv.y) / 8.0 - ripple * 0.7;
+      texel.rgb *= 1.0 + 0.07 * sin(a) * sin(b);
+    } else
+    #endif
+    texel = sampleTile(vUv, dx, dy);
     if (texel.a < alphaTest) discard;
     #ifdef LIGHT_VIEW
       // The brighter of sunlight and block light as grey, shaded so shapes still read.
@@ -101,6 +126,10 @@ export function createBlockMaterial(
       lightFalloff: { value: TUNING.render.lightFalloff },
       blockLightColour: { value: new THREE.Vector3(...TUNING.render.blockLightColour) },
       sunlight: { value: new THREE.Vector3(1, 1, 1) },
+      waterLayer: { value: textureLayer('water') },
+      flowA: { value: new THREE.Vector2() },
+      flowB: { value: new THREE.Vector2() },
+      ripple: { value: 0 },
     },
   ]);
   uniforms.map = { value: map };
@@ -108,7 +137,7 @@ export function createBlockMaterial(
     uniforms,
     vertexShader,
     fragmentShader,
-    defines: { ...(!options.transparent && { OPAQUE: '' }), ...(options.lightView && { LIGHT_VIEW: '' }) },
+    defines: { ...(options.transparent ? { WATER: '' } : { OPAQUE: '' }), ...(options.lightView && { LIGHT_VIEW: '' }) },
     fog: true,
     transparent: options.transparent,
     depthWrite: !options.transparent,

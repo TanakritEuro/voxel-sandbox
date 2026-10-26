@@ -1,10 +1,31 @@
-// The fog and the sky colour, above water and below: above, the sky's colour for the time of
-// day (`sky.ts`) with the fog just inside the view distance; with the eye in water, the fog
-// closes in and turns blue, darker at night.
+// Water: the fog and the sky colour above water and below (above, the horizon colour for the
+// time of day and the biome, `fog.ts`, with the fog just inside the view distance; with the eye
+// in water, the fog closes in and turns blue, darker at night), and how far the surface's
+// texture has drifted (`waterFlow`, for the chunk shader).
 
 import * as THREE from 'three';
 import { TUNING } from '../config';
 import type { RGB } from './sky';
+
+/** Offsets of the water texture's two drifting copies (0–1, blocks) and the ripple's phase. */
+export interface WaterFlow {
+  a: [number, number];
+  b: [number, number];
+  ripple: number;
+}
+
+const wrap = (v: number) => ((v % 1) + 1) % 1;
+
+/** Where the water has drifted after `seconds` at `flow` blocks a second. */
+export function waterFlow(seconds: number, flow: number): WaterFlow {
+  const d = seconds * flow;
+  return {
+    a: [wrap(d * 0.8), wrap(d * 0.5)],
+    b: [wrap(-d * 0.55), wrap(d * 0.75)],
+    // Round once every 2π: kept small so the shader's sines stay precise.
+    ripple: (seconds * 1.3) % (2 * Math.PI * 1000),
+  };
+}
 
 export class WaterView {
   private readonly fog: THREE.Fog;

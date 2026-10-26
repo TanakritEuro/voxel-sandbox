@@ -3,6 +3,7 @@ import type { MeshData } from '../mesh/builder';
 import type { ChunkMesh } from '../mesh/mesher';
 import { CHUNK_SIZE } from '../world/coords';
 import { createBlockMaterial, createBlockTextures } from './blockMaterial';
+import type { WaterFlow } from './water';
 
 /** Radius of the sphere around a chunk cube; every chunk mesh fits inside it. */
 const CHUNK_RADIUS = (CHUNK_SIZE * Math.sqrt(3)) / 2;
@@ -31,6 +32,14 @@ export class ChunkRenderer {
   /** Sunlight's colour and brightness for the time of day (`sky.ts`), on every chunk at once. */
   setSunlight([r, g, b]: [number, number, number]): void {
     for (const m of [this.opaqueMaterial, this.transparentMaterial]) (m.uniforms.sunlight.value as THREE.Vector3).set(r, g, b);
+  }
+
+  /** Where the water's texture has drifted to (`water.ts`). */
+  setWaterFlow(flow: WaterFlow): void {
+    const u = this.transparentMaterial.uniforms;
+    (u.flowA.value as THREE.Vector2).set(...flow.a);
+    (u.flowB.value as THREE.Vector2).set(...flow.b);
+    u.ripple.value = flow.ripple;
   }
 
   /** Show a chunk's mesh, replacing any it had. */

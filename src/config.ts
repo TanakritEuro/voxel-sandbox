@@ -88,11 +88,25 @@ export const TUNING = {
     /** Seconds after breaking a block before the next one starts, while the button stays held. */
     breakPause: 0.2,
   },
+  /**
+   * Fog by biome (`render/fog.ts`): a tint, how much of it shows by day, and where the fog
+   * starts as a fraction of the view distance. Blended by the biomes where the player is.
+   */
+  fog: {
+    plains: { tint: 0x9fd0ff, amount: 0, start: 0.55 },
+    forest: { tint: 0x9cc8a4, amount: 0.3, start: 0.5 },
+    desert: { tint: 0xe8d3a2, amount: 0.6, start: 0.35 },
+    mountains: { tint: 0xe2ebf3, amount: 0.45, start: 0.65 },
+    /** Seconds to ease most of the way to a new biome's fog. */
+    ease: 3,
+  },
   water: {
     /** With the eye under water: fog colour and range (blocks). */
     fogColour: 0x1f4f80,
     fogNear: 1,
     fogFar: 20,
+    /** The surface texture drifts this fast (blocks a second), in two directions at once. */
+    flow: 0.12,
   },
   save: {
     /** Edited chunks are written this long after an edit (ms); at once when unloaded or when the page is hidden. */
