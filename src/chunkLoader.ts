@@ -16,10 +16,10 @@
 import { TUNING } from './config';
 import { type ChunkMesh, meshChunk } from './mesh/mesher';
 import { paddedBlocks, paddedLight, PADDED_VOLUME } from './mesh/padding';
-import type { JobResult, JobRunner } from './workers/protocol';
+import type { JobResult, JobRunner, SavedChunk } from './workers/protocol';
 import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from './world/coords';
 import { ALL_CONNECTED, reachableChunks } from './world/visibility';
-import type { World } from './world/world';
+import type { Chunk, World } from './world/world';
 
 /** Where meshes go (the chunk renderer). */
 export interface ChunkSink {
@@ -27,6 +27,16 @@ export interface ChunkSink {
   remove(key: string): void;
   /** Show or hide a chunk's mesh (hidden: can't be seen from where the player is). */
   setVisible(key: string, visible: boolean): void;
+}
+
+/** Where edited chunks are kept (`save/saver.ts`). */
+export interface ChunkSaves {
+  /** Has the column saved chunks (known without reading them)? */
+  has(cx: number, cz: number): boolean;
+  /** Read the column's saved chunks. */
+  load(cx: number, cz: number): Promise<SavedChunk[]>;
+  /** These chunks are about to be unloaded: keep their edits. */
+  unloading(chunks: readonly Chunk[]): void;
 }
 
 interface Column {
@@ -67,6 +77,9 @@ export class ChunkLoader {
   private readonly meshed = new Map<string, number>();
   /** Columns being generated. */
   private readonly generating = new Set<string>();
+  /** Columns whose saved chunks are being read, and those read, waiting to be generated. */
+  private readonly reading = new Set<string>();
+  private readonly read = new Map<string, SavedChunk[]>();
   /** Chunk key → the version being meshed. */
   private readonly meshing = new Map<string, number>();
   private running = 0;
@@ -102,6 +115,8 @@ export class ChunkLoader {
     private readonly world: World,
     private readonly renderer: ChunkSink,
     private readonly runner: JobRunner,
+    /** Without it, edits are lost when their chunks are unloaded. */
+    private readonly saves?: ChunkSaves,
   ) {
     runner.onResult = (result) => this.results.push(result);
   }
@@ -254,14 +269,29 @@ export class ChunkLoader {
     for (const { cx, cz, mesh } of this.order) {
       if (!world.hasColumn(cx, cz)) {
         const key = columnKey(cx, cz);
-        if (this.generating.has(key)) continue;
+        if (this.generating.has(key) || this.reading.has(key)) continue;
+        // A column with saved chunks is read first (from IndexedDB: a few ms, off this thread).
+        if (this.saves?.has(cx, cz) && !this.read.has(key)) {
+          this.reading.add(key);
+          queued++;
+          this.saves.load(cx, cz).then(
+            (saved) => this.readDone(key, saved),
+            (e: unknown) => {
+              console.error('reading saved chunks failed:', e);
+              this.readDone(key, []);
+            },
+          );
+          continue;
+        }
         if (!canStart()) {
           queued++;
           continue;
         }
+        const saved = this.read.get(key) ?? [];
+        this.read.delete(key);
         this.generating.add(key);
         this.running++;
-        this.runner.run({ kind: 'generate', id: this.nextId++, seed: world.generator.seed, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y });
+        this.runner.run({ kind: 'generate', id: this.nextId++, seed: world.generator.seed, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
         continue;
       }
       if (!mesh) continue;
@@ -294,6 +324,12 @@ export class ChunkLoader {
     }
     this.queued = queued;
     this.dirty = outOfTime;
+  }
+
+  private readDone(key: string, saved: SavedChunk[]): void {
+    this.reading.delete(key);
+    this.read.set(key, saved);
+    this.dirty = true;
   }
 
   private neighboursLoaded(cx: number, cz: number): boolean {
@@ -329,12 +365,17 @@ export class ChunkLoader {
   }
 
   private unloadFar(): void {
-    for (const chunk of [...this.world.chunks.values()]) {
-      if (this.inKeepRange(chunk.cx, chunk.cz)) continue;
+    const leaving = [...this.world.chunks.values()].filter((c) => !this.inKeepRange(c.cx, c.cz));
+    // Their edits are written first, while the blocks are still here.
+    this.saves?.unloading(leaving);
+    for (const chunk of leaving) {
       this.renderer.remove(chunk.key);
       this.meshed.delete(chunk.key);
-      // Edited chunks stay in memory until saving exists (Milestone 4).
-      if (!chunk.modified) this.world.unload(chunk);
+      this.world.unload(chunk);
+    }
+    for (const key of this.read.keys()) {
+      const [cx, cz] = key.split(',').map(Number);
+      if (!this.inKeepRange(cx, cz)) this.read.delete(key);
     }
   }
 }

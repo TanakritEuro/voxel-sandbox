@@ -94,6 +94,12 @@ export const TUNING = {
     fogNear: 1,
     fogFar: 20,
   },
+  save: {
+    /** Edited chunks are written this long after an edit (ms); at once when unloaded or when the page is hidden. */
+    delayMs: 2000,
+    /** Where the player is and the time of day are written this often (ms). */
+    recordIntervalMs: 10000,
+  },
   day: {
     /** Seconds from one midnight to the next (`?daylength=60` overrides it). */
     length: 1200,

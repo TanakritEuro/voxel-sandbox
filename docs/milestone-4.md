@@ -1,6 +1,6 @@
 # Milestone 4 plan: light and saving
 
-## Status: in progress (steps 1–4 done; saving next)
+## Status: in progress (steps 1–5 done; named worlds next)
 
 Approved 2026-10-23 as proposed: caves fully dark without torches, crystal ore glows faintly
 (light 6), torches on the floor only, a 20-minute day, automatic saving, `fake-indexeddb` for
@@ -217,6 +217,71 @@ queue.
   - sunset is the twilight sky with warm, partial light, the same as at sunrise;
   - daylight only rises from midnight to noon, the cycle wraps, and mornings mirror evenings;
   - the clock reads as expected.
+
+**Step 5 (saving).**
+- **`save/rle.ts`:** (run, block) pairs with a varint run. `decodeRle` refuses anything that
+  isn't exactly one chunk.
+- **`save/store.ts`:** `WorldStore` with two implementations.
+  - *`IndexedDbStore`:* database `voxel-sandbox` with two stores. `worlds` is keyed by id.
+    `chunks` is keyed by [world, cx, cy, cz] with the RLE bytes as the value, so a world's
+    chunk keys come from one key range and deleting a world removes them with it.
+  - *`MemoryStore`:* for tests and for worlds that aren't kept.
+- **`save/saver.ts` (`WorldSaver`):**
+  - *Opening:* when a world opens, it reads which chunks the world has saved (keys only).
+  - *When chunks are written:* within `TUNING.save.delayMs` (2 s) of an edit, at once when
+    an edited chunk is about to be unloaded (`ChunkLoader` calls `unloading`), and when the
+    page is hidden or left.
+  - *The world record* (player position, look, flying, time of day) is written every 10 s
+    and on the same events.
+  - *Order:* writes are queued one after another, and reads wait for the writes before them,
+    so a chunk saved as it's unloaded reads back right even if the player turns round at once.
+  - Edited chunks are no longer kept in memory forever: they're written and unloaded like
+    any other.
+- **Loading:**
+  - Before generating a column with saved chunks, the loader reads them; the read counts as
+    queued work. They go in the generate job as RLE and are transferred.
+  - The worker decodes them in place of the generated chunks, then works out connectivity
+    and light from the result. Light, the mesh and the visibility walk come out right for
+    edited chunks with no extra step.
+- **`main.ts`:**
+  - The world is saved under one id (`default`, "My world") until the world list in step 6.
+  - `?seed=`, `?at=` and `?autofly` play an unsaved world in memory, so measuring never
+    touches it.
+  - A saved world brings the player back where they were, facing the same way, flying or
+    not, at the saved time of day.
+  - Where IndexedDB is unavailable, saving is off with a console warning.
+  - `?stats` shows the chunks waiting to be written and the last write.
+- **`fake-indexeddb`** (6.2.6) is a dev dependency for the store tests only. Its licence is
+  Apache-2.0, not MIT as the plan said; it isn't in the build.
+- **Checked in the pane (production build):**
+  - Two lamps placed on the grass: the chunk was written 2 s later (0.4 KB in 0.8 ms).
+  - IndexedDB then held the record with the player's position and look, and the one chunk.
+  - After a reload, the player stood in the same place facing the same way, with the lamps
+    there and the clock carrying on from the saved time.
+  - No console errors.
+- **Tests (15 new, 149 in all):**
+  - *RLE:* round trips of all air, all one block (4 bytes), random blocks, runs across varint
+    sizes, and generated chunks (under a quarter of their size). Wrong lengths and broken
+    varints are refused.
+  - *Store,* on memory and on fake IndexedDB: records added, listed, renamed and deleted;
+    worlds' chunks kept apart, replaced, and deleted with their world; a database opened
+    again still has the world.
+  - *Saving, on both stores:*
+    - A world with a pit dug at a chunk corner, a torch, a lamp and glass is written, then
+      opened again from the store alone with its columns in reverse order. Every chunk's
+      blocks and light are equal to before.
+    - The player and time round-trip.
+    - A column can be read back while its write is still under way.
+  - *Loader:* an edited chunk is written as the player flies away and is gone from memory.
+    On return, the column's generate job carries it, and the mesh has the glass in it.
+
+| saving (bench, the 724 chunks with blocks within radius 8) | |
+| --- | --- |
+| RLE size | 1.25 MB of 22.6 MB (5.5 %); mean 1.8 KB, largest 7.0 KB a chunk |
+| encode / decode | 0.067 / 0.036 ms a chunk |
+
+Encoding happens on the main thread when chunks are written: well under a millisecond for
+the few chunks an edit touches.
 
 ## Scope decisions
 

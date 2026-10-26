@@ -10,6 +10,7 @@ import { TUNING } from '../src/config';
 import { meshCulled } from '../src/mesh/culled';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
+import { decodeRle, encodeRle } from '../src/save/rle';
 import { Block, BLOCKS } from '../src/world/blocks';
 import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
@@ -252,4 +253,36 @@ it('edits', () => {
     );
   }
   console.log(lines.join('\n') + '\n');
+});
+
+it('saving', () => {
+  // What a saved chunk costs: RLE size and time, over every chunk with blocks within the radius
+  // (an edited chunk is a generated one with a few blocks changed).
+  const world = new World(SEED);
+  for (const [cx, cz] of columns(RADIUS)) world.ensureColumn(cx, cz);
+  const chunks = [...world.chunks.values()].filter((c) => !c.empty).map((c) => c.blocks);
+  const encode: number[] = [];
+  const decode: number[] = [];
+  let bytes = 0;
+  let biggest = 0;
+  for (let run = 0; run <= RUNS; run++) {
+    const t0 = performance.now();
+    const packed = chunks.map((c) => encodeRle(c));
+    const t1 = performance.now();
+    for (const d of packed) decodeRle(d);
+    const t2 = performance.now();
+    if (run === 0) {
+      bytes = packed.reduce((sum, d) => sum + d.length, 0);
+      biggest = Math.max(...packed.map((d) => d.length));
+      continue;
+    }
+    encode.push(t1 - t0);
+    decode.push(t2 - t1);
+  }
+  const raw = chunks.length * chunks[0].length;
+  console.log(
+    `saving: ${chunks.length} chunks with blocks, RLE ${(bytes / 2 ** 20).toFixed(2)} MB of ${(raw / 2 ** 20).toFixed(1)} MB (${((bytes / raw) * 100).toFixed(1)} %), ` +
+      `mean ${(bytes / chunks.length / 1024).toFixed(1)} KB, largest ${(biggest / 1024).toFixed(1)} KB; ` +
+      `encode ${(median(encode) / chunks.length).toFixed(3)} ms, decode ${(median(decode) / chunks.length).toFixed(3)} ms a chunk\n`,
+  );
 });

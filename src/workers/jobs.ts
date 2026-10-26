@@ -2,6 +2,7 @@
 // main-thread fallback) can call it directly.
 
 import { meshChunk } from '../mesh/mesher';
+import { decodeRle } from '../save/rle';
 import { Generator } from '../world/generate';
 import { lightColumn } from '../world/light';
 import { ALL_CONNECTED, chunkConnectivity } from '../world/visibility';
@@ -18,6 +19,8 @@ export function handleJob(job: Job): JobResult {
       generators.set(job.seed, generator);
     }
     const chunks = generator.generateColumn(job.cx, job.cz, job.cyMin, job.cyMax);
+    // Edited chunks as they were saved, in place of the generated ones.
+    for (const s of job.saved) chunks[s.cy - job.cyMin] = decodeRle(s.data);
     const connectivity = chunks.map((c) => (c ? chunkConnectivity(c) : ALL_CONNECTED));
     const light = lightColumn(chunks);
     return { kind: 'generate', id: job.id, cx: job.cx, cz: job.cz, cyMin: job.cyMin, chunks, connectivity, light, ms: performance.now() - t0 };

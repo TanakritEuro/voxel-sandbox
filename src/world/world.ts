@@ -16,7 +16,7 @@ export const EMPTY_BLOCKS = new Uint8Array(CHUNK_VOLUME);
 export class Chunk {
   /** Bumped on every edit, so the renderer knows to remesh. */
   version = 0;
-  /** Edited by the player since generation (these must be saved, Milestone 4). */
+  /** Edited by the player since it was generated or loaded (`save/saver.ts` keeps track of what to write). */
   modified = false;
   /** Which faces see each other through open space (`visibility.ts`); -1 until worked out. */
   private connections = -1;
@@ -195,7 +195,7 @@ export class World {
     return (owned + 2) * CHUNK_VOLUME;
   }
 
-  /** Remove a chunk's data (when far away). Modified chunks should be saved first (Milestone 4). */
+  /** Remove a chunk's data (when far away). Edited chunks should be saved first (`ChunkSaves.unloading`). */
   unload(chunk: Chunk): void {
     this.chunks.delete(chunk.key);
   }

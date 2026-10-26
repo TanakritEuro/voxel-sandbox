@@ -4,8 +4,24 @@
 import type { ChunkMesh } from '../mesh/mesher';
 import type { PackedLight } from '../world/light';
 
+/** A saved chunk of a column: its height and its blocks, RLE-encoded (`save/rle.ts`). */
+export interface SavedChunk {
+  cy: number;
+  data: Uint8Array;
+}
+
 export type Job =
-  | { kind: 'generate'; id: number; seed: number; cx: number; cz: number; cyMin: number; cyMax: number }
+  | {
+      kind: 'generate';
+      id: number;
+      seed: number;
+      cx: number;
+      cz: number;
+      cyMin: number;
+      cyMax: number;
+      /** The column's saved chunks, put in place of the generated ones before lighting. */
+      saved: SavedChunk[];
+    }
   | {
       kind: 'mesh';
       id: number;
@@ -50,7 +66,8 @@ export interface JobRunner {
 // The buffers to transfer with each message. Every one is a whole buffer of its own (the
 // mesher's `build()` and the generator allocate exactly-sized arrays).
 
-export const jobTransferables = (job: Job): ArrayBuffer[] => (job.kind === 'mesh' ? [job.padded.buffer as ArrayBuffer, job.paddedLight.buffer as ArrayBuffer] : []);
+export const jobTransferables = (job: Job): ArrayBuffer[] =>
+  job.kind === 'mesh' ? [job.padded.buffer as ArrayBuffer, job.paddedLight.buffer as ArrayBuffer] : job.saved.map((s) => s.data.buffer as ArrayBuffer);
 
 export function resultTransferables(result: JobResult): ArrayBuffer[] {
   if (result.kind === 'generate') {

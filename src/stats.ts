@@ -24,6 +24,8 @@ export interface EngineCounters {
   lastEdit: { ms: number; lightMs: number; chunks: number } | null;
   /** Time of day and daylight, as text. */
   time: string;
+  /** What saving is doing, as text. */
+  saving: string;
 }
 
 /** Frames longer than this count as dropped (the budget in CLAUDE.md). */
@@ -115,6 +117,7 @@ export class Stats {
       `draw calls ${r.calls}   triangles ${Math.round(r.triangles / 1000)}k drawn / ${Math.round(c.sceneTriangles / 1000)}k`,
       `chunks ${c.chunks} loaded, ${c.visible} could be seen, ${c.meshed} meshed`,
       `time ${c.time}`,
+      `saving ${c.saving}`,
       `jobs ${c.queued} queued, ${c.inFlight} in flight` + (c.workerBusy === null ? '' : `, workers ${Math.round(c.workerBusy * 100)}% busy`),
       `memory: chunks ${mb(c.chunkBytes)}, light ${mb(c.lightBytes)}, meshes ${mb(c.geometryBytes)}` + (heap ? `, JS heap ${mb(heap)}` : ''),
       ...(c.lastEdit

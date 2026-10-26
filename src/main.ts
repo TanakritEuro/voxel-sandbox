@@ -1,4 +1,4 @@
-// Entry point: world, chunk loading, the player, block editing and the HUD.
+// Entry point: world, saving, chunk loading, the player, block editing and the HUD.
 
 import * as THREE from 'three';
 import { Autofly } from './autofly';
@@ -6,6 +6,8 @@ import { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
 import { Input } from './input';
 import { Player } from './player';
+import { WorldSaver } from './save/saver';
+import { IndexedDbStore, MemoryStore, newWorldRecord, type PlayerState, type WorldStore } from './save/store';
 import { textureIcon } from './render/blockMaterial';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
@@ -21,15 +23,13 @@ import { raycast, type RayHit } from './world/raycast';
 import { World } from './world/world';
 
 const params = new URLSearchParams(location.search);
-const seed = Number(params.get('seed') ?? TUNING.world.seed);
 // `?radius=8` overrides the view radius, for measuring.
 const radiusParam = Number(params.get('radius'));
 if (Number.isInteger(radiusParam) && radiusParam > 0) TUNING.view.radius = radiusParam;
 // `?time=0.5` holds the time of day there (0 midnight, 0.5 noon), for screenshots and measuring;
 // `?daylength=60` makes a day last that many seconds, to watch it go round.
 const timeParam = params.get('time');
-let time = timeParam !== null && Number.isFinite(Number(timeParam)) ? Number(timeParam) : TUNING.day.start;
-const timeHeld = timeParam !== null;
+const timeHeld = timeParam !== null && Number.isFinite(Number(timeParam));
 const dayLengthParam = Number(params.get('daylength'));
 if (dayLengthParam > 0) TUNING.day.length = dayLengthParam;
 
@@ -56,14 +56,27 @@ window.addEventListener('resize', () => {
 
 const waterView = new WaterView(scene);
 
-const world = new World(seed);
+// The world is saved in this browser (IndexedDB) as it's played, unless the URL asks for a
+// particular one to look at or measure (`?seed=`, `?at=`, `?autofly`): that one starts fresh
+// each time and is kept in memory only. Named worlds and a menu come next.
+/** The one saved world until worlds have names (the world list is the next step). */
+const DEFAULT_WORLD = 'default';
+const unsaved = params.has('seed') || params.has('at') || params.has('autofly');
+const store: WorldStore = unsaved ? new MemoryStore() : await openStore();
+const record =
+  (unsaved ? undefined : await store.getWorld(DEFAULT_WORLD)) ??
+  newWorldRecord(unsaved ? 'unsaved' : DEFAULT_WORLD, 'My world', Number(params.get('seed') ?? TUNING.world.seed), TUNING.day.start);
+const saver = await WorldSaver.open(store, record);
+let time = timeHeld ? Number(timeParam) : record.time;
+
+const world = new World(record.seed);
 // `?light` shows light as grey instead of textures.
 const chunks = new ChunkRenderer(params.has('light'));
 scene.add(chunks.group);
 // `?workers=1` runs fewer workers, to see how a machine with fewer cores loads.
 const workersParam = Number(params.get('workers'));
 const pool = new WorkerPool(Number.isInteger(workersParam) && workersParam > 0 ? workersParam : undefined);
-const loader = new ChunkLoader(world, chunks, pool);
+const loader = new ChunkLoader(world, chunks, pool, saver);
 const input = new Input(canvas);
 
 /** Are the columns around (x, z) loaded? The player holds still until they are. */
@@ -74,14 +87,22 @@ function columnsLoaded(x: number, z: number): boolean {
   return true;
 }
 
-// Spawn standing on dry land near the origin, or near `?at=x,z`.
+// Back where the player was in a saved world; otherwise standing on dry land near the origin,
+// or near `?at=x,z`.
 const [atX, atZ] = (params.get('at') ?? '0,0').split(',').map((v) => Math.floor(Number(v)) || 0);
 const spawn = world.generator.findLand(atX, atZ ?? 0);
-const player = new Player(camera, input, world, columnsLoaded, {
-  x: spawn.x + 0.5,
-  y: world.generator.height(spawn.x, spawn.z) + 1,
-  z: spawn.z + 0.5,
-});
+const player = new Player(
+  camera,
+  input,
+  world,
+  columnsLoaded,
+  record.player ?? { x: spawn.x + 0.5, y: world.generator.height(spawn.x, spawn.z) + 1, z: spawn.z + 0.5 },
+);
+if (record.player) {
+  input.yaw = record.player.yaw;
+  input.pitch = record.player.pitch;
+  player.flying = record.player.flying;
+}
 
 // Measuring: `?stats` overlay (F3), `?autofly` scripted flight.
 const autoflySeconds = Autofly.seconds(params);
@@ -100,6 +121,9 @@ const stats = new Stats(
     sceneTriangles: chunks.triangles,
     lastEdit,
     time: `${clock(time)}, daylight ${skyAt(time).daylight.toFixed(2)}${timeHeld ? ' (held)' : ''}`,
+    saving:
+      (unsaved ? 'off (this world is not kept)' : `${saver.unsaved} edited chunks to write`) +
+      (saver.last ? `; last wrote ${saver.last.chunks} chunks, ${(saver.last.bytes / 1024).toFixed(1)} KB in ${saver.last.ms.toFixed(1)} ms` : ''),
   }),
   params.has('stats') || autoflySeconds !== null,
 );
@@ -143,6 +167,7 @@ function renderHotbar(): void {
 function edit(x: number, y: number, z: number, block: Block): void {
   const t0 = performance.now();
   const stale = world.setBlock(x, y, z, block);
+  if (stale.length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
   for (const c of stale) loader.remesh(c.cx, c.cy, c.cz);
   lastEdit = { ms: performance.now() - t0, lightMs: world.lightMs, chunks: stale.length };
 }
@@ -222,6 +247,38 @@ function frame(now: number): void {
   stats.frame(now, interval, work, player.physicsMs, player.physicsSteps);
   autofly?.frameWork(work);
   requestAnimationFrame(frame);
+}
+
+// --- Saving ----------------------------------------------------------------------------------
+
+/** Where the player is, to come back to. */
+function playerState(): PlayerState {
+  const { x, y, z } = player.body;
+  return { x, y, z, yaw: input.yaw, pitch: input.pitch, flying: player.flying };
+}
+
+// Edited chunks go within TUNING.save.delayMs of an edit (`saver.edited`); where the player is
+// and the time, every TUNING.save.recordIntervalMs; everything when the page is hidden or left.
+setInterval(() => {
+  if (!autofly?.active) void saver.saveRecord(playerState(), time);
+}, TUNING.save.recordIntervalMs);
+function saveAll(): void {
+  void saver.writeDirty();
+  void saver.saveRecord(playerState(), time);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveAll();
+});
+window.addEventListener('pagehide', saveAll);
+
+/** IndexedDB, or (where it's unavailable, as in some private windows) memory, with a warning. */
+async function openStore(): Promise<WorldStore> {
+  try {
+    return await IndexedDbStore.open();
+  } catch (e) {
+    console.warn('Saving is off, the world will be lost on reload:', e);
+    return new MemoryStore();
+  }
 }
 
 renderHotbar();

@@ -3,6 +3,8 @@ import { ChunkLoader, type ChunkSink, columnPriority } from '../src/chunkLoader'
 import { TUNING } from '../src/config';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
+import { WorldSaver } from '../src/save/saver';
+import { MemoryStore, newWorldRecord } from '../src/save/store';
 import { handleJob } from '../src/workers/jobs';
 import type { Job, JobResult, JobRunner } from '../src/workers/protocol';
 import { Block } from '../src/world/blocks';
@@ -63,11 +65,11 @@ beforeEach(() => {
 });
 afterEach(() => Object.assign(TUNING.view, saved));
 
-function setup(capacity = 8, check?: (job: Job, world: World) => void) {
+function setup(capacity = 8, check?: (job: Job, world: World) => void, saver?: WorldSaver) {
   const world = new World(20261022);
   const sink = new FakeSink();
   const runner = new FakeRunner(capacity, (job) => check?.(job, world));
-  const loader = new ChunkLoader(world, sink, runner);
+  const loader = new ChunkLoader(world, sink, runner, saver);
   return { world, sink, runner, loader };
 }
 
@@ -267,5 +269,38 @@ describe('chunk loader', () => {
     for (let i = 0; i < 5; i++) s.loader.update(16, EYE, 16, 1, 0);
     expect(s.runner.jobs.length).toBe(jobs);
     expect(s.loader.pending).toBe(0);
+  });
+
+  it('writes an edited chunk as it is unloaded, and reads it back into its column on return', async () => {
+    const saver = await WorldSaver.open(new MemoryStore(), newWorldRecord('w', 'Test', 20261022, 0));
+    const s = setup(8, undefined, saver);
+    /** As \`settle\`, but letting reads of saved chunks finish between frames. */
+    const settleAsync = async (x: number, z: number) => {
+      for (let frame = 0; frame < 10_000; frame++) {
+        s.loader.update(x, EYE, z, 1, 0);
+        if (s.loader.pending === 0 && s.runner.waiting === 0) return;
+        s.runner.deliver();
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      throw new Error('never settled');
+    };
+    await settleAsync(16, 16);
+    expect(s.world.setBlock(5, 60, 5, Block.Glass).length).toBeGreaterThan(0);
+    const chunk = s.world.getChunk(0, 1, 0)!;
+    saver.edited(chunk);
+
+    // Far away: the chunk is gone from memory, and written.
+    await settleAsync(16 + CHUNK_SIZE * 12, 16);
+    expect(s.world.getChunk(0, 1, 0)).toBeUndefined();
+    expect(saver.isSaved(chunk)).toBe(true);
+    expect(saver.unsaved).toBe(0);
+
+    // Back again: the column is generated with the saved chunk in it, and meshed with the glass.
+    const jobs = s.runner.jobs.length;
+    await settleAsync(16, 16);
+    expect(s.world.getBlock(5, 60, 5)).toBe(Block.Glass);
+    const generated = s.runner.jobs.slice(jobs).find((j) => j.kind === 'generate' && j.cx === 0 && j.cz === 0);
+    expect(generated?.kind === 'generate' && generated.saved.map((c) => c.cy)).toEqual([1]);
+    expect(s.sink.meshes.get(chunkKey(0, 1, 0))).toEqual(fresh(s.world, 0, 1, 0));
   });
 });
