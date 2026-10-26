@@ -1,6 +1,6 @@
 # Milestone 4 plan: light and saving
 
-## Status: in progress (steps 1–3 done; day and night next)
+## Status: in progress (steps 1–4 done; saving next)
 
 Approved 2026-10-23 as proposed: caves fully dark without torches, crystal ore glows faintly
 (light 6), torches on the floor only, a 20-minute day, automatic saving, `fake-indexeddb` for
@@ -184,6 +184,39 @@ The worst case stays inside the budget, so remeshing stays synchronous, as decid
 Milestone 1. If your laptop shows long frames when placing torches near chunk corners, the
 plan's fallback is ready: chunks whose light alone changed go to the workers, first in the
 queue.
+
+**Step 4 (day and night).**
+- **`render/sky.ts`:** `skyAt(time)` maps the time of day (0 midnight, 0.25 sunrise, 0.5 noon,
+  0.75 sunset) to three things, all from the sun's height (a sine of the time):
+  - *Daylight:* from `TUNING.day.night` (0.2) to 1.
+  - *Sunlight's colour:* white by day, warm near the horizon, a cool moonlight at night.
+  - *The sky and fog colour:* day blue, a peach twilight, dark navy at night.
+- **Nothing is remeshed.** The chunk shader's `daylight` uniform became `sunlight`, a colour
+  (sunlight level × that colour, block light unchanged), so torches stand out at night.
+- **Fog:** `WaterView` now sets the fog and background every frame: the sky's colour above
+  water, and below it the water blue, dimmer at night.
+- **Clock:** a day lasts `TUNING.day.length` (1200 s), and a world starts at 07:12.
+- **New URL options:**
+  - `?time=0.5` holds the time where it is, for screenshots and measuring;
+  - `?daylength=60` makes a day last 60 seconds, to watch it go round.
+- **`?stats`** shows the clock and daylight.
+- **One change after looking:** daylight first faded over a shorter span than the sky's colour.
+  Just after sunset (18:21) the sky was still bright peach over land almost as dark as night.
+  Light now fades over the same span (sun height −0.3 to 0.3), so land and sky darken
+  together.
+- **Checked in the pane** from the same vista (`?autofly=1&time=…`):
+  - noon looks as before;
+  - 06:21 has a peach sky with warm, lower light;
+  - 18:21 is dusk, darker, with daylight at 0.42;
+  - midnight has a navy sky and very dark land.
+  - No console errors.
+- **Cost:** a uniform and two colours a frame; the main thread shows no difference.
+- **Tests (5 new, 133 in all):**
+  - noon is full white light under the day sky;
+  - midnight is dim, blue-leaning moonlight under the night sky;
+  - sunset is the twilight sky with warm, partial light, the same as at sunrise;
+  - daylight only rises from midnight to noon, the cycle wraps, and mornings mirror evenings;
+  - the clock reads as expected.
 
 ## Scope decisions
 

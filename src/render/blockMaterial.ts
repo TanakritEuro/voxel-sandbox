@@ -36,8 +36,8 @@ const fragmentShader = /* glsl */ `
   uniform float alphaTest;
   uniform float lightFalloff;
   uniform vec3 blockLightColour;
-  /** How bright the sky is (1 by day); multiplies sunlight, not block light. */
-  uniform float daylight;
+  /** Sunlight's colour and brightness for the time of day (sky.ts); block light doesn't change. */
+  uniform vec3 sunlight;
   varying vec3 vShade;
   varying vec2 vLight;
   varying vec2 vUv;
@@ -60,7 +60,7 @@ const fragmentShader = /* glsl */ `
       vec2 level = vLight * 15.0;
       float darkest = pow(lightFalloff, 15.0);
       vec2 bright = (pow(vec2(lightFalloff), 15.0 - level) - darkest) / (1.0 - darkest);
-      vec3 lit = max(vec3(bright.x * daylight), bright.y * blockLightColour);
+      vec3 lit = max(bright.x * sunlight, bright.y * blockLightColour);
       texel.rgb *= pow(lit, vec3(2.2));
     #endif
     #ifdef OPAQUE
@@ -100,7 +100,7 @@ export function createBlockMaterial(
       alphaTest: { value: options.alphaTest },
       lightFalloff: { value: TUNING.render.lightFalloff },
       blockLightColour: { value: new THREE.Vector3(...TUNING.render.blockLightColour) },
-      daylight: { value: 1 },
+      sunlight: { value: new THREE.Vector3(1, 1, 1) },
     },
   ]);
   uniforms.map = { value: map };

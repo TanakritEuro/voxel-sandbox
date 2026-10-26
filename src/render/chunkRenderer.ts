@@ -28,6 +28,11 @@ export class ChunkRenderer {
     this.transparentMaterial = createBlockMaterial(this.textures, { alphaTest: 0.01, transparent: true, lightView });
   }
 
+  /** Sunlight's colour and brightness for the time of day (`sky.ts`), on every chunk at once. */
+  setSunlight([r, g, b]: [number, number, number]): void {
+    for (const m of [this.opaqueMaterial, this.transparentMaterial]) (m.uniforms.sunlight.value as THREE.Vector3).set(r, g, b);
+  }
+
   /** Show a chunk's mesh, replacing any it had. */
   set(key: string, cx: number, cy: number, cz: number, data: ChunkMesh): void {
     this.remove(key);

@@ -9,6 +9,7 @@ import { Player } from './player';
 import { textureIcon } from './render/blockMaterial';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
+import { clock, skyAt } from './render/sky';
 import { WaterView } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
@@ -24,6 +25,13 @@ const seed = Number(params.get('seed') ?? TUNING.world.seed);
 // `?radius=8` overrides the view radius, for measuring.
 const radiusParam = Number(params.get('radius'));
 if (Number.isInteger(radiusParam) && radiusParam > 0) TUNING.view.radius = radiusParam;
+// `?time=0.5` holds the time of day there (0 midnight, 0.5 noon), for screenshots and measuring;
+// `?daylength=60` makes a day last that many seconds, to watch it go round.
+const timeParam = params.get('time');
+let time = timeParam !== null && Number.isFinite(Number(timeParam)) ? Number(timeParam) : TUNING.day.start;
+const timeHeld = timeParam !== null;
+const dayLengthParam = Number(params.get('daylength'));
+if (dayLengthParam > 0) TUNING.day.length = dayLengthParam;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const info = document.querySelector<HTMLDivElement>('#info')!;
@@ -91,6 +99,7 @@ const stats = new Stats(
     geometryBytes: chunks.bytes,
     sceneTriangles: chunks.triangles,
     lastEdit,
+    time: `${clock(time)}, daylight ${skyAt(time).daylight.toFixed(2)}${timeHeld ? ' (held)' : ''}`,
   }),
   params.has('stats') || autoflySeconds !== null,
 );
@@ -187,7 +196,10 @@ function frame(now: number): void {
 
   if (autofly?.active) autofly.update(now, dt, interval);
   else player.update(dt);
-  waterView.update(player.eyeInWater);
+  if (!timeHeld) time = (time + dt / TUNING.day.length) % 1;
+  const sky = skyAt(time);
+  chunks.setSunlight(sky.sunlight);
+  waterView.update(player.eyeInWater, sky.colour, sky.daylight);
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 

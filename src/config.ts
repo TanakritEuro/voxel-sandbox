@@ -94,8 +94,19 @@ export const TUNING = {
     fogNear: 1,
     fogFar: 20,
   },
+  day: {
+    /** Seconds from one midnight to the next (`?daylength=60` overrides it). */
+    length: 1200,
+    /** Time of day a world starts at: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset (`?time=0.5` fixes it). */
+    start: 0.3,
+    /** Sunlight at night, as a fraction of the day's (moonlight); block light stays as it is. */
+    night: 0.2,
+  },
   sky: {
+    /** The sky and the fog by day, at sunrise and sunset, and at night. */
     colour: 0x9fd0ff,
+    twilight: 0xe9a274,
+    night: 0x0b1228,
     /** Fog fades chunks out just before the load radius, hiding the edge of the world. */
     fogStartFraction: 0.55,
   },
