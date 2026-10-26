@@ -55,4 +55,30 @@ describe('day and night', () => {
     expect(clock(0.3)).toBe('07:12');
     expect(clock(1.75)).toBe('18:00');
   });
+
+  it('moves the sun from east to west, overhead at noon and below at night', () => {
+    const at = (t: number) => skyAt(t).sun;
+    const length = (v: number[]) => Math.hypot(...v);
+    for (const t of [0, 0.1, 0.25, 0.4, 0.5, 0.8]) expect(length(at(t))).toBeCloseTo(1);
+    expect(at(0.25)[0]).toBeCloseTo(1); // sunrise in the east
+    expect(at(0.25)[1]).toBeCloseTo(0);
+    expect(at(0.75)[0]).toBeCloseTo(-1); // sunset in the west
+    expect(at(0.5)[1]).toBeCloseTo(Math.cos(TUNING.sky.sunTilt)); // high, leaning by the tilt
+    expect(at(0)[1]).toBeLessThan(-0.9); // under the world at midnight (the moon, opposite, overhead)
+  });
+
+  it('darkens overhead, brings out the stars and glows round the sun as it sets', () => {
+    close(skyAt(0.5).zenith, rgb(TUNING.sky.zenith));
+    close(skyAt(0.75).zenith, rgb(TUNING.sky.zenithTwilight));
+    close(skyAt(0).zenith, rgb(TUNING.sky.zenithNight));
+    expect(skyAt(0.5).stars).toBe(0);
+    expect(skyAt(0).stars).toBe(1);
+    expect(skyAt(0.78).stars).toBeGreaterThan(0);
+    expect(skyAt(0.78).stars).toBeLessThan(1);
+    expect(skyAt(0.5).glow).toBe(0);
+    expect(skyAt(0).glow).toBe(0);
+    expect(skyAt(0.75).glow).toBeGreaterThan(0.5);
+    close(skyAt(0.5).clouds, [1, 1, 1]);
+    expect(Math.max(...skyAt(0).clouds)).toBeLessThan(0.3);
+  });
 });

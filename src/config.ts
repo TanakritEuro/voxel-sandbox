@@ -113,6 +113,19 @@ export const TUNING = {
     colour: 0x9fd0ff,
     twilight: 0xe9a274,
     night: 0x0b1228,
+    /** Overhead, by day, at sunrise and sunset, and at night. */
+    zenith: 0x4f8fd8,
+    zenithTwilight: 0x55639e,
+    zenithNight: 0x03050d,
+    /** The glow round the sun at dawn and dusk. */
+    glow: 0xff9a5a,
+    /** How far the sun's path leans from straight overhead (radians). */
+    sunTilt: 0.35,
+    /** Clouds: height of the layer, size of a cell (blocks), share of the sky covered, drift (blocks a second along +x). */
+    cloudHeight: 192,
+    cloudCell: 12,
+    cloudCover: 0.4,
+    cloudWind: 1.5,
     /** Fog fades chunks out just before the load radius, hiding the edge of the world. */
     fogStartFraction: 0.55,
   },

@@ -27,7 +27,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestones 1–4 built (`docs/milestone-1.md` to `docs/milestone-4.md`), waiting for playtests
-(Milestone 3's laptop measurement is in: inside the budget). Milestone 5 in progress (`docs/milestone-5.md`): settings are in. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
+(Milestone 3's laptop measurement is in: inside the budget). Milestone 5 in progress (`docs/milestone-5.md`): settings, and a sky with sun, moon, stars and clouds. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
 saving
 (edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
 A seeded world of four biomes
@@ -126,7 +126,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — Three.js meshes per chunk. `blockMaterial.ts` — the texture
   array, the chunk shader, hotbar icons. `sky.ts` — time of day to daylight, sunlight colour, sky
-  and fog colour. `water.ts` — the fog and background, above and under water.
+  and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
+  `clouds.ts` — the blocky cloud layer and its tiling pattern. `water.ts` — the fog and background, above and under water.
   `crack.ts` — the crack pattern and overlay.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
   (near first, in front before behind) up to the pool's capacity, meshes only chunks the

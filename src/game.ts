@@ -16,7 +16,9 @@ import { PauseMenu } from './ui/pauseMenu';
 import { textureIcon } from './render/blockMaterial';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
+import { Clouds } from './render/clouds';
 import { clock, skyAt } from './render/sky';
+import { SkyDome } from './render/skyDome';
 import { WaterView } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
@@ -78,6 +80,10 @@ const saver = await WorldSaver.open(store, record);
 let time = timeHeld ? Number(timeParam) : record.time;
 
 const world = new World(record.seed);
+const skyDome = new SkyDome(TUNING.sky.sunTilt);
+scene.add(skyDome.group);
+const clouds = new Clouds(record.seed, TUNING.sky.cloudCover, TUNING.sky.cloudHeight, TUNING.sky.cloudCell);
+scene.add(clouds.mesh);
 // `?light` shows light as grey instead of textures.
 const chunks = new ChunkRenderer(params.has('light'));
 scene.add(chunks.group);
@@ -242,6 +248,8 @@ function frame(now: number): void {
   const sky = skyAt(time);
   chunks.setSunlight(sky.sunlight);
   waterView.update(player.eyeInWater, sky.colour, sky.daylight);
+  skyDome.update(camera, sky, TUNING.sky.glow, player.eyeInWater);
+  clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, TUNING.view.radius * CHUNK_SIZE, player.eyeInWater);
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 

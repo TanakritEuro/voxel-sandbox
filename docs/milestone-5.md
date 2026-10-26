@@ -1,6 +1,6 @@
 # Milestone 5 plan: polish
 
-## Status: in progress (step 1 done; sky next)
+## Status: in progress (steps 1–2 done; fog by biome and water next)
 
 Approved 2026-10-26 as proposed: blocky clouds at y = 192, a creative inventory with the
 hotbar saved per world, the settings as listed with view distance up to 16, a held block
@@ -70,6 +70,52 @@ along the way.
 At 16, the frames hold on this machine, but at sprint speed loading falls behind (gaps in a
 third of the flight) and memory passes 800 MB. That supports the warning; walking speed is
 easier.
+
+**Step 2 (sky and clouds).**
+- **`render/sky.ts`** (still pure) gives `skyAt(time)` more fields:
+  - the zenith colour (day, twilight, night);
+  - the twilight glow strength;
+  - star brightness;
+  - the clouds' colour;
+  - the sun's direction and angle.
+
+  The sun rises in the east (+x), sets in the west, and its path leans 0.35 rad towards +z
+  (`TUNING.sky.sunTilt`). The moon is opposite it.
+- **`render/skyDome.ts`:**
+  - *Dome:* a sphere round the camera at 0.9 of the far plane, so mountains still hide what's
+    behind them. Its shader blends the horizon colour (the fog's, so the world's edge melts
+    in as before) up to the zenith, and at dawn and dusk adds a warm glow round the sun, low
+    in the sky.
+  - *Sun and moon:* square pixel-art sprites (16 × 16, made at startup). The sun is drawn
+    additive; the moon has craters and clipped corners and is faint by day.
+  - *Stars:* 900 seeded points that fade in as the sun goes down and turn with it.
+  - All of it is drawn behind the world without fog or depth writes, and hidden under water.
+- **`render/clouds.ts`:**
+  - *The pattern:* 128 × 128 cells (12 blocks each, so it repeats every 1536 blocks), from
+    two octaves of value noise that wraps round, so it tiles without a seam. It's cut at the
+    level that covers `cloudCover` (40 %) of the cells, and seeded by the world.
+  - *Drawing:* one quad at y = 192 following the camera, with a red-channel texture (one
+    texel a cell, nearest) looked up from world x and z. It drifts at 1.5 blocks a second.
+  - *Fading:* it fades by horizontal distance from 0.6 to 1.6 view distances, rather than by
+    the 3D fog, which at small view distances would hide clouds straight overhead.
+  - *Colour:* white by day, peach at dusk, navy at night, a little darker underneath.
+  - It keeps the canvas's alpha like the water, and is hidden under water.
+- **Checked in the pane** from autofly's vista (`?autofly=1&time=…`):
+  - *Noon:* a blue gradient to the zenith, the square sun, and blocky white clouds overhead.
+  - *18:00 looking west:* a peach sky glowing over the horizon, peach clouds, and the
+    blue-violet zenith showing through their gaps.
+  - *Midnight looking up:* stars between dark navy clouds.
+  - No console errors.
+- **Cost:** `?autofly` at radius 8 has 181 draw calls against 177 (dome, sun, moon, clouds;
+  stars too, at night). The main thread was p50 2.4, p99 5.7 and max 6.8 ms against 2.2 /
+  5.5 / 6.4, which is noise. No frame went over 20 ms and there were no holes.
+- **Tests (5 new, 162 in all):**
+  - the sun's path: east at sunrise, west at sunset, high and leaning at noon, below at
+    midnight, always a unit vector;
+  - zenith colours, stars, glow and cloud colour at noon, dusk and midnight;
+  - clouds: the same for a seed and different for another, covering the share asked for, no
+    seam across the repeat (it changes no more there than inside), clumps rather than salt
+    and pepper, and the drift.
 
 ## Scope decisions
 
