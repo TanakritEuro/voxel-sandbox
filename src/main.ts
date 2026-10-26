@@ -90,6 +90,7 @@ const stats = new Stats(
     lightBytes: world.lightBytes,
     geometryBytes: chunks.bytes,
     sceneTriangles: chunks.triangles,
+    lastEdit,
   }),
   params.has('stats') || autoflySeconds !== null,
 );
@@ -114,6 +115,8 @@ scene.add(cracks.mesh);
 // --- Editing -----------------------------------------------------------------------------
 
 let selected = 0;
+/** For `?stats`: what the last edit cost. */
+let lastEdit: { ms: number; lightMs: number; chunks: number } | null = null;
 let target: RayHit | null = null;
 const mining = new Mining();
 
@@ -127,8 +130,12 @@ function renderHotbar(): void {
   ).join('');
 }
 
+/** Set a block (and its light), and remesh what changed at once. */
 function edit(x: number, y: number, z: number, block: Block): void {
-  for (const c of world.setBlock(x, y, z, block)) loader.remesh(c.cx, c.cy, c.cz);
+  const t0 = performance.now();
+  const stale = world.setBlock(x, y, z, block);
+  for (const c of stale) loader.remesh(c.cx, c.cy, c.cz);
+  lastEdit = { ms: performance.now() - t0, lightMs: world.lightMs, chunks: stale.length };
 }
 
 /** Breaking (hold the left button) and placing (a click of the right one), once per frame. */

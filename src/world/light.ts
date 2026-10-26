@@ -8,17 +8,22 @@
 // with, and flood fills that only ever raise light (BFS) arrive at exactly that whatever
 // order they run in: light, like the blocks, doesn't depend on load order.
 //
-// Worked out in two places (edits come in step 3):
+// Worked out in three places:
 // - `lightColumn`, in the worker that generated a column: that column alone, dark outside it.
 // - `lightBorders`, on the main thread when a column is added: light flows across its borders
 //   with the loaded columns next to it, and on into them as far as it reaches.
+// - `updateLight`, on the main thread after a block is set: the light the block had, and all
+//   that came from it, is taken away (a removal BFS); then light flows back in from where the
+//   removal stopped, from the neighbours, and from the block itself if it gives light ("Fast
+//   flood fill lighting in a blocky voxel game", Ben Arnold). The chunks whose light changed
+//   come back, to be remeshed.
 // Light travels at most 14 blocks, less than a chunk, so once a chunk's 3 × 3 columns are
 // loaded, its light and its neighbours' within a block of it are final: the rule meshing
 // already waits for.
 
 import { BLOCKS } from './blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from './coords';
-import type { World } from './world';
+import type { Chunk, World } from './world';
 
 /** Bit offset of each channel in the packed byte. */
 export const SUN = 4;
@@ -203,6 +208,51 @@ function pushWorld(x: number, y: number, z: number): void {
   worldQueue[worldTail++] = z;
 }
 
+/**
+ * During an edit (`updateLight`): per chunk, the blocks whose light was written, with the
+ * packed light each had before the first write; null otherwise. Light taken away is often
+ * put back as it was, so what changed is only known at the end.
+ */
+let touched: Map<Chunk, Map<number, number>> | null = null;
+const EDGE_LOW = [0, -1];
+const EDGE_HIGH = [0, 1];
+const MIDDLE = [0];
+
+/** Set one channel of block i of `chunk` to `level`. */
+function setLevel(chunk: Chunk, i: number, shift: number, level: number): void {
+  const before = chunk.light[i];
+  if (touched) {
+    let blocks = touched.get(chunk);
+    if (!blocks) touched.set(chunk, (blocks = new Map()));
+    if (!blocks.has(i)) blocks.set(i, before);
+  }
+  chunk.ownLight()[i] = (before & ~(15 << shift)) | (level << shift);
+}
+
+/** The chunks with a block whose light differs from before the edit, and the neighbours that pad such a block. */
+function changedChunks(world: World, edits: Map<Chunk, Map<number, number>>): Set<Chunk> {
+  const out = new Set<Chunk>();
+  for (const [chunk, blocks] of edits) {
+    for (const [i, before] of blocks) {
+      if (chunk.light[i] === before) continue;
+      out.add(chunk);
+      // At a chunk's edge the block is in its neighbours' padding too (up to 7 of them at a corner).
+      const lx = i & (S - 1);
+      const lz = (i >> 5) & (S - 1);
+      const ly = i >> 10;
+      if (lx !== 0 && lx !== S - 1 && ly !== 0 && ly !== S - 1 && lz !== 0 && lz !== S - 1) continue;
+      const sides = (l: number) => (l === 0 ? EDGE_LOW : l === S - 1 ? EDGE_HIGH : MIDDLE);
+      for (const dy of sides(ly))
+        for (const dz of sides(lz))
+          for (const dx of sides(lx)) {
+            const n = world.getChunk(chunk.cx + dx, chunk.cy + dy, chunk.cz + dz);
+            if (n) out.add(n);
+          }
+    }
+  }
+  return out;
+}
+
 /** Block (x, y, z) gets light from a neighbour with `level` on one channel, if more than it has. Returns 1 if raised. */
 function stepWorld(world: World, x: number, y: number, z: number, level: number, shift: number, down: boolean): number {
   if (y < 0 || y >= HEIGHT) return 0;
@@ -212,9 +262,8 @@ function stepWorld(world: World, x: number, y: number, z: number, level: number,
   const b = chunk.blocks[i];
   if (OPAQUE[b]) return 0;
   const l = down && shift === SUN && level === 15 && CLEAR[b] ? 15 : level - STEP[b];
-  const cur = chunk.light[i];
-  if (l <= ((cur >> shift) & 15)) return 0;
-  chunk.ownLight()[i] = (cur & ~(15 << shift)) | (l << shift);
+  if (l <= ((chunk.light[i] >> shift) & 15)) return 0;
+  setLevel(chunk, i, shift, l);
   pushWorld(x, y, z);
   return 1;
 }
@@ -288,4 +337,114 @@ export function lightBorders(world: World, cx: number, cz: number): number {
     raised += spreadWorld(world, shift);
   }
   return raised;
+}
+
+// --- Edits (main thread) -----------------------------------------------------------------
+
+/** Blocks whose light is being taken away, as world (x, y, z, the level it had) quads. */
+let removeQueue = new Int32Array(4 << 12);
+let removeTail = 0;
+
+function pushRemove(x: number, y: number, z: number, level: number): void {
+  if (removeTail + 4 > removeQueue.length) {
+    const bigger = new Int32Array(removeQueue.length * 2);
+    bigger.set(removeQueue);
+    removeQueue = bigger;
+  }
+  removeQueue[removeTail++] = x;
+  removeQueue[removeTail++] = y;
+  removeQueue[removeTail++] = z;
+  removeQueue[removeTail++] = level;
+}
+
+/**
+ * Neighbour (x, y, z) of a block that had `level` and lost it. If its own light could have
+ * come from there (less, or sunlight straight down), it goes too; if not, it is lit from
+ * elsewhere, and is queued to spread back into what was taken away.
+ */
+function unlight(world: World, x: number, y: number, z: number, level: number, shift: number, down: boolean): void {
+  if (y < 0 || y >= HEIGHT) return;
+  const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
+  if (!chunk) return;
+  const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
+  const own = (chunk.light[i] >> shift) & 15;
+  if (own === 0) return;
+  if (own < level || (down && shift === SUN && level === 15 && own === 15)) {
+    setLevel(chunk, i, shift, 0);
+    pushRemove(x, y, z, own);
+    // A block that gives light keeps giving it, and spreads it again.
+    const e = shift === BLOCK_LIGHT ? EMIT[chunk.blocks[i]] : 0;
+    if (e) {
+      setLevel(chunk, i, shift, e);
+      pushWorld(x, y, z);
+    }
+  } else pushWorld(x, y, z);
+}
+
+/** Take away the light queued for removal and all that came from it; queue the blocks lit from elsewhere to spread back. */
+function unspreadWorld(world: World, shift: number): void {
+  for (let head = 0; head < removeTail; head += 4) {
+    const x = removeQueue[head];
+    const y = removeQueue[head + 1];
+    const z = removeQueue[head + 2];
+    const level = removeQueue[head + 3];
+    unlight(world, x + 1, y, z, level, shift, false);
+    unlight(world, x - 1, y, z, level, shift, false);
+    unlight(world, x, y, z + 1, level, shift, false);
+    unlight(world, x, y, z - 1, level, shift, false);
+    unlight(world, x, y + 1, z, level, shift, false);
+    unlight(world, x, y - 1, z, level, shift, true);
+  }
+  removeTail = 0;
+}
+
+const NEIGHBOURS = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+] as const;
+
+/**
+ * The block at world (x, y, z) has just been set: bring the light around it up to date.
+ * Returns the chunks whose light changed, with the neighbours that pad the changed blocks.
+ */
+export function updateLight(world: World, x: number, y: number, z: number): Set<Chunk> {
+  if (y < 0 || y >= HEIGHT) return new Set();
+  const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
+  if (!chunk) return new Set();
+  const edits = new Map<Chunk, Map<number, number>>();
+  touched = edits;
+  const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
+  const b = chunk.blocks[i];
+  for (const shift of [SUN, BLOCK_LIGHT]) {
+    // Take away what the block had, and what came from it.
+    const had = (chunk.light[i] >> shift) & 15;
+    if (had) {
+      setLevel(chunk, i, shift, 0);
+      pushRemove(x, y, z, had);
+      unspreadWorld(world, shift);
+    }
+    // Let light back in: from the neighbours, from the sky above the top of the world, and
+    // from the block itself if it gives light.
+    if (!OPAQUE[b]) {
+      for (const [dx, dy, dz] of NEIGHBOURS) {
+        const ny = y + dy;
+        if (ny >= 0 && ny < HEIGHT && (world.getLight(x + dx, ny, z + dz) >> shift) & 15) pushWorld(x + dx, ny, z + dz);
+      }
+      if (shift === SUN && y === HEIGHT - 1 && CLEAR[b]) {
+        setLevel(chunk, i, shift, 15);
+        pushWorld(x, y, z);
+      }
+    }
+    if (shift === BLOCK_LIGHT && EMIT[b] > ((chunk.light[i] >> shift) & 15)) {
+      setLevel(chunk, i, shift, EMIT[b]);
+      pushWorld(x, y, z);
+    }
+    spreadWorld(world, shift);
+  }
+  touched = null;
+  return changedChunks(world, edits);
 }

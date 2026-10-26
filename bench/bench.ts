@@ -10,6 +10,7 @@ import { TUNING } from '../src/config';
 import { meshCulled } from '../src/mesh/culled';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
+import { Block, BLOCKS } from '../src/world/blocks';
 import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, reachableChunks } from '../src/world/visibility';
@@ -194,4 +195,61 @@ it('player physics', () => {
     `player physics: ${steps} steps (120 s walking, sprinting, jumping: ${Math.round(walked)} blocks covered) in ${total.toFixed(1)} ms, ` +
       `${perStep.toFixed(2)} µs a step; ${((perStep * 4) / 1000).toFixed(3)} ms for the 4 steps of a 30 fps frame\n`,
   );
+});
+
+it('edits', () => {
+  // What an edit costs on the main thread: light, then remeshing every chunk it made stale
+  // (as `main.ts` does). The worst cases are lights near a chunk corner, where the change
+  // reaches into 8 chunks.
+  const world = new World(SEED);
+  for (const [cx, cz] of columns(3)) world.ensureColumn(cx, cz);
+  const g = world.generator;
+  const opaque = (x: number, y: number, z: number) => BLOCKS[world.getBlock(x, y, z)].opaque;
+
+  // On the surface at the corner of four columns; and in the dark air of a cave nearest a chunk corner.
+  const surface: [number, number, number] = [31, g.height(31, 31) + 1, 31];
+  let cave: [number, number, number] | null = null;
+  let best = Infinity;
+  for (let y = 10; y < 60; y++)
+    for (let z = -32; z < 64; z++)
+      for (let x = -32; x < 64; x++) {
+        if (world.getBlock(x, y, z) !== Block.Air || world.getLight(x, y, z) !== 0 || !opaque(x, y - 1, z)) continue;
+        const d = Math.abs(((x + 16) & 31) - 16) + Math.abs(((y + 16) & 31) - 16) + Math.abs(((z + 16) & 31) - 16);
+        if (d < best) [best, cave] = [d, [x, y, z]];
+      }
+  const cases: [string, [number, number, number], Block][] = [
+    ['torch at a chunk corner, surface', surface, Block.Torch],
+    ['torch near a chunk corner, cave', cave!, Block.Torch],
+    ['lamp near a chunk corner, cave', cave!, Block.Lamp],
+  ];
+
+  const edit = (x: number, y: number, z: number, block: Block) => {
+    const t0 = performance.now();
+    const stale = world.setBlock(x, y, z, block);
+    const light = world.lightMs;
+    for (const c of stale) if (!c.empty) meshChunk(paddedBlocks(world, c.cx, c.cy, c.cz), c.cx, c.cy, c.cz, paddedLight(world, c.cx, c.cy, c.cz));
+    return { ms: performance.now() - t0, light, chunks: stale.length };
+  };
+  const lines = ['', 'edits (main thread, median of 5): light, then remeshing what changed'];
+  for (const [name, [x, y, z], block] of cases) {
+    const place: number[] = [];
+    const remove: number[] = [];
+    const placeLight: number[] = [];
+    const removeLight: number[] = [];
+    let chunks = 0;
+    for (let run = 0; run <= RUNS; run++) {
+      const a = edit(x, y, z, block);
+      const b = edit(x, y, z, Block.Air);
+      if (run === 0) continue;
+      place.push(a.ms);
+      placeLight.push(a.light);
+      remove.push(b.ms);
+      removeLight.push(b.light);
+      chunks = Math.max(a.chunks, b.chunks);
+    }
+    lines.push(
+      `  ${name.padEnd(34)} place ${median(place).toFixed(1)} ms (light ${median(placeLight).toFixed(2)}), remove ${median(remove).toFixed(1)} ms (light ${median(removeLight).toFixed(2)}), ${chunks} chunks`,
+    );
+  }
+  console.log(lines.join('\n') + '\n');
 });

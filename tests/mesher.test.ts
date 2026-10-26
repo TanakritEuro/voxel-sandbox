@@ -71,11 +71,19 @@ describe('mesher', () => {
   it('draws a torch as a small stick on the floor, lit by itself, without hiding the floor', () => {
     const world = emptyWorld([0, 1, 0]);
     for (let z = 0; z < 32; z++) for (let x = 0; x < 32; x++) world.setBlock(x, 40, z, Block.Stone);
-    const floor = mesh(world, 0, 1, 0).quads;
     world.setBlock(5, 41, 7, Block.Torch);
     const m = meshChunk(paddedBlocks(world, 0, 1, 0), 0, 1, 0, paddedLight(world, 0, 1, 0));
-    // Five faces of its own (no bottom), and the floor still whole beneath it.
-    expect(m.quads).toBe(floor + 5);
+    // The floor's top is still whole beneath it (its light now varies, so it is many quads).
+    let floorArea = 0;
+    const p = m.opaque.positions;
+    for (let v = 0; v < p.length / 3; v += 4) {
+      const ys = [0, 1, 2, 3].map((k) => p[(v + k) * 3 + 1]);
+      if (!ys.every((y) => y === 41)) continue;
+      const xs = [0, 1, 2, 3].map((k) => p[(v + k) * 3]);
+      const zs = [0, 1, 2, 3].map((k) => p[(v + k) * 3 + 2]);
+      if (xs.every(Number.isInteger)) floorArea += (Math.max(...xs) - Math.min(...xs)) * (Math.max(...zs) - Math.min(...zs));
+    }
+    expect(floorArea).toBe(32 * 32);
     const torch: number[][] = [];
     for (let v = 0; v < m.opaque.positions.length / 3; v++) {
       const p = [...m.opaque.positions.subarray(v * 3, v * 3 + 3)];

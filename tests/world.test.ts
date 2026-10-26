@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Block } from '../src/world/blocks';
-import { CHUNK_SIZE, localIndex, toChunk, toLocal } from '../src/world/coords';
+import { CHUNK_SIZE, CHUNK_VOLUME, localIndex, toChunk, toLocal } from '../src/world/coords';
 import { Generator, SEA_LEVEL, SURFACE_ONLY } from '../src/world/generate';
-import { World } from '../src/world/world';
+import { Chunk, World } from '../src/world/world';
 
 describe('coordinates', () => {
   it('rounds negative coordinates down to the right chunk', () => {
@@ -52,11 +52,14 @@ describe('world', () => {
   });
 
   it('marks neighbouring chunks stale when a border block changes', () => {
+    // Solid rock, all dark: swapping one opaque block for another changes no light, so only
+    // the chunks whose padding holds the block are stale.
     const world = new World(1);
-    world.ensureChunk(0, 2, 0);
-    world.ensureChunk(1, 2, 0);
-    world.ensureChunk(0, 2, 1);
-    expect(world.setBlock(31, 70, 31, Block.Stone).map((c) => c.key).sort()).toEqual(['0,2,0', '0,2,1', '1,2,0']);
+    for (const [cx, cz] of [[0, 0], [1, 0], [0, 1]]) {
+      const c = new Chunk(cx, 2, cz, new Uint8Array(CHUNK_VOLUME).fill(Block.Stone));
+      world.chunks.set(c.key, c);
+    }
+    expect(world.setBlock(31, 70, 31, Block.Dirt).map((c) => c.key).sort()).toEqual(['0,2,0', '0,2,1', '1,2,0']);
     expect(world.setBlock(10, 70, 10, Block.Dirt).map((c) => c.key)).toEqual(['0,2,0']);
   });
 

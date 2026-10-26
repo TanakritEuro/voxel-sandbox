@@ -27,8 +27,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestones 1–3 built (`docs/milestone-1.md` to `docs/milestone-3.md`), waiting for playtests
-(the laptop measurement is in: inside the budget). Milestone 4 planned (`docs/milestone-4.md`),
-waiting for approval. A seeded world of four biomes
+(the laptop measurement is in: inside the budget). Milestone 4 in progress (`docs/milestone-4.md`):
+light is in (sunlight and block light, smooth, following edits; torches and lamps). A seeded world of four biomes
 (`world/biomes.ts`: plains, forest, desert, snowy mountains from temperature and humidity
 noise, heights blended across borders; `world/generate.ts`: surface layers by biome and
 slope, beaches, sea floors, water to sea level 62; `world/caves.ts`: tunnels and caverns from
@@ -49,9 +49,8 @@ outline, hold the left button to break (time by block `hardness`, with cracks), 
 place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: visibility culling is per chunk and coarse, so many cave walls are still meshed and drawn; light
-doesn't follow edits yet (Milestone 4 step 3: a placed torch glows but lights nothing), no day and night,
-and edits are lost on reload.
+Known limits, each fixed by a milestone below: visibility culling is per chunk and coarse, so many cave walls are still meshed and drawn; no day
+and night yet, and edits are lost on reload.
 
 ## Architecture
 
@@ -109,10 +108,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
   `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `light.ts` (sunlight and block
-  light per block: `lightColumn` in the worker, `lightBorders` when a column arrives, shared
-  `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
+  light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
+  `updateLight` after an edit, shared `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
   and the walk from the player's chunk that decides what to mesh and draw),
-  `world.ts` (`Chunk`, `World`: get/set across chunks, columns, stale neighbours on edit,
+  `world.ts` (`Chunk`, `World`: get/set across chunks, columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
   crouching at edges, swimming, flying; `overlapsBlock` for placing), `mining.ts` (break

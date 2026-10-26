@@ -4,7 +4,7 @@
 import { Block } from './blocks';
 import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
 import { Generator, type GeneratorOptions } from './generate';
-import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, SUNLIT, unpackLight } from './light';
+import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, SUNLIT, unpackLight, updateLight } from './light';
 import { ALL_CONNECTED, chunkConnectivity } from './visibility';
 
 /**
@@ -130,11 +130,30 @@ export class World {
   }
 
   /**
-   * Set a block. Returns the chunks whose meshes are now stale: the block's own chunk, plus
-   * every neighbour whose padded copy includes it (up to 7 at a chunk corner). Face
-   * neighbours' border faces may appear or vanish; diagonal ones' corner AO may change.
+   * Set a block and bring the light around it up to date. Returns the chunks whose meshes
+   * are now stale: the block's own chunk, every neighbour whose padded copy includes it (up
+   * to 7 at a chunk corner: face neighbours' border faces may appear or vanish, diagonal
+   * ones' corner AO may change), and every chunk whose light changed or pads light that did.
+   * All of them get a new version. `lightMs` is how long the light took.
    */
   setBlock(x: number, y: number, z: number, block: Block): Chunk[] {
+    const stale = this.setBlockOnly(x, y, z, block);
+    if (!stale.length) return stale;
+    const t0 = performance.now();
+    const lit = updateLight(this, x, y, z);
+    this.lightMs = performance.now() - t0;
+    for (const c of stale) lit.delete(c);
+    for (const c of lit) {
+      c.version++;
+      stale.push(c);
+    }
+    return stale;
+  }
+
+  /** Time the light of the last `setBlock` took (ms). */
+  lightMs = 0;
+
+  private setBlockOnly(x: number, y: number, z: number, block: Block): Chunk[] {
     const chunk = this.getChunk(toChunk(x), toChunk(y), toChunk(z));
     if (!chunk) return [];
     const i = localIndex(toLocal(x), toLocal(y), toLocal(z));

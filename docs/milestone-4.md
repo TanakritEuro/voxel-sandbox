@@ -1,6 +1,6 @@
 # Milestone 4 plan: light and saving
 
-## Status: in progress (steps 1–2 done; light on edits next)
+## Status: in progress (steps 1–3 done; day and night next)
 
 Approved 2026-10-23 as proposed: caves fully dark without torches, crystal ore glows faintly
 (light 6), torches on the floor only, a 20-minute day, automatic saving, `fake-indexeddb` for
@@ -131,6 +131,59 @@ that the bench can tell apart.
 `?autofly` at radius 8 (production build, the machine quieter than in step 1): first view in
 front 1.45 s, all 2.07 s; main thread p50 2.0, p99 5.4, max 6.3 ms; no frame over 20 ms; no
 holes; 468k triangles drawn of 3386k; meshes 148.5 MB, light 25.5 MB.
+
+**Step 3 (light on edits).**
+- **`updateLight` in `light.ts`,** run by `World.setBlock` after every edit, on both channels:
+  1. *Removal BFS:* the block's old light is taken away, and so is every neighbour's that
+     could have come from it (less than it, or sunlight straight down at 15).
+  2. *Refill:* neighbours with light from elsewhere are queued, and light flows back in from
+     them, from the block's open neighbours, from the sky above the top of the world, and from
+     the block itself if it gives light. A light-giving block caught by a removal keeps its own
+     light and spreads it again.
+- **What gets remeshed:**
+  - Every write records the block's light from before its first change in the edit. At the
+    end, only blocks whose light really differs count: removals mostly put light back as it
+    was.
+  - Their chunks, and the neighbours whose padding holds them, get a new version.
+    `setBlock` returns them with the chunks whose geometry is stale, and `main.ts` remeshes
+    them all at once.
+- **`?stats`** shows the last edit: total ms, ms of light, chunks remeshed.
+- **Tests (3 new, 128 in all), each against the independent whole-area reference:**
+  - *A torch in a dark cave:* 14 at it, 13 next to it. Removing it brings back exactly the
+    light before.
+  - *A sunlit shaft:* 15 all the way down. Roofed, no block in it keeps sun 15. Unroofed, the
+    light is exactly as before.
+  - *60 random edits near chunk borders:* stone, air, torches, lamps, leaves, glass, water,
+    planks and crystal, from the caves to the sky. After every 20, the whole 3 × 2-column area
+    equals the reference. After every edit, the chunks returned are exactly those with a
+    changed block or light in their padded area.
+
+  The world test for stale neighbours now uses solid rock, where swapping two opaque blocks
+  changes no light. The torch mesh test checks the floor's area, since the lit floor no
+  longer merges into one quad.
+- **Checked in the pane (production build):**
+  - Torches placed in the cave at `?at=-48,71` light the floor and walls warmly.
+  - A lamp lights a wider area, and breaking it takes its light away.
+  - Coal in the cave floor shows up where it's lit.
+  - No console errors.
+
+| worst edits (bench, main thread, median of 5) | place | remove | chunks remeshed |
+| --- | --- | --- | --- |
+| torch at a chunk corner, on the surface | 8.3 ms (light 1.2) | 7.9 ms (light 1.4) | 8 |
+| torch near a chunk corner, in a cave | 10.1 ms (light 0.8) | 9.8 ms (light 0.7) | 8 |
+| lamp near a chunk corner, in a cave | 10.3 ms (light 1.1) | 10.3 ms (light 0.8) | 8 |
+
+The light itself takes about 1 ms. Remeshing up to 8 chunks on the main thread is the rest.
+In the browser:
+- Edits away from corners (one chunk) took 4–8 ms.
+- The first edit after loading took 11–14 ms, while the mesher's code on the main thread is
+  still cold.
+- No edit made a frame go over 20 ms.
+
+The worst case stays inside the budget, so remeshing stays synchronous, as decided in
+Milestone 1. If your laptop shows long frames when placing torches near chunk corners, the
+plan's fallback is ready: chunks whose light alone changed go to the workers, first in the
+queue.
 
 ## Scope decisions
 
