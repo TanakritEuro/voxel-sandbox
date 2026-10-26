@@ -8,6 +8,7 @@ import { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
 import { Input } from './input';
 import { Player } from './player';
+import { loadSettings, type Settings } from './settings';
 import { WorldSaver } from './save/saver';
 import { IndexedDbStore, MemoryStore, newWorldRecord, type PlayerState, type WorldStore } from './save/store';
 import { isUnsavedUrl } from './save/worlds';
@@ -29,7 +30,9 @@ import { World } from './world/world';
 const params = new URLSearchParams(location.search);
 // `?radius=8` overrides the view radius, for measuring.
 const radiusParam = Number(params.get('radius'));
-if (Number.isInteger(radiusParam) && radiusParam > 0) TUNING.view.radius = radiusParam;
+const radiusHeld = Number.isInteger(radiusParam) && radiusParam > 0;
+const settings = loadSettings();
+TUNING.view.radius = radiusHeld ? radiusParam : settings.viewDistance;
 // `?time=0.5` holds the time of day there (0 midnight, 0.5 noon), for screenshots and measuring;
 // `?daylength=60` makes a day last that many seconds, to watch it go round.
 const timeParam = params.get('time');
@@ -209,7 +212,12 @@ window.addEventListener('wheel', (e) => {
   renderHotbar();
 });
 // Paused whenever the mouse isn't captured (at the start, and after Esc), except under `?autofly`.
-const pauseMenu = new PauseMenu(document.body, record.name, !unsaved, { onPlay: () => input.lock(), onQuit: () => void quit() });
+const pauseMenu = new PauseMenu(document.body, record.name, !unsaved, settings, {
+  onPlay: () => input.lock(),
+  onQuit: () => void quit(),
+  onSettings: applySettings,
+});
+applySettings(settings);
 const paused = () => !input.locked && !autofly;
 const showPause = () => (pauseMenu.visible = paused());
 document.addEventListener('pointerlockchange', showPause);
@@ -256,6 +264,26 @@ function frame(now: number): void {
   stats.frame(now, interval, work, player.physicsMs, player.physicsSteps);
   autofly?.frameWork(work);
   requestAnimationFrame(frame);
+}
+
+// --- Settings ----------------------------------------------------------------------------------
+
+/**
+ * Settings take effect at once: the view distance (unless `?radius` holds it) moves the
+ * loader's radius, the fog and the far plane; field of view and the mouse. Sound comes later.
+ */
+function applySettings(s: Settings): void {
+  if (!radiusHeld && s.viewDistance !== TUNING.view.radius) {
+    TUNING.view.radius = s.viewDistance;
+    loader.radiusChanged();
+  }
+  const distance = TUNING.view.radius * CHUNK_SIZE;
+  waterView.setRange(distance * TUNING.sky.fogStartFraction, distance * 0.95);
+  camera.far = distance * 1.5;
+  camera.fov = s.fov;
+  camera.updateProjectionMatrix();
+  TUNING.fly.mouseSensitivity = s.sensitivity / 1000;
+  input.invertY = s.invertY;
 }
 
 // --- Saving ----------------------------------------------------------------------------------

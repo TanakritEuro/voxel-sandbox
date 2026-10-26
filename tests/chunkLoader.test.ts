@@ -303,4 +303,24 @@ describe('chunk loader', () => {
     expect(generated?.kind === 'generate' && generated.saved.map((c) => c.cy)).toEqual([1]);
     expect(s.sink.meshes.get(chunkKey(0, 1, 0))).toEqual(fresh(s.world, 0, 1, 0));
   });
+
+  it('follows a new view distance: unloads beyond it when smaller, fills it when larger', () => {
+    const s = setup();
+    settle(s, 16, 16);
+    const shown = () => [...s.sink.meshes.keys()].filter((k) => !s.sink.hidden.has(k)).map((k) => k.split(',').map(Number));
+
+    TUNING.view.radius = 1;
+    s.loader.radiusChanged();
+    settle(s, 16, 16);
+    const keep = 1 + TUNING.view.unloadMargin;
+    for (const c of s.world.chunks.values()) expect(Math.max(Math.abs(c.cx), Math.abs(c.cz))).toBeLessThanOrEqual(keep);
+    for (const [cx, , cz] of shown()) expect(cx * cx + cz * cz).toBeLessThanOrEqual(1);
+    expect(s.loader.missing(1)).toBe(0);
+
+    TUNING.view.radius = 3;
+    s.loader.radiusChanged();
+    settle(s, 16, 16);
+    expect(s.loader.missing(3)).toBe(0);
+    expect(shown().some(([cx, , cz]) => cx * cx + cz * cz > 4)).toBe(true);
+  });
 });

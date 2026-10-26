@@ -201,6 +201,14 @@ export class ChunkLoader {
     if (this.dirty) this.dispatch(deadline);
   }
 
+  /**
+   * The view radius (`TUNING.view.radius`) has changed: on the next update, sort the columns
+   * again, unload what is now out of range and walk again, as after moving.
+   */
+  radiusChanged(): void {
+    this.centre = { cx: Number.NaN, cy: Number.NaN, cz: Number.NaN };
+  }
+
   /** Remesh now, on this thread (after an edit), so the change shows this frame. */
   remesh(cx: number, cy: number, cz: number): void {
     // A chunk without a mesh yet is meshed by the next walk, from its new version. The edit may

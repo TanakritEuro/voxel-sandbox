@@ -9,12 +9,18 @@ import type { RGB } from './sky';
 export class WaterView {
   private readonly fog: THREE.Fog;
   /** The fog's range above water, to put back. */
-  private readonly air: { near: number; far: number };
+  private air: { near: number; far: number };
   private readonly waterColour = new THREE.Color(TUNING.water.fogColour);
 
   constructor(private readonly scene: THREE.Scene) {
     this.fog = scene.fog as THREE.Fog;
     this.air = { near: this.fog.near, far: this.fog.far };
+  }
+
+  /** The fog's range above water (blocks), for a new view distance. */
+  setRange(near: number, far: number): void {
+    this.air.near = near;
+    this.air.far = far;
   }
 
   /** Once a frame: whether the eye is under water, the sky's colour (sRGB 0–1) and daylight (`sky.ts`). */

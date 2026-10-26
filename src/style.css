@@ -256,7 +256,7 @@ body.menu-mode #hud {
 }
 
 .menu-label {
-  width: 60px;
+  width: 110px;
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -286,4 +286,31 @@ body.menu-mode #hud {
   opacity: 0.7;
   text-align: center;
   line-height: 1.5;
+}
+
+.menu-field .menu-slider {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: #f0c419;
+}
+
+.menu-value {
+  width: 72px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  opacity: 0.85;
+}
+
+.menu button.on {
+  background: #f0c419;
+  border-color: #f0c419;
+  color: #111;
+}
+
+.menu-help:empty {
+  display: none;
 }

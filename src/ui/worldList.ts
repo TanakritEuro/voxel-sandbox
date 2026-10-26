@@ -6,7 +6,9 @@
 import { TUNING } from '../config';
 import { IndexedDbStore, newWorldRecord, type WorldRecord, type WorldStore } from '../save/store';
 import { ago, byLastPlayed, freeName, newWorldId, seedFromText } from '../save/worlds';
+import { loadSettings } from '../settings';
 import { button, el, field } from './dom';
+import { settingsControls } from './settingsPanel';
 
 /** A random number from the browser's generator (seeds and ids of new worlds; not world code). */
 const random32 = (): number => crypto.getRandomValues(new Uint32Array(1))[0];
@@ -73,6 +75,7 @@ class WorldList {
     button(actions, 'New world', () => this.create());
     const rename = button(actions, 'Rename', () => this.rename());
     const remove = button(actions, 'Delete', () => this.remove(), 'menu-danger');
+    button(actions, 'Settings', () => this.settings());
     for (const b of [play, rename, remove]) b.disabled = !this.chosen;
     el(panel, 'p', 'menu-help', 'Worlds are kept in this browser. Double-click a world to play it.');
     play.focus();
@@ -117,6 +120,13 @@ class WorldList {
     button(actions, 'Save', () => void save(), 'menu-go');
     button(actions, 'Cancel', () => this.list());
     input.select();
+  }
+
+  private settings(): void {
+    const panel = this.reset('Settings');
+    settingsControls(panel, loadSettings(), () => {});
+    const actions = el(panel, 'div', 'menu-row');
+    button(actions, 'Done', () => (this.worlds.length ? this.list() : this.create()), 'menu-go').focus();
   }
 
   private remove(): void {

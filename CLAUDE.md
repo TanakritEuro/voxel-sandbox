@@ -27,7 +27,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestones 1–4 built (`docs/milestone-1.md` to `docs/milestone-4.md`), waiting for playtests
-(Milestone 3's laptop measurement is in: inside the budget). Milestone 5 planned (`docs/milestone-5.md`), waiting for approval. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
+(Milestone 3's laptop measurement is in: inside the budget). Milestone 5 in progress (`docs/milestone-5.md`): settings are in. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
 saving
 (edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
 A seeded world of four biomes
@@ -99,6 +99,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 
 ## Layout
 
+- `src/settings.ts` — player settings (view distance, FOV, mouse, volume) in localStorage,
+  cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, frame budget, player movement, fly speed,
   reach, light, day length, sky.
 - `src/math.ts` — seeded PRNG and coordinate hash.
@@ -144,8 +146,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/main.ts` — entry point: the world list, or the game for `?world=<id>` (or an unsaved
   world). `src/game.ts` — the game: opening the world, editing, HUD, frame loop, pause,
   autosave.
-- `src/ui/` — `worldList.ts` (play, new, rename, delete), `pauseMenu.ts` (play, save and quit,
-  keys), `dom.ts` (small DOM helpers). Plain DOM, styled in `style.css`.
+- `src/ui/` — `worldList.ts` (play, new, rename, delete, settings), `pauseMenu.ts` (play,
+  settings, save and quit, keys), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
+  helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play

@@ -18,6 +18,8 @@ export class Input implements Controls {
   yaw = 0;
   /** Up and down, radians, within ±89°. */
   pitch = -0.25;
+  /** Moving the mouse up looks down (a setting). */
+  invertY = false;
   private readonly held = new Set<string>();
   private readonly pressed = new Set<string>();
 
@@ -27,7 +29,7 @@ export class Input implements Controls {
       if (!this.locked) return;
       const s = TUNING.fly.mouseSensitivity;
       this.yaw -= e.movementX * s;
-      this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch - e.movementY * s));
+      this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch - e.movementY * s * (this.invertY ? -1 : 1)));
     });
     window.addEventListener('keydown', (e) => {
       // Keys count only with the mouse captured (otherwise a menu is up).

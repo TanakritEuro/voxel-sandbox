@@ -1,6 +1,10 @@
 # Milestone 5 plan: polish
 
-## Status: plan, waiting for your OK
+## Status: in progress (step 1 done; sky next)
+
+Approved 2026-10-26 as proposed: blocky clouds at y = 192, a creative inventory with the
+hotbar saved per world, the settings as listed with view distance up to 16, a held block
+only, and no ambient sounds for now.
 
 Goal from the roadmap:
 - a sky with sun, moon and clouds;
@@ -16,6 +20,56 @@ Playable after every step and inside the budget (60 fps on your laptop at radius
 over 20 ms flying). The Milestone 4 playtest is still to come; anything it turns up
 (night brightness, torch reach, cave darkness) is a number in `TUNING` and can be folded in
 along the way.
+
+## Results so far
+
+**Step 1 (settings).**
+- **`settings.ts`:**
+  - `Settings`, defaults from `TUNING`, and the ranges and steps.
+  - `cleanSettings` keeps the known fields of the right type, clamped (view distance rounded
+    to whole chunks), and uses the defaults for the rest.
+  - `loadSettings` / `saveSettings` use `localStorage` (`voxel.settings.v1`) and fall back to
+    the defaults where storage is missing or throws.
+- **`ui/settingsPanel.ts`:**
+  - Sliders for view distance (with "Beyond 12 chunks may be slow on a laptop." above 12),
+    field of view, mouse speed and volume.
+  - Toggles for invert mouse Y and mute.
+  - Every change is saved and applied at once.
+  - It opens from a Settings button in the world list and in the pause menu (which goes back
+    to its main view when opened again).
+- **Applied in the game (`applySettings`):**
+  - *View distance:* sets the loader's radius, and `ChunkLoader.radiusChanged` makes the next
+    update re-sort the columns, unload what's out of range and walk again, as after moving.
+    It also moves the fog's range and the far plane. `?radius` still holds it for measuring.
+  - *Field of view* goes to the camera.
+  - *Mouse speed and invert Y* go to the input.
+  - Volume and mute are kept for the sounds in step 4.
+- **Checked in the pane (production build):**
+  - The world list's Settings showed the panel.
+  - In a world, from the pause menu: view distance 8 → 12 grew the world from 2152 to 4360
+    chunks and 183 to 454 draw calls. Then 6 brought it down to 2312 chunks and 129 draw
+    calls.
+  - The values were in `localStorage` (then cleared again).
+  - One frame went over 20 ms while 12 was filling in. No console errors.
+- **Tests (4 new, 157 in all):**
+  - settings: defaults, a round trip, junk and out-of-range values, no or blocked storage;
+  - the loader: after shrinking the radius nothing is kept beyond the new range and nothing
+    beyond it is shown; after growing it, everything within it is meshed.
+
+`?autofly` (production build, this machine), for the warning above 12:
+
+| | radius 8 (Milestone 4) | radius 12 | radius 16 |
+| --- | --- | --- | --- |
+| main thread p50 / p99 / max | 2.2 / 5.5 / 6.4 ms | 3.2 / 7.6 / 9.7 ms | 7.0 / 11.1 / 14.7 ms |
+| frames over 20 ms | 0 | 0 | 0 |
+| holes (missing chunks inside the fog) | none | up to 10, in 1 of 30 s | up to 57, in 11 of 30 s |
+| first view (in front / all) | 1.4 / 1.9 s | 2.4 / 3.8 s | 4.8 / 9.3 s |
+| draw calls, triangles drawn | 177, 468k | 452, 1217k | 774, 2082k |
+| meshes, chunks + light, JS heap | 149, 66, 250 MB | 312, 131, 511 MB | 545, 222, 822 MB |
+
+At 16, the frames hold on this machine, but at sprint speed loading falls behind (gaps in a
+third of the flight) and memory passes 800 MB. That supports the warning; walking speed is
+easier.
 
 ## Scope decisions
 
