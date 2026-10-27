@@ -1,6 +1,7 @@
 // Messages between the main thread and the chunk workers. Block arrays and vertex buffers
 // travel as transferables (moved, not copied); the sender loses them.
 
+import type { Lod } from '../mesh/lod';
 import type { ChunkMesh } from '../mesh/mesher';
 import type { PackedLight } from '../world/light';
 
@@ -34,6 +35,10 @@ export type Job =
       padded: Uint8Array;
       /** `paddedLight` output; comes back too. */
       paddedLight: Uint8Array;
+      /** Level of detail (`mesh/lod.ts`): 0 full, 1 cells of 2³, 2 cells of 4³. Default 0. */
+      lod?: Lod;
+      /** Sides bordering a column of another level, walled (`SEAM_*` bits). Default none. */
+      seams?: number;
     };
 
 export type JobResult =

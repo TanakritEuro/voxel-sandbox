@@ -1,6 +1,7 @@
 // What a chunk worker does with a job. Pure apart from a generator per seed, so tests (and a
 // main-thread fallback) can call it directly.
 
+import { prepareLod } from '../mesh/lod';
 import { meshChunk } from '../mesh/mesher';
 import { decodeRle } from '../save/rle';
 import { Generator } from '../world/generate';
@@ -25,7 +26,9 @@ export function handleJob(job: Job): JobResult {
     const light = lightColumn(chunks);
     return { kind: 'generate', id: job.id, cx: job.cx, cz: job.cz, cyMin: job.cyMin, chunks, connectivity, light, ms: performance.now() - t0 };
   }
-  const mesh = meshChunk(job.padded, job.cx, job.cy, job.cz, job.paddedLight);
+  // Coarsened and walled in place: the padded copies are the main thread's scratch buffers.
+  if (job.lod || job.seams) prepareLod(job.padded, job.paddedLight, job.lod ?? 0, job.seams ?? 0);
+  const mesh = meshChunk(job.padded, job.cx, job.cy, job.cz, job.paddedLight, (job.lod ?? 0) > 0);
   const { id, cx, cy, cz, version, padded, paddedLight } = job;
   return { kind: 'mesh', id, cx, cy, cz, version, mesh, padded, paddedLight, ms: performance.now() - t0 };
 }

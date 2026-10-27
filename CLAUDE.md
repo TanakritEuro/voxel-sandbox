@@ -128,7 +128,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
   `faceStarts`: quads by face direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then torches),
-  `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes, opaque and transparent passes), `culled.ts` (the
+  `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes, opaque and transparent passes;
+  `flatFaces` for far chunks), `lod.ts` (far chunks: the padded input coarsened in place into
+  cells of 2³ or 4³ blocks, water kept exact, walls on seams between levels), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — chunk meshes into pages, opaque and transparent apart.
   `chunkPage.ts` — a page: a `BatchedMesh` used for its multi-draw path, with its own space
@@ -156,7 +158,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   records and chunks, in IndexedDB or memory), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
-- `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`),
+- `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`; mesh jobs
+  take a level of detail and seam sides),
   `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
   `pool.ts` (`WorkerPool`).
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept

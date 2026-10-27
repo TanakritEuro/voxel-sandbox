@@ -364,3 +364,74 @@ and world-space; the convention in CLAUDE.md stands.
   shader without `discard`, could save a good part of the per-pixel time.
 - The probe looking straight down at terrain (GPU 5.9–6.5 ms for 0.29 M triangles at radius 8)
   suggests pixels, not triangles, are most of what is left at radius 8.
+
+## Step 4: lower detail meshing for far chunks — built (2026-10-27)
+
+Headless only for now: the mesh job can make far chunks, and step 5 has the loader ask for
+them. The game is unchanged until then (every job is level 0, with no seams).
+
+**How (`mesh/lod.ts`):** not a second mesher. The padded blocks are **coarsened in place**,
+and the ordinary greedy mesher does the rest.
+- **Cells:** 2 × 2 × 2 blocks (LOD 1) or 4 × 4 × 4 (LOD 2), each made all one block.
+- **The rule:**
+  - A cell is solid when at least half its blocks are: opaque cubes and leaves count; air,
+    water, glass and torches don't.
+  - A solid cell takes its highest solid block, so grass tops stay green and snow white.
+  - Otherwise its solid blocks are taken out: they become water where the cell has water, else
+    air, lit by the brightest of the cell's own air.
+  - Everything else is kept as it was. That keeps **water at the exact sea level**: its
+    surface was the same height at every level on the spawn's sea chunks, and its area within
+    a fifth (a little lost at shores, a little gained where stone stuck out of the sea).
+    - The plan said water and glass at full detail. This is that, except in cells that turn
+      solid, and it needs one mesher run instead of two.
+- **Far faces are flat** (`meshChunk(..., flatFaces)`): no AO and no smooth light, each face lit
+  by the block it looks at.
+  - With AO, a coarse cell's faces split wherever AO changed block by block. LOD 1 then kept
+    79 % of the full-detail quads on mountain chunks, and LOD 2 46 %.
+  - Flat: 31 % and 16 %. At 224 blocks and more, in the fog, flat faces should hardly show
+    (a playtest question for step 6).
+- **The border from the neighbours** is only one block deep, so a neighbour's cell can't be
+  coarsened from it.
+  - **LOD 1:** a 2 × 2 patch of the border counts as solid only when all of it is. The
+    neighbour's cell then has half of it solid, so it is solid too, and no face is ever left
+    out at a chunk border (a few hidden ones are made).
+  - **LOD 2:** a layer is only a quarter of a cell. The test found real holes with the same
+    rule, so the border never counts as solid there: far chunks wall their edges, and the
+    hidden walls cost some quads.
+- **Seams** between columns of different levels: on the sides of a 4-bit mask, the border's
+  solid blocks become air in full sun, so the chunk makes walls that cover the gaps. Both
+  chunks of such a pair get them; step 5 works out the masks.
+- **The mesh job** takes `lod` and `seams`, and the worker coarsens its padded copies in
+  place: they are the main thread's scratch buffers anyway.
+
+**Bench** (`npm run bench`, the 724 non-empty chunks within radius 8 of the spawn, median of
+5 runs):
+
+| | mean ms per chunk | p95 | triangles | vertex data |
+| --- | --- | --- | --- | --- |
+| Full detail (greedy) | 1.03 | 1.65 | 2,321 k | 101.8 MB |
+| LOD 1 | 0.95 | 1.31 | 695 k (30 %) | 30.5 MB |
+| LOD 2 | 0.85 | 1.25 | 415 k (18 %) | 18.2 MB |
+
+- On the mountain chunks LOD 2 alone made 16 % before its border walls and makes a little more
+  with them: the walls cost about 5 % of full detail. They are mostly underground, where the
+  visibility walk or terrain hides them and direction culling halves them.
+- A far chunk meshes slightly faster than a full one, so loading isn't slower.
+- **Expected at radius 16** with the plan's distances:
+  - the area within 7 chunks (19 %) at full detail, 7–11 (28 %) at LOD 1, 11–16 (53 %) at
+    LOD 2: 0.19 + 0.28 × 0.30 + 0.53 × 0.18 ≈ 0.37 of the triangles;
+  - so about 1.2 M drawn instead of 3.3 M over the mountains.
+
+**Tests (8 new, 211 in all):**
+- **Rules:** a cell solid at half, taking its highest block; 3 of 8 taken out, lit by its
+  brightest air; stone in water turned to water; leaves count as solid and torches don't; 4³
+  cells solid at 32 of 64 and not at 31; border patches solid only when whole, never for 4³.
+- **Fewer quads** on real chunks (mountains and the spawn): LOD 1 under 40 % of full detail,
+  LOD 2 under 60 % of LOD 1.
+- **No hole** where two chunks of the same level meet: on real mountain chunks, along x, y and
+  z, at both levels, every square of the shared plane with a solid cell on one side and none
+  on the other is covered by a face of the solid side.
+- **Seams:** a chunk of stone inside stone has no faces, and with its +x side bordering another
+  level only +x faces on that side, lit by full sun; at LOD 2, one face a side.
+- **Water** at the same height and within a fifth of the area at every level.
+- **The mesh job** with a level and seams makes exactly what the functions make.

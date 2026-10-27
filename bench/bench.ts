@@ -8,6 +8,7 @@
 import { it } from 'vitest';
 import { TUNING } from '../src/config';
 import { meshCulled } from '../src/mesh/culled';
+import { type Lod, prepareLod } from '../src/mesh/lod';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { decodeRle, encodeRle } from '../src/save/rle';
@@ -25,7 +26,16 @@ const RUNS = 5;
 const CHUNKS_PER_COLUMN = MAX_CHUNK_Y - MIN_CHUNK_Y + 1;
 
 type Mesher = (padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array) => ChunkMesh;
-const MESHERS: Record<string, Mesher> = { culled: meshCulled, greedy: meshChunk };
+/** Far chunks (`mesh/lod.ts`): coarsened copies (in the worker the padded arrays are coarsened in place), flat faces. */
+const lodMesher =
+  (lod: Lod): Mesher =>
+  (padded, cx, cy, cz, light) => {
+    const b = padded.slice();
+    const l = light.slice();
+    prepareLod(b, l, lod, 0);
+    return meshChunk(b, cx, cy, cz, l, true);
+  };
+const MESHERS: Record<string, Mesher> = { culled: meshCulled, greedy: meshChunk, 'lod 1': lodMesher(1), 'lod 2': lodMesher(2) };
 
 function columns(radius: number): [number, number][] {
   const out: [number, number][] = [];

@@ -122,8 +122,11 @@ const flat = (l: number): number => (l * 0x01010101) | 0;
  * Mesh one chunk from its padded blocks and light. Positions are in world coordinates (chunk
  * origin added), so the mesh needs no transform. Each quad is four consecutive vertices,
  * counter-clockwise seen from outside. Without `light`, everything is in full sun.
+ * `flatFaces` (for far chunks, `lod.ts`) leaves out AO and smooth light: every face lit evenly
+ * by the block it looks at, so a coarse cell's faces merge whole (40 % of the quads they make
+ * with AO, measured on mountain chunks).
  */
-export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array = ALL_SUNLIT): ChunkMesh {
+export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array = ALL_SUNLIT, flatFaces = false): ChunkMesh {
   opaque.reset();
   transparent.reset();
   shaped.length = 0;
@@ -165,7 +168,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
               const nb = padded[f];
               if (nb === AIR || (!OPAQUE[nb] && (nb !== b || CUTOUT[b]))) {
                 const lf = light[f];
-                if (TRANSPARENT[b]) {
+                if (TRANSPARENT[b] || flatFaces) {
                   key = b | (NO_AO << 8);
                   sunMask[at] = flat((lf >> 4) * 17);
                   glowMask[at] = flat(Math.max((lf & 15) * 17, GLOW[b]));
