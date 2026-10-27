@@ -325,3 +325,42 @@ mountain spawn, GPU ms:
 **Decision:** reverted; the sky is drawn first as before. It's recorded here so the idea isn't
 tried again blind. Cheaper sky and clouds per pixel (rather than their order) could still be
 looked at in step 6, with the render resolution.
+
+## Step 3: packed vertices — tried, dropped (2026-10-27)
+
+**Tried:**
+- Vertices of 12 bytes instead of 20: position and texture coordinates in two 32-bit words, the
+  colour as before.
+- Positions were relative to a region of 8 × 8 columns, in sixteenths of a block, so torches
+  kept their fractions. Each page held one region and sat at its origin, so the region's offset
+  came through the page's own matrix, with no per-draw data. Emptied pages were reused for the
+  next region.
+- Every vertex of 32 real chunk meshes (torches included, on both sides of region borders)
+  unpacked to exactly the mesher's numbers, and it looked the same.
+
+**Measured** side by side with step 2, alternating builds, mountain probe, GPU ms:
+
+| | Step 2 (20 bytes) | Packed (12 bytes) |
+| --- | --- | --- |
+| Radius 8 | 5.9, 5.9 | 5.9, 5.9 |
+| Radius 16 | 12.3, 12.2 | 12.8, 12.7 |
+| Radius 16 fps | 62.0, 62.4 | 60.8, 60.4 |
+
+- At radius 8 no difference; at radius 16, 0.5 ms *slower* every time.
+- It also needed fewer multi-draw calls (221 against about 380 at radius 16), which didn't help
+  either.
+- The size of a vertex doesn't limit this GPU, and unpacking costs a little in the shader. That
+  agrees with step 1, where 16-bit indices made no difference.
+
+**Decision: dropped,** as agreed beforehand. The code was reverted, so vertices stay 20 bytes
+and world-space; the convention in CLAUDE.md stands.
+
+**Something to look at instead (for step 6):**
+- The opaque pass's fragment shader can `discard` (for the holes in leaves), and it's the same
+  shader for every solid block. On many GPUs a shader that can discard turns off early depth
+  rejection for everything it draws. That would make every hidden terrain pixel cost a full
+  shade.
+- Splitting leaves (and other cut-out blocks) into their own pass, with solid blocks in a
+  shader without `discard`, could save a good part of the per-pixel time.
+- The probe looking straight down at terrain (GPU 5.9–6.5 ms for 0.29 M triangles at radius 8)
+  suggests pixels, not triangles, are most of what is left at radius 8.
