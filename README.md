@@ -23,6 +23,7 @@ play: what you build, where you are and the time of day.
 | Right click | Place block |
 | 1–9 or wheel | Pick a block |
 | Esc | Pause (play on, or save and go back to the world list) |
+| M | Mute or unmute |
 
 Torches (4) and lamps (7) light caves and nights. A day lasts 20 minutes.
 

@@ -88,6 +88,21 @@ export const TUNING = {
     /** Seconds after breaking a block before the next one starts, while the button stays held. */
     breakPause: 0.2,
   },
+  sound: {
+    /** A footstep every this many blocks walked on the ground. */
+    stride: 1.6,
+    /** A digging hit this often (s) while breaking a block. */
+    digInterval: 0.25,
+    /** Landing: silent up to this fall speed (blocks / s; a jump lands at about 9), full this much faster. */
+    landSpeed: 10,
+    landFullSpeed: 20,
+    /** Splashing in: from this speed, full at that one. */
+    splashSpeed: 3,
+    splashFullSpeed: 15,
+    /** Levels before the master volume. */
+    step: 0.35,
+    dig: 0.5,
+  },
   /**
    * Fog by biome (`render/fog.ts`): a tint, how much of it shows by day, and where the fog
    * starts as a fraction of the view distance. Blended by the biomes where the player is.

@@ -34,6 +34,9 @@ export enum Block {
 
 type RGB = [number, number, number];
 
+/** What a block sounds like underfoot, dug, broken and placed (`audio/sound.ts` has a recipe for each). */
+export type BlockSound = 'stone' | 'dirt' | 'grass' | 'sand' | 'gravel' | 'snow' | 'wood' | 'leaves' | 'glass' | 'water';
+
 export interface BlockInfo {
   name: string;
   /** Opaque blocks hide the faces of whatever is next to them. */
@@ -65,6 +68,7 @@ export interface BlockInfo {
   textures: { top: TextureName; side: TextureName; bottom: TextureName };
   /** The hotbar icon, if not the side texture. */
   icon?: TextureName;
+  sound: BlockSound;
   /** RGB 0–1 for the top, sides and bottom. */
   top: RGB;
   side: RGB;
@@ -73,7 +77,7 @@ export interface BlockInfo {
 
 const hex = (h: number): RGB => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
 const faces = (top: TextureName, side = top, bottom = side) => ({ top, side, bottom });
-const solid = (name: string, hardness: number, textures: BlockInfo['textures'], top: number, side = top, bottom = side): BlockInfo => ({
+const solid = (name: string, hardness: number, textures: BlockInfo['textures'], top: number, side = top, bottom = side): Omit<BlockInfo, 'sound'> => ({
   name,
   opaque: true,
   passable: false,
@@ -91,7 +95,7 @@ const solid = (name: string, hardness: number, textures: BlockInfo['textures'], 
   bottom: hex(bottom),
 });
 
-export const BLOCKS: readonly BlockInfo[] = [
+const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   // Never drawn; its textures are only there to fill the table.
   { ...solid('Air', 0, faces('stone'), 0), opaque: false, passable: true, targetable: false },
   solid('Stone', 2.5, faces('stone'), 0x8a8d91),
@@ -125,6 +129,28 @@ export const BLOCKS: readonly BlockInfo[] = [
   },
   { ...solid('Lamp', 0.6, faces('lamp'), 0xe8c070), light: 15 },
 ];
+
+/** Each block's sound; stone (and the ores, sandstone) unless listed. */
+const SOUNDS: Partial<Record<Block, BlockSound>> = {
+  [Block.Dirt]: 'dirt',
+  [Block.Grass]: 'grass',
+  [Block.Sand]: 'sand',
+  [Block.Water]: 'water',
+  [Block.Wood]: 'wood',
+  [Block.Leaves]: 'leaves',
+  [Block.Planks]: 'wood',
+  [Block.Glass]: 'glass',
+  [Block.Snow]: 'snow',
+  [Block.SnowyGrass]: 'snow',
+  [Block.Gravel]: 'gravel',
+  [Block.SpruceWood]: 'wood',
+  [Block.SpruceLeaves]: 'leaves',
+  [Block.Cactus]: 'leaves',
+  [Block.Torch]: 'wood',
+  [Block.Lamp]: 'glass',
+};
+
+export const BLOCKS: readonly BlockInfo[] = TABLE.map((info, b) => ({ ...info, sound: SOUNDS[b as Block] ?? 'stone' }));
 
 /** Blocks the player can place, in hotbar order (keys 1–9). */
 export const HOTBAR: readonly Block[] = [

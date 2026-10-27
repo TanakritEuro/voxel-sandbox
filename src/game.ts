@@ -3,12 +3,14 @@
 // the pause menu.
 
 import * as THREE from 'three';
+import { SoundCues, underfoot } from './audio/cues';
+import { Sound } from './audio/sound';
 import { Autofly } from './autofly';
 import { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
 import { Input } from './input';
 import { Player } from './player';
-import { loadSettings, type Settings } from './settings';
+import { loadSettings, saveSettings, type Settings } from './settings';
 import { WorldSaver } from './save/saver';
 import { IndexedDbStore, MemoryStore, newWorldRecord, type PlayerState, type WorldStore } from './save/store';
 import { isUnsavedUrl } from './save/worlds';
@@ -81,6 +83,11 @@ const saver = await WorldSaver.open(store, record);
 let time = timeHeld ? Number(timeParam) : record.time;
 
 const world = new World(record.seed);
+// Sounds wait for the first click or key (browsers allow audio only after a gesture).
+const sound = new Sound(settings.volume, settings.muted);
+const cues = new SoundCues();
+window.addEventListener('pointerdown', () => sound.unlock());
+window.addEventListener('keydown', () => sound.unlock());
 const skyDome = new SkyDome(TUNING.sky.sunTilt);
 scene.add(skyDome.group);
 const clouds = new Clouds(record.seed, TUNING.sky.cloudCover, TUNING.sky.cloudHeight, TUNING.sky.cloudCell);
@@ -194,6 +201,7 @@ function editing(dt: number): void {
   const broken = mining.update(target, input.isHeld('Mouse0'), dt);
   if (broken) {
     edit(broken.x, broken.y, broken.z, Block.Air);
+    sound.play({ name: 'break', material: BLOCKS[broken.block].sound, gain: 1 });
     // A torch goes with the block it stood on.
     if (world.getBlock(broken.x, broken.y + 1, broken.z) === Block.Torch) edit(broken.x, broken.y + 1, broken.z, Block.Air);
   }
@@ -205,11 +213,20 @@ function editing(dt: number): void {
     // Not inside the player (water and other passable blocks can go there); torches only on
     // top of a solid block, in air.
     const torchFits = BLOCKS[world.getBlock(x, y - 1, z)].opaque && world.getBlock(x, y, z) === Block.Air;
-    if (block === Block.Torch ? torchFits : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) edit(x, y, z, block);
+    if (block === Block.Torch ? torchFits : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) {
+      edit(x, y, z, block);
+      sound.play({ name: 'place', material: BLOCKS[block].sound, gain: 1 });
+    }
   }
   cracks.show(mining.target, mining.stage);
 }
 window.addEventListener('keydown', (e) => {
+  // M mutes and unmutes (a setting, so it's remembered).
+  if (e.code === 'KeyM' && input.locked) {
+    settings.muted = !settings.muted;
+    saveSettings(settings);
+    applySettings(settings);
+  }
   const n = Number(e.key);
   if (n >= 1 && n <= HOTBAR.length) {
     selected = n - 1;
@@ -235,6 +252,8 @@ showPause();
 // --- Loop ----------------------------------------------------------------------------------
 
 let last = performance.now();
+/** Where the feet were last frame, for footsteps. */
+let lastFeet = { x: player.body.x, z: player.body.z };
 let fps = 60;
 
 function frame(now: number): void {
@@ -246,7 +265,16 @@ function frame(now: number): void {
 
   // Paused: the player and the clock stand still; the world goes on loading.
   if (autofly?.active) autofly.update(now, dt, interval);
-  else if (!paused()) player.update(dt);
+  else if (!paused()) {
+    player.update(dt);
+    // Footsteps, landing, splashing and digging, from how the player moved this frame.
+    const b = player.body;
+    const moved = Math.hypot(b.x - lastFeet.x, b.z - lastFeet.z);
+    const digging = mining.target ? BLOCKS[mining.target.block].sound : null;
+    const ground = underfoot(world, b.x, b.y, b.z);
+    for (const e of cues.frame({ dt, moved, vy: b.vy, onGround: b.onGround, flying: player.flying, inWater: b.inWater, ground, digging })) sound.play(e);
+  }
+  lastFeet = { x: player.body.x, z: player.body.z };
   if (!timeHeld && !paused()) time = (time + dt / TUNING.day.length) % 1;
   const sky = skyAt(time);
   chunks.setSunlight(sky.sunlight);
@@ -288,7 +316,7 @@ function frame(now: number): void {
 
 /**
  * Settings take effect at once: the view distance (unless `?radius` holds it) moves the
- * loader's radius, the fog and the far plane; field of view and the mouse. Sound comes later.
+ * loader's radius, the fog and the far plane; field of view, the mouse and the volume.
  */
 function applySettings(s: Settings): void {
   if (!radiusHeld && s.viewDistance !== TUNING.view.radius) {
@@ -301,6 +329,7 @@ function applySettings(s: Settings): void {
   camera.updateProjectionMatrix();
   TUNING.fly.mouseSensitivity = s.sensitivity / 1000;
   input.invertY = s.invertY;
+  sound.setVolume(s.volume, s.muted);
 }
 
 // --- Saving ----------------------------------------------------------------------------------

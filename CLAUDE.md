@@ -28,7 +28,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 Milestones 1–4 built (`docs/milestone-1.md` to `docs/milestone-4.md`), waiting for playtests
 (Milestone 3's laptop measurement is in: inside the budget). Milestone 5 in progress (`docs/milestone-5.md`): settings, a sky with sun, moon, stars and clouds,
-fog by biome and moving water. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
+fog by biome, moving water, and synthesised sounds (footsteps, digging, breaking, placing,
+landing, splashing). Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
 saving
 (edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
 A seeded world of four biomes
@@ -136,6 +137,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (near first, in front before behind) up to the pool's capacity, meshes only chunks the
   visibility walk reaches and hides the rest, drops stale or out-of-range results, remeshes
   edits on the main thread; reads a column's saved chunks before generating it.
+- `src/audio/` — `cues.ts` (which sounds movement and digging make, when: pure), `sound.ts`
+  (Web Audio: a recipe per block material, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time),

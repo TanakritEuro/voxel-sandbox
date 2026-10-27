@@ -1,6 +1,6 @@
 # Milestone 5 plan: polish
 
-## Status: in progress (steps 1–3 done; sounds next)
+## Status: in progress (steps 1–4 done; particles next)
 
 Approved 2026-10-26 as proposed: blocky clouds at y = 192, a creative inventory with the
 hotbar saved per world, the settings as listed with view distance up to 16, a held block
@@ -162,6 +162,55 @@ easier.
   - easing: 63 % in `ease` seconds, there after 30;
   - full tint by day, none at night;
   - water flow starts still, stays within a block, and moves smoothly from frame to frame.
+
+**Step 4 (sounds).**
+- **`BlockInfo.sound`:** stone, dirt, grass, sand, gravel, snow, wood, leaves, glass or water,
+  from a table in `blocks.ts` (stone unless listed).
+  - Snowy grass sounds like snow, planks and torches like wood, cactus like leaves, and the
+    lamp like glass.
+- **`audio/cues.ts`** (pure, `SoundCues.frame`):
+  - *Footsteps:* one every 1.6 blocks walked, in the material underfoot. `underfoot` looks
+    under the middle of the feet, then under the box's corners, for standing over an edge.
+  - *Landing* from falls faster than a jump's (silent up to 10 blocks a second, full at 30),
+    with a step.
+  - *Splashing* into water from 3 blocks a second.
+  - *Digging:* a hit at once, then every 0.25 s.
+  - The numbers are in `TUNING.sound`.
+- **`audio/sound.ts`:**
+  - `Sound` ported from the racing game: the context unlocked by the first click or key, a
+    master gain for volume and mute, and a shared noise buffer.
+  - *A recipe per material:* filtered noise, sometimes in a few quick bursts (grass, sand,
+    gravel, leaves), sometimes with a pitched click (stone a tick, wood a hollow knock,
+    glass a ring).
+  - *Events:* a step is the recipe; a dig is shorter; a break is a louder crunch in two
+    bursts; a place is a low thump with the material on top; a landing is a deeper thud;
+    a splash is two low washes.
+  - Pitch and level vary a little each time.
+- **In the game:**
+  - The cues run each unpaused frame from how the player moved. Breaking and placing play
+    their sounds where they happen.
+  - Volume and mute come from the settings; M toggles mute and remembers it.
+- **One fix after measuring:** walking down a slope drops a block at a time, so the step
+  count started again at every landing, and 9 blocks gave 3 steps instead of 5. Now the
+  distance counts in the air too, a step due in the air sounds on touching down, and only a
+  real (audible) landing restarts the rhythm.
+- **Checked in the pane (production build):** I can't hear the pane, so I counted the audio
+  nodes made, with `AudioContext` wrapped.
+  - Walking 8.7 blocks over grass and sand: 5 steps (10 noise bursts).
+  - Digging sand for 1.5 s: hits every quarter second and breaks.
+  - Placing: a thump.
+  - With M, nothing plays and `muted` is saved; a second M turns it back.
+  - No console errors.
+
+  How they sound is for your playtest.
+- **Tests (7 new, 174 in all):**
+  - steps per stride, in the ground's material, faster when sprinting;
+  - the rhythm kept down a slope;
+  - no steps in the air, flying or in water;
+  - landings louder for bigger falls, and none after a jump;
+  - splashes fast and not slow;
+  - digging hits at once, then every interval;
+  - underfoot at an edge, water not counting as ground, and every block having a sound.
 
 ## Scope decisions
 
