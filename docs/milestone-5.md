@@ -470,6 +470,7 @@ one event, so the recording could tell a snapping view from slow frames. It show
   screen. A lower view distance is the cure for now.
 - **Tests (3 new, 192 in all):** the recording's moves lose only the 722 px one; flicks that
   build up and big moves after big ones are kept; a sudden flick from rest loses one event.
+- **Your check (2026-10-27):** quick turns are smooth now on the live site.
 
 ## Scope decisions
 
