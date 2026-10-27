@@ -31,11 +31,12 @@ export class Chunk {
     public blocks: Uint8Array,
     /** All air as generated and not edited since: nothing to mesh. */
     public empty = false,
-  ) {}
-
-  get key(): string {
-    return chunkKey(this.cx, this.cy, this.cz);
+  ) {
+    this.key = chunkKey(cx, cy, cz);
   }
+
+  /** "cx,cy,cz": made once, as maps keyed by it are asked thousands of times a frame. */
+  readonly key: string;
 
   /** Faces connected through the chunk's open space: given by the worker that made it, else worked out when first asked. */
   get connectivity(): number {

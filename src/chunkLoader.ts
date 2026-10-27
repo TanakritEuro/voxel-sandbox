@@ -42,8 +42,21 @@ export interface ChunkSaves {
 interface Column {
   cx: number;
   cz: number;
+  key: string;
   /** Within the view radius, so its chunks are meshed; otherwise only generated, as a neighbour. */
   mesh: boolean;
+  priority: number;
+  /** Its chunks, from MIN_CHUNK_Y up, once all are loaded (they stay while it's in the order). */
+  chunks: Chunk[] | null;
+  /** Its 3 × 3 columns are loaded, so it can be meshed (stays so while it's in the order). */
+  ready: boolean;
+  /**
+   * Nothing to do here, as of the last look: skipped until something could change that (a
+   * walk, an edit in it, a result for it or a neighbour). Without this, every frame looked at
+   * every chunk in range again, which at view distance 16 used up the frame's budget before
+   * reaching the work still to do, and loading stopped.
+   */
+  settled: boolean;
 }
 
 /** Padded copies (blocks, light) kept for reuse when they come back from workers. */
@@ -87,8 +100,9 @@ export class ChunkLoader {
   private centre = { cx: Number.NaN, cy: Number.NaN, cz: Number.NaN };
   /** Horizontal look direction the columns were sorted for (unit length, or zero). */
   private look = { x: 0, z: 0 };
-  /** Columns around the player, in the order to work on them. */
+  /** Columns around the player, in the order to work on them, and by key. */
   private order: Column[] = [];
+  private readonly columns = new Map<string, Column>();
   /** Within a column, chunk heights nearest the player's first. */
   private heights: number[] = [];
   private readonly results: JobResult[] = [];
@@ -174,13 +188,28 @@ export class ChunkLoader {
     const fz = len > 1e-6 ? lookZ / len : 0;
     const moved = cx !== this.centre.cx || cz !== this.centre.cz;
     const turned = (fx !== this.look.x || fz !== this.look.z) && fx * this.look.x + fz * this.look.z < TURN_COS;
-    if (moved || turned || cy !== this.centre.cy) {
+    if (moved) {
+      // Another column: other columns in range, other chunks to see.
       this.centre = { cx, cy, cz };
       this.look = { x: fx, z: fz };
       this.rebuildOrder();
-      if (moved) this.unloadFar();
+      this.unloadFar();
       this.dirty = true;
       this.walkNow = true;
+    } else {
+      // Up or down: the walk starts elsewhere, and chunks nearer the player's height go first.
+      if (cy !== this.centre.cy) {
+        this.centre.cy = cy;
+        this.sortHeights();
+        this.dirty = true;
+        this.walkNow = true;
+      }
+      // Turning only changes what to do first; what can be seen doesn't depend on the view.
+      if (turned) {
+        this.look = { x: fx, z: fz };
+        this.resort();
+        this.dirty = true;
+      }
     }
     const deadline = performance.now() + TUNING.view.applyBudgetMs;
     // Results first: they unblock more work.
@@ -215,6 +244,7 @@ export class ChunkLoader {
     // have opened or closed a way through it, so walk again too.
     this.dirty = true;
     this.walkNow = true;
+    this.unsettle(cx, cz);
     const key = chunkKey(cx, cy, cz);
     const chunk = this.world.getChunk(cx, cy, cz);
     if (!chunk || !this.meshed.has(key) || !this.neighboursLoaded(cx, cz)) return;
@@ -227,6 +257,8 @@ export class ChunkLoader {
     this.running--;
     if (result.kind === 'generate') {
       this.generating.delete(columnKey(result.cx, result.cz));
+      // It, and its neighbours (now perhaps ready), have work again.
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) this.unsettle(result.cx + dx, result.cz + dz);
       if (this.inKeepRange(result.cx, result.cz)) {
         this.world.addColumn(result.cx, result.cz, result.chunks, result.connectivity, result.light);
         this.walkSoon = true;
@@ -235,6 +267,7 @@ export class ChunkLoader {
     }
     const { cx, cy, cz, version } = result;
     const key = chunkKey(cx, cy, cz);
+    this.unsettle(cx, cz);
     if (this.spare.length < SPARE_PADDED) this.spare.push(result.padded);
     if (this.spareLight.length < SPARE_PADDED) this.spareLight.push(result.paddedLight);
     if (this.meshing.get(key) === version) this.meshing.delete(key);
@@ -260,6 +293,14 @@ export class ChunkLoader {
       (x, y, z) => this.world.getChunk(x, y, z)?.connectivity ?? ALL_CONNECTED,
     );
     for (const key of this.meshed.keys()) this.renderer.setVisible(key, this.reachable.has(key));
+    // What can be seen has changed: every column may have chunks to mesh, or none.
+    for (const col of this.order) col.settled = false;
+  }
+
+  /** Column (cx, cz) may have work again. */
+  private unsettle(cx: number, cz: number): void {
+    const col = this.columns.get(columnKey(cx, cz));
+    if (col) col.settled = false;
   }
 
   /** Start ready work in priority order while there's capacity and time; count the rest. */
@@ -274,9 +315,16 @@ export class ChunkLoader {
       return !outOfTime;
     };
     let queued = 0;
-    for (const { cx, cz, mesh } of this.order) {
-      if (!world.hasColumn(cx, cz)) {
-        const key = columnKey(cx, cz);
+    for (const col of this.order) {
+      if (col.settled) continue;
+      const { cx, cz, key } = col;
+      if (!col.chunks) {
+        if (world.hasColumn(cx, cz)) {
+          col.chunks = [];
+          for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) col.chunks.push(world.getChunk(cx, cy, cz)!);
+        }
+      }
+      if (!col.chunks) {
         if (this.generating.has(key) || this.reading.has(key)) continue;
         // A column with saved chunks is read first (from IndexedDB: a few ms, off this thread).
         if (this.saves?.has(cx, cz) && !this.read.has(key)) {
@@ -302,13 +350,21 @@ export class ChunkLoader {
         this.runner.run({ kind: 'generate', id: this.nextId++, seed: world.generator.seed, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
         continue;
       }
-      if (!mesh) continue;
+      if (!col.mesh) {
+        col.settled = true;
+        continue;
+      }
 
-      let neighbours: boolean | undefined;
+      // Busy: something here is waiting or running, so look again next time.
+      let busy = false;
       for (const cy of this.heights) {
-        const chunk = world.getChunk(cx, cy, cz)!;
+        const chunk = col.chunks[cy - MIN_CHUNK_Y];
         const key = chunk.key;
-        if (this.meshed.get(key) === chunk.version || this.meshing.get(key) === chunk.version) continue;
+        if (this.meshed.get(key) === chunk.version) continue;
+        if (this.meshing.get(key) === chunk.version) {
+          busy = true;
+          continue;
+        }
         // All air has no faces (the faces of blocks next to it belong to their own chunks).
         if (chunk.empty) {
           this.renderer.remove(key);
@@ -318,8 +374,9 @@ export class ChunkLoader {
         // Can't be seen from here: leave it until it can.
         if (!this.reachable.has(key)) continue;
         // Border faces and AO need the neighbours, or they'd be drawn against "air".
-        neighbours ??= this.neighboursLoaded(cx, cz);
-        if (!neighbours || !canStart()) {
+        col.ready ||= this.neighboursLoaded(cx, cz);
+        busy = true;
+        if (!col.ready || !canStart()) {
           queued++;
           continue;
         }
@@ -329,6 +386,7 @@ export class ChunkLoader {
         this.running++;
         this.runner.run({ kind: 'mesh', id: this.nextId++, cx, cy, cz, version: chunk.version, padded, paddedLight: light });
       }
+      if (!busy) col.settled = true;
     }
     this.queued = queued;
     this.dirty = outOfTime;
@@ -337,6 +395,8 @@ export class ChunkLoader {
   private readDone(key: string, saved: SavedChunk[]): void {
     this.reading.delete(key);
     this.read.set(key, saved);
+    const col = this.columns.get(key);
+    if (col) col.settled = false;
     this.dirty = true;
   }
 
@@ -347,20 +407,36 @@ export class ChunkLoader {
 
   /** Columns to mesh (within the view radius) and their neighbours (to generate), by `columnPriority`. */
   private rebuildOrder(): void {
-    const { cx, cy, cz } = this.centre;
+    const { cx, cz } = this.centre;
     const r = TUNING.view.radius;
     const inView = (dx: number, dz: number) => dx * dx + dz * dz <= r * r;
-    const list: (Column & { priority: number })[] = [];
+    this.order = [];
+    this.columns.clear();
     for (let dz = -r - 1; dz <= r + 1; dz++) {
       for (let dx = -r - 1; dx <= r + 1; dx++) {
         const mesh = inView(dx, dz);
         let neighbour = false;
         for (let ez = -1; ez <= 1 && !mesh && !neighbour; ez++) for (let ex = -1; ex <= 1; ex++) if (inView(dx + ex, dz + ez)) neighbour = true;
-        if (mesh || neighbour) list.push({ cx: cx + dx, cz: cz + dz, mesh, priority: columnPriority(dx, dz, this.look.x, this.look.z) });
+        if (!mesh && !neighbour) continue;
+        const col: Column = { cx: cx + dx, cz: cz + dz, key: columnKey(cx + dx, cz + dz), mesh, priority: 0, chunks: null, ready: false, settled: false };
+        this.order.push(col);
+        this.columns.set(col.key, col);
       }
     }
-    list.sort((a, b) => a.priority - b.priority);
-    this.order = list;
+    this.resort();
+    this.sortHeights();
+  }
+
+  /** The same columns, in order for the current look direction. */
+  private resort(): void {
+    const { cx, cz } = this.centre;
+    for (const col of this.order) col.priority = columnPriority(col.cx - cx, col.cz - cz, this.look.x, this.look.z);
+    this.order.sort((a, b) => a.priority - b.priority);
+  }
+
+  /** Within a column, chunks nearest the player's height first. */
+  private sortHeights(): void {
+    const cy = this.centre.cy;
     this.heights = [];
     for (let h = MIN_CHUNK_Y; h <= MAX_CHUNK_Y; h++) this.heights.push(h);
     this.heights.sort((a, b) => Math.abs(a - cy) - Math.abs(b - cy));

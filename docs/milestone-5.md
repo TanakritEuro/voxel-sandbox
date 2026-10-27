@@ -414,6 +414,40 @@ easier.
 - **Tests (2 new, 188 in all):** meshes are counted until drawn or removed; uploads take a
   budget of bytes at a time, skip hidden meshes, and go back to normal culling once drawn.
 
+**Still jumping, in Chrome at view distance 16 (2026-10-27, your second report).** The upload
+fix above was measured at radius 8; your setting is 16, where the loader itself was the problem.
+- **Causes:**
+  1. **Loading stalled at 16.** Every frame `dispatch` looked at every chunk in range again
+     (about 7,500, building string keys). That used up the 3 ms budget before it reached the
+     work still to do, so nothing started: `?stats` sat at "153 queued, 0 in flight" for good.
+  2. **Every turn of more than 30° cost a frame.** It rebuilt the column order from scratch and
+     ran the visibility walk again: 10–17 ms at 16 (headless). The walk doesn't depend on the
+     look direction, only on the player's chunk.
+  3. `?stats` showed "draw calls 1": the held block's own render pass reset Three.js's counts.
+- **Fix:**
+  - Columns are kept between frames with their chunks once loaded, whether their neighbours are
+    loaded, and **settled** once nothing in them is left to do. Settled columns are skipped until
+    something could change that: a walk, an edit, or a result for them or a neighbour.
+  - A turn only re-sorts the existing columns (0.3–1.4 ms at 16); moving to another column or
+    another height still walks.
+  - `Chunk.key` is made once, not on every call.
+  - `renderer.info` is reset once a frame, so both passes count.
+- **Measured in Chrome** (production build, your view distance 16, fast spins by a script):
+
+  | | Before | After |
+  | --- | --- | --- |
+  | Radius 16, loading | never finished | 7,464 chunks in about 16 s; upload backlog gone 10 s later |
+  | Radius 16, standing | | about 6 ms of main thread a frame |
+  | Radius 16, fast spins | 10–17 ms extra per turn | slowest frame about 17 ms (one at 25) |
+  | Radius 16, sprint flight | | 627 frames, 22 over 20 ms, slowest 33.4 |
+  | Radius 8, sprint flight | | 919 frames, none over 20 ms |
+
+  Flying at 16 is still over the budget (set for radius 8): each new column walks about 6,400
+  chunks. Tracking the walk's visited chunks by number instead of string made no difference
+  (2–5 ms either way), so it was left as it is.
+- **Test (1 new, 189 in all):** once loaded, 64 turns through two full circles start no work and
+  don't walk again (the old loader walked on each one).
+
 ## Scope decisions
 
 - **Settings first**, because later steps add to them.

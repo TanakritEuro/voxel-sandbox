@@ -55,6 +55,8 @@ const hotbarEl = document.querySelector<HTMLDivElement>('#hotbar')!;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+// Draw calls and triangles counted over the whole frame (the world, then the held block), for `?stats`.
+renderer.info.autoReset = false;
 
 const viewDistance = TUNING.view.radius * CHUNK_SIZE;
 const scene = new THREE.Scene();
@@ -301,6 +303,7 @@ let fps = 60;
 
 function frame(now: number): void {
   const start = performance.now();
+  renderer.info.reset();
   const interval = now - last;
   const dt = Math.min(interval / 1000, 0.1);
   last = now;

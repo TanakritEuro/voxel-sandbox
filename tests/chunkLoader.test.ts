@@ -50,7 +50,10 @@ class FakeSink implements ChunkSink {
     this.hidden.delete(key);
   }
   readonly hidden = new Set<string>();
+  /** setVisible calls: a walk makes one per meshed chunk. */
+  shows = 0;
   setVisible(key: string, visible: boolean): void {
+    this.shows++;
     if (visible) this.hidden.delete(key);
     else this.hidden.add(key);
   }
@@ -186,6 +189,20 @@ describe('chunk loader', () => {
     const generated = s.runner.jobs.slice(before).filter((j) => j.kind === 'generate');
     expect(generated.length).toBeGreaterThan(0);
     expect(generated[0].cx).toBeGreaterThan(0);
+  });
+
+  it('turns without walking again or starting work once loaded (turning used to cost a frame)', () => {
+    const s = setup();
+    settle(s, 16, 16);
+    const jobs = s.runner.jobs.length;
+    const shows = s.sink.shows;
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * 4 * Math.PI;
+      s.loader.update(16, EYE, 16, Math.cos(a), Math.sin(a));
+    }
+    expect(s.sink.shows).toBe(shows);
+    expect(s.runner.jobs.length).toBe(jobs);
+    expect(s.loader.pending).toBe(0);
   });
 
   it('meshes a deep chunk only once it can be seen, and hides it again from above', () => {
