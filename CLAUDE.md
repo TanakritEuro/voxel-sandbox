@@ -26,8 +26,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1–4 built (`docs/milestone-1.md` to `docs/milestone-4.md`), waiting for playtests
-(Milestone 3's laptop measurement is in: inside the budget). Milestone 5 in progress (`docs/milestone-5.md`): settings, a sky with sun, moon, stars and clouds,
+Milestones 1–5 built (`docs/milestone-1.md` to `docs/milestone-5.md`), waiting for playtests
+(Milestone 3's laptop measurement is in: inside the budget). Milestone 5 added settings, a sky with sun, moon, stars and clouds,
 fog by biome, moving water, synthesised sounds (footsteps, digging, breaking, placing,
 landing, splashing), block particles, the held block, and a creative block picker (E) with the
 hotbar saved per world. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,

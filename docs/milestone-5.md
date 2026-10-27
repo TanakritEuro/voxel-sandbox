@@ -1,6 +1,6 @@
 # Milestone 5 plan: polish
 
-## Status: in progress (steps 1–7 done; notes and playtest next)
+## Status: built; waiting for your playtest
 
 Approved 2026-10-26 as proposed: blocky clouds at y = 192, a creative inventory with the
 hotbar saved per world, the settings as listed with view distance up to 16, a held block
@@ -21,7 +21,78 @@ over 20 ms flying). The Milestone 4 playtest is still to come; anything it turns
 (night brightness, torch reach, cave darkness) is a number in `TUNING` and can be folded in
 along the way.
 
-## Results so far
+All seven steps are in:
+- settings (view distance live, field of view, mouse, invert Y, volume, mute);
+- a sky dome with sun, moon, stars and blocky clouds;
+- fog by biome;
+- moving water;
+- synthesised sounds;
+- block particles;
+- the held block;
+- a creative block picker with the hotbar saved per world.
+
+There are 186 tests. It's live at https://tanakriteuro.github.io/voxel-sandbox/.
+
+### Before and after
+
+Measured back to back on 2026-10-27 on this machine. The end of Milestone 4 (`81bf16d`) was
+built alongside, and `?autofly` alternated M4, M5, M4, M5 at radius 8.
+
+| | end of Milestone 4 | end of Milestone 5 |
+| --- | --- | --- |
+| `?autofly` main thread p50 / p99 / max | 2.2 / 5.6 / 6.9 ms, 2.3 / 5.5 / 6.5 ms | 2.3 / 5.9 / 7.3 ms, 2.4 / 5.8 / 6.7 ms |
+| frames over 20 ms, holes | 0, 0 | 0, 0 |
+| first view (in front / all) | 1.25 / 1.75 s, 1.44 / 2.00 s | 1.69 / 2.12 s, 1.68 / 2.19 s |
+| draw calls (by day), triangles drawn | 177, 468k | 181, 468k |
+| meshes, chunks + light | 148.5, 66.3 MB | 148.5, 66.3 MB |
+| JS heap after the flight | 265 MB | 283 MB |
+| bench (same engine code) | | generate 485, light 163, greedy mesh 712 ms; worst edit 7.6–9.4 ms |
+
+What the polish costs:
+- **Frame time:** about 0.1 ms of main thread a frame for the sky, clouds, biome fog, water
+  drift and the held block's pass.
+- **Draw calls:** 4 more by day (5 at night).
+- **Memory:** nothing in meshes or chunks, about 18 MB of heap.
+- **First view:** about 0.3 s later. The cloud pattern and the block icons are made on the
+  main thread at startup.
+- Nothing goes over 20 ms, and there are no holes.
+
+While digging, particles keep the main thread within 0.2 ms of standing still. From step 1:
+radius 12 still holds the budget on this machine, while 16 can't load fast enough at sprint
+speed and passes 800 MB.
+
+## Playtest questions
+
+Open https://tanakriteuro.github.io/voxel-sandbox/, make a world (or open one), and press Play.
+E opens the block picker, M mutes, and Settings is in the pause menu (Esc) and the world list.
+
+1. **Sounds** (the main question, as I can't hear them).
+   - Do footsteps on grass, sand, gravel, snow, stone and planks sound like what they are?
+   - Is the step rate right walking and sprinting?
+   - Do digging, breaking, placing, landing from a jump off a hill, and splashing work?
+   - Anything too loud, too quiet, too harsh, or tiring after a while?
+2. **Sky.**
+   - Are the sun and moon the right size?
+   - Are the clouds right? (40 % cover, 12-block cells, at y = 192, drifting at 1.5 blocks a
+     second.)
+   - Is the dusk glow and the stars at night good? `?seed=20261022&time=0.76` shows dusk.
+3. **Fog by biome.** Is the desert haze noticeable without being murky? Can you tell the
+   mountains' clearer air and the forest's touch of green? Are crossings smooth?
+4. **Water.** Is the drift too fast, too slow, or distracting from above?
+5. **Particles.** The size of the cubes, how many, how long they last: right, or too much
+   for repeated digging?
+6. **Held block.** Size and place; how strong the bob and the swing are. Does it get in the
+   way?
+7. **Block picker.** Is E or Tab handy? Are the icons clear (ores, sandstone, gravel)? Would
+   you like the hotbar to scroll through the picker, or a search?
+8. **Settings.** Does view distance changing live work smoothly on your laptop? Up to which
+   value does it stay smooth there? Are the FOV and mouse ranges wide enough?
+9. **Laptop performance:** `?autofly&stats` once more, and walk about at night with torches.
+
+The Milestone 3 and 4 playtest questions are still open in their notes. Night brightness
+(`TUNING.day.night`) could become a setting if you'd like.
+
+## Results by step
 
 **Step 1 (settings).**
 - **`settings.ts`:**
