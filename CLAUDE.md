@@ -29,7 +29,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 Milestones 1–4 built (`docs/milestone-1.md` to `docs/milestone-4.md`), waiting for playtests
 (Milestone 3's laptop measurement is in: inside the budget). Milestone 5 in progress (`docs/milestone-5.md`): settings, a sky with sun, moon, stars and clouds,
 fog by biome, moving water, synthesised sounds (footsteps, digging, breaking, placing,
-landing, splashing), and block particles. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
+landing, splashing), block particles, and the held block. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
 saving
 (edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
 A seeded world of four biomes
@@ -133,7 +133,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
   and the water texture's drift.
   `crack.ts` — the crack pattern and overlay. `particles.ts` — breaking and digging particles
-  (simulation, pure; one InstancedMesh).
+  (simulation, pure; one InstancedMesh). `heldBlock.ts` — the held block (a lone block meshed,
+  drawn in its own pass; bob, swing and switch motion, pure).
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
   (near first, in front before behind) up to the pool's capacity, meshes only chunks the
   visibility walk reaches and hides the rest, drops stale or out-of-range results, remeshes

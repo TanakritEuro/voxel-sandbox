@@ -20,6 +20,7 @@ import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
 import { Clouds } from './render/clouds';
 import { blendFog, easeFog, fogColour } from './render/fog';
+import { HeldBlock } from './render/heldBlock';
 import { brightness, ParticleMesh, Particles } from './render/particles';
 import { clock, skyAt } from './render/sky';
 import { SkyDome } from './render/skyDome';
@@ -102,6 +103,8 @@ let daylightNow = 1;
 let fog: ReturnType<typeof blendFog> | null = null;
 // `?light` shows light as grey instead of textures.
 const chunks = new ChunkRenderer(params.has('light'));
+/** The selected block, drawn in the lower right. */
+const held = new HeldBlock(chunks.textures);
 scene.add(chunks.group);
 // `?workers=1` runs fewer workers, to see how a machine with fewer cores loads.
 const workersParam = Number(params.get('workers'));
@@ -209,6 +212,7 @@ function editing(dt: number): void {
     const info = BLOCKS[broken.block];
     edit(broken.x, broken.y, broken.z, Block.Air);
     sound.play({ name: 'break', material: info.sound, gain: 1 });
+    held.motion.swing();
     particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
     // A torch goes with the block it stood on.
     if (world.getBlock(broken.x, broken.y + 1, broken.z) === Block.Torch) edit(broken.x, broken.y + 1, broken.z, Block.Air);
@@ -224,6 +228,7 @@ function editing(dt: number): void {
     if (block === Block.Torch ? torchFits : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) {
       edit(x, y, z, block);
       sound.play({ name: 'place', material: BLOCKS[block].sound, gain: 1 });
+      held.motion.swing();
     }
   }
   cracks.show(mining.target, mining.stage);
@@ -283,6 +288,7 @@ function frame(now: number): void {
     for (const e of cues.frame({ dt, moved, vy: b.vy, onGround: b.onGround, flying: player.flying, inWater: b.inWater, ground, digging })) {
       sound.play(e);
       // Each digging hit knocks a few chips off the face being dug.
+      if (e.name === 'dig') held.motion.swing();
       if (e.name === 'dig' && target) {
         const t = target;
         const info = BLOCKS[t.block];
@@ -290,6 +296,8 @@ function frame(now: number): void {
       }
     }
     particles.step(dt, (x, y, z) => !BLOCKS[world.getBlock(x, y, z)].passable);
+    // The held block bobs with the steps walked on the ground.
+    held.motion.update(dt, b.onGround && !player.flying ? moved : 0);
   }
   lastFeet = { x: player.body.x, z: player.body.z };
   if (!timeHeld && !paused()) time = (time + dt / TUNING.day.length) % 1;
@@ -325,6 +333,9 @@ function frame(now: number): void {
     (target ? ` · ${BLOCKS[target.block].name}` : '');
 
   renderer.render(scene, camera);
+  const eye = camera.position;
+  held.set(HOTBAR[selected], world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)), sky.sunlight);
+  held.render(renderer, camera.aspect, !autofly);
   const work = performance.now() - start;
   stats.frame(now, interval, work, player.physicsMs, player.physicsSteps);
   autofly?.frameWork(work);

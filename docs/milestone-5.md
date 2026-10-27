@@ -1,6 +1,6 @@
 # Milestone 5 plan: polish
 
-## Status: in progress (steps 1–5 done; held block next)
+## Status: in progress (steps 1–6 done; inventory next)
 
 Approved 2026-10-26 as proposed: blocky clouds at y = 192, a creative inventory with the
 hotbar saved per world, the settings as listed with view distance up to 16, a held block
@@ -242,6 +242,37 @@ easier.
   - chips in front of the dug face;
   - the limit, with the newest burst all there;
   - brightness (dark, daylight, night, a lamp), and colours times the light.
+
+**Step 6 (held block).**
+- **`render/heldBlock.ts`:**
+  - *The mesh:* `heldMesh` runs the chunk mesher on a padded array with the one block in it
+    and air all round, lit throughout by the light where the player's eyes are. So a torch
+    has its own shape, leaves have their holes, glass and water go in the transparent pass,
+    and a lamp glows. It's remade only when the block or that light changes.
+  - *Drawing:* `HeldBlock` has its own scene, a camera with a fixed 70° field of view (the FOV
+    setting doesn't stretch it), and its own pair of chunk materials. They take the day's
+    sunlight colour from the world each frame and share its texture array (now
+    `ChunkRenderer.textures`, with `chunkGeometry` shared too).
+  - It's drawn after the world with the depth cleared, so it never sinks into a wall.
+  - At rest it's in the lower right, turned to show its top and two sides.
+- **Motion (`HeldMotion`, pure):**
+  - a bob, down and a little sideways, once per stride walked on the ground (fading in and
+    out as you start and stop);
+  - a swing down and forward (0.25 s) at every break, digging hit and placing;
+  - a dip out and back in (0.2 s) when the selection changes.
+  - Hidden under `?autofly`.
+- **Checked in the pane (production build):**
+  - Holding grass on the plains, the block sat in the lower right. I made it a little
+    smaller and higher after the first look, so it no longer runs off the bottom edge.
+  - Key 4 gave a small torch.
+  - Key 7 and digging: the lamp tipped forward mid-swing, with the cracks on the target.
+  - No console errors. The extra pass is a few dozen triangles.
+- **Tests (4 new, 183 in all):**
+  - the lone-block mesh: six faces in the unit cube, a torch's five within its box, leaves'
+    six, glass in the transparent pass, nothing for air;
+  - its light: given sunlight in the vertex colours, and a lamp at full glow in the dark;
+  - motion at rest, a bob within its height when walking, the swing's pitch and its return,
+    and the dip.
 
 ## Scope decisions
 

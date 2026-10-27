@@ -12,7 +12,8 @@ const CHUNK_RADIUS = (CHUNK_SIZE * Math.sqrt(3)) / 2;
 export class ChunkRenderer {
   readonly group = new THREE.Group();
   private readonly meshes = new Map<string, THREE.Mesh[]>();
-  private readonly textures = createBlockTextures();
+  /** The block texture array, shared with the held block. */
+  readonly textures = createBlockTextures();
   /** Solid blocks, and leaves with their holes cut out (alpha test). */
   private readonly opaqueMaterial: THREE.ShaderMaterial;
   /** Water and glass, blended. */
@@ -91,16 +92,22 @@ export class ChunkRenderer {
   }
 
   private make(data: MeshData, material: THREE.Material, centre: THREE.Vector3): THREE.Mesh {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(data.colors, 4, true));
-    geo.setAttribute('uvl', new THREE.BufferAttribute(data.uvl, 4));
-    geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    const geo = chunkGeometry(data);
     geo.boundingSphere = new THREE.Sphere(centre.clone(), CHUNK_RADIUS);
     const mesh = new THREE.Mesh(geo, material);
     mesh.matrixAutoUpdate = false; // positions are already in world space
     return mesh;
   }
+}
+
+/** A mesher pass as geometry for the chunk material (positions, colours, uvl, indices). */
+export function chunkGeometry(data: MeshData): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(data.colors, 4, true));
+  geo.setAttribute('uvl', new THREE.BufferAttribute(data.uvl, 4));
+  geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
+  return geo;
 }
 
 function geometryBytes(geo: THREE.BufferGeometry): number {
