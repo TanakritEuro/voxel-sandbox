@@ -234,3 +234,60 @@ small ones at radius 16) can be tuned in step 6.
   space again, use 16-bit indices when small, and give an oversized mesh a page of its own.
 - The draw list holds the visible chunks in the frustum, blended ones farthest first.
 - The allocator: first fit, merging, and never the same quad twice through 5,000 random steps.
+
+## Step 2: faces pointing away skipped — built (2026-10-27)
+
+**What changed:**
+- The mesher writes faces in `FACE_ORDER` (+x, +y, +z, -x, -y, -z), then torches, and records
+  where each starts: `MeshData.faceStarts`, 8 numbers. The order puts the three directions a
+  camera can see into one range in half the cases, two ranges otherwise.
+- Opaque pages draw, per chunk, only the directions that could face the camera
+  (`faceRanges` in `render/chunkPage.ts`). A +x face lies on a plane above the chunk's lowest
+  x, so a camera at or below that x can't see any; the same for the other five directions.
+  Torches are always drawn, and neighbouring ranges are merged.
+- Water and glass are drawn whole: they are double-sided, so the water's surface shows from
+  below.
+
+**Measured** in Chrome on your laptop, 2560 × 1201, mountain probe.
+- The laptop was clearly slower in this session than in step 1: step 1's build measured
+  main thread 8.5 ms and GPU 22.2 ms at radius 16 here, against 4.0 and 18.6 before. Perhaps
+  battery or heat.
+- So step 1 and step 2 were built side by side and measured alternately in the same session.
+
+| | fps | frame ms | main thread ms | GPU ms | multi-draw calls | triangles drawn |
+| --- | --- | --- | --- | --- | --- | --- |
+| Radius 16, step 1 | 37 | 26.8 | 8.5 | 22.2 | 378 | 5.77 M |
+| Radius 16, step 2 | **49** | 20.4 | 9.0 | **15.5** | 371 | **3.30 M** |
+| Radius 8, step 1 | 76 | 13.1 | 3.7 | 8.6 | 90 | 1.33 M |
+| Radius 8, step 2 | **82** | 12.2 | 4.0 | **7.8** | 91 | **0.81 M** |
+
+- **`?autofly=20` at radius 8:** step 1 had 41 frames over 20 ms, step 2 had 25; none over
+  33 ms; no holes.
+- **Looking at mountains, cliffs and trees from inside a canyon:** no missing faces.
+
+**What it says:**
+- **40 % fewer triangles at every distance.** At radius 16 that is 30 % less GPU time and
+  32 % more fps.
+- **At radius 8 the GPU barely followed the triangles** (−9 %): most of its time there is
+  something else.
+- **Looking straight up at the sky** (radius 8, nothing but sky and clouds drawn): **GPU 2.9 ms**,
+  120 fps.
+  - The sky dome is drawn first (`renderOrder` −3), so it shades every pixel of the screen
+    before the terrain covers most of them.
+  - Drawn after the terrain, at the far plane with the depth test on, the GPU would skip every
+    covered pixel. That is a small change outside the four of the plan, proposed as a step
+    before step 3.
+- **The extra ranges cost something too.** ANGLE on Direct3D 11 draws a multi-draw as one draw
+  per range: two to three per chunk now instead of one.
+- **Step 3 (smaller vertices) looks less promising than planned.** Neither 16-bit indices
+  (step 1) nor 40 % fewer vertices at radius 8 changed the GPU time much. It is still to be
+  measured before being kept.
+
+**Tests (2 new, 203 in all):**
+- Each direction's range holds only quads of that direction, then the torch (5 quads), and water
+  has no torch range.
+- For 600 random camera positions around three chunks, inside and up to two chunks away, every
+  face left out faces away from the camera. Ranges come out in order and merged.
+- From outside a chunk, under 70 % of its quads are drawn.
+- The renderer's draw list over a chunk from above leaves out exactly the -y faces, of each
+  visible chunk.

@@ -26,7 +26,7 @@ import { TUNING } from '../config';
 import { Block, BLOCKS } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
 import { textureLayer } from '../world/textures';
-import { MeshBuilder, type MeshData } from './builder';
+import { FACE_ORDER, MeshBuilder, type MeshData } from './builder';
 import { ALL_SUNLIT, PADDED } from './padding';
 
 export interface ChunkMesh {
@@ -130,7 +130,9 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   const origin = [cx * S, cy * S, cz * S];
   let quads = 0;
 
-  for (let dir = 0; dir < 6; dir++) {
+  for (const dir of FACE_ORDER) {
+    opaque.mark();
+    transparent.mark();
     const d = dir >> 1; // the axis the faces point along
     const s = dir & 1 ? -1 : 1;
     // In-plane axes, ordered so that u × v points along the face normal: corners in the order
@@ -261,6 +263,8 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
     }
   }
 
+  opaque.mark();
+  transparent.mark();
   for (const i of shaped) quads += torch(padded, light, i, origin);
   return { opaque: opaque.build(), transparent: transparent.build(), quads };
 }

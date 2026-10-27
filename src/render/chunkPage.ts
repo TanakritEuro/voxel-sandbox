@@ -27,6 +27,8 @@ export interface PageEntry {
   readonly quads: number;
   /** Centre of the chunk, for frustum culling and sorting. */
   readonly centre: THREE.Vector3;
+  /** `MeshData.faceStarts`: where each face direction's quads start, from `start`. */
+  readonly faces: Uint32Array;
   /** Reached by the visibility walk (`ChunkRenderer.setVisible`). */
   visible: boolean;
 }
@@ -59,12 +61,63 @@ function pageIndex(quads: number): THREE.BufferAttribute {
   return index;
 }
 
+/**
+ * The parts of a chunk mesh a camera at (ex, ey, ez) could see, into `out` as [first quad,
+ * end quad) pairs, touching ones merged; returns how many. `faces` is `MeshData.faceStarts`
+ * and the chunk spans `size` blocks from (minX, minY, minZ).
+ *
+ * A +x face lies on a plane x = p with p > minX, and is seen only from x > p; so with the eye at
+ * x <= minX no +x face of the chunk can be seen. The same goes for the other directions. The
+ * last range (torches) faces every way and is always drawn. From outside the chunk on all
+ * three axes that leaves three directions of six.
+ */
+export function faceRanges(
+  faces: Uint32Array,
+  minX: number,
+  minY: number,
+  minZ: number,
+  size: number,
+  ex: number,
+  ey: number,
+  ez: number,
+  out: Int32Array,
+): number {
+  // In FACE_ORDER: +x, +y, +z, -x, -y, -z, then every way.
+  let n = 0;
+  let from = -1;
+  for (let k = 0; k < 7; k++) {
+    const lo = faces[k];
+    const hi = faces[k + 1];
+    // An empty range doesn't break a run.
+    const seen =
+      k === 0 ? ex > minX : k === 1 ? ey > minY : k === 2 ? ez > minZ : k === 3 ? ex < minX + size : k === 4 ? ey < minY + size : k === 5 ? ez < minZ + size : true;
+    if (seen || hi === lo) {
+      if (from < 0) from = lo;
+    } else {
+      if (from >= 0 && lo > from) {
+        out[n++] = from;
+        out[n++] = lo;
+      }
+      from = -1;
+    }
+  }
+  if (from >= 0 && faces[7] > from) {
+    out[n++] = from;
+    out[n++] = faces[7];
+  }
+  return n / 2;
+}
+
 const frustum = new THREE.Frustum();
 const viewProjection = new THREE.Matrix4();
 const eye = new THREE.Vector3();
+/** Half a chunk: from its centre to its faces. */
+const HALF = 16;
 /** Radius of the sphere around a chunk cube. */
-const CHUNK_RADIUS = (32 * Math.sqrt(3)) / 2;
+const CHUNK_RADIUS = HALF * Math.sqrt(3);
 const sphere = new THREE.Sphere(new THREE.Vector3(), CHUNK_RADIUS);
+/** At most 4 ranges come out of `faceRanges` (7 parts, alternating). */
+const ranges = new Int32Array(8);
 
 export class ChunkPage extends THREE.BatchedMesh {
   readonly space: PageAllocator;
@@ -76,11 +129,14 @@ export class ChunkPage extends THREE.BatchedMesh {
   private readonly drawn: PageEntry[] = [];
   private readonly distance = new Map<PageEntry, number>();
 
-  /** `backToFront` for blended passes (water, glass): drawn farthest first. */
+  /**
+   * `blended` for the pass of water and glass: drawn farthest first, and every direction of
+   * it, since it is seen from both sides (the water's surface from below).
+   */
   constructor(
     readonly quads: number,
     material: THREE.Material,
-    private readonly backToFront: boolean,
+    private readonly blended: boolean,
   ) {
     super(1, quads * 4, quads * 6, material);
     this.space = new PageAllocator(quads);
@@ -117,7 +173,7 @@ export class ChunkPage extends THREE.BatchedMesh {
     write(this.positions, data.positions, v * 3);
     write(this.colors, data.colors, v * 4);
     write(this.uvl, data.uvl, v * 4);
-    const entry: PageEntry = { page: this, start, quads, centre, visible: true };
+    const entry: PageEntry = { page: this, start, quads, centre, faces: data.faceStarts, visible: true };
     this.entries.add(entry);
     return entry;
   }
@@ -138,8 +194,8 @@ export class ChunkPage extends THREE.BatchedMesh {
       sphere.center.copy(e.centre);
       if (frustum.intersectsSphere(sphere)) drawn.push(e);
     }
-    if (this.backToFront) {
-      eye.setFromMatrixPosition(camera.matrixWorld);
+    eye.setFromMatrixPosition(camera.matrixWorld);
+    if (this.blended) {
       const distance = this.distance;
       distance.clear();
       for (const e of drawn) distance.set(e, e.centre.distanceToSquared(eye));
@@ -147,16 +203,28 @@ export class ChunkPage extends THREE.BatchedMesh {
     }
     const b = this.internals;
     const bytes = this.geometry.index!.array.BYTES_PER_ELEMENT;
-    if (b._multiDrawStarts.length < drawn.length) {
-      const n = Math.max(drawn.length, b._multiDrawStarts.length * 2);
+    if (b._multiDrawStarts.length < drawn.length * 4) {
+      const n = Math.max(drawn.length * 4, b._multiDrawStarts.length * 2);
       b._multiDrawStarts = new Int32Array(n);
       b._multiDrawCounts = new Int32Array(n);
     }
-    for (let i = 0; i < drawn.length; i++) {
-      b._multiDrawStarts[i] = drawn[i].start * 6 * bytes; // bytes into the index buffer
-      b._multiDrawCounts[i] = drawn[i].quads * 6;
+    const starts = b._multiDrawStarts;
+    const counts = b._multiDrawCounts;
+    let n = 0;
+    for (const e of drawn) {
+      if (this.blended) {
+        starts[n] = e.start * 6 * bytes; // bytes into the index buffer
+        counts[n++] = e.quads * 6;
+        continue;
+      }
+      const c = e.centre;
+      const parts = faceRanges(e.faces, c.x - HALF, c.y - HALF, c.z - HALF, 2 * HALF, eye.x, eye.y, eye.z, ranges);
+      for (let r = 0; r < parts; r++) {
+        starts[n] = (e.start + ranges[2 * r]) * 6 * bytes;
+        counts[n++] = (ranges[2 * r + 1] - ranges[2 * r]) * 6;
+      }
     }
-    b._multiDrawCount = drawn.length;
+    b._multiDrawCount = n;
   }
 }
 

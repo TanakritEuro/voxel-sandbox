@@ -20,7 +20,17 @@ export interface MeshData {
   uvl: Uint8Array;
   /** Uint16 when the mesh has at most 65 536 vertices (almost always). */
   indices: Uint16Array | Uint32Array;
+  /**
+   * Where each face direction's quads start, in `FACE_ORDER` (+x, +y, +z, -x, -y, -z), then
+   * where the quads that face every way start (torches), then the quad count: 8 numbers. A
+   * camera can only see the faces of the directions that point towards it, so the renderer
+   * draws just those ranges. A mesh made without marking has everything in the last range.
+   */
+  faceStarts: Uint32Array;
 }
+
+/** The order the chunk mesher writes face directions in (direction: 0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z). The three a camera can see are one range in half the cases. */
+export const FACE_ORDER = [0, 2, 4, 1, 3, 5] as const;
 
 export class MeshBuilder {
   private positions = new Float32Array(4096 * 3);
@@ -30,10 +40,18 @@ export class MeshBuilder {
   /** Vertices and indices written since `reset()`. */
   vertexCount = 0;
   indexCount = 0;
+  /** Quad counts at each `mark()` since `reset()`. */
+  private readonly marks: number[] = [];
 
   reset(): void {
     this.vertexCount = 0;
     this.indexCount = 0;
+    this.marks.length = 0;
+  }
+
+  /** The next range of `MeshData.faceStarts` starts here (call 7 times: 6 directions, then the rest). */
+  mark(): void {
+    this.marks.push(this.vertexCount / 4);
   }
 
   /** Make room for `quads` more quads (4 vertices, 6 indices each). Call before writing them. */
@@ -91,7 +109,12 @@ export class MeshBuilder {
       small = new Uint16Array(indices.length);
       small.set(indices);
     }
+    const quads = this.vertexCount / 4;
+    const faceStarts = new Uint32Array(8);
+    if (this.marks.length === 7) faceStarts.set(this.marks);
+    faceStarts[7] = quads;
     return {
+      faceStarts,
       positions: this.positions.slice(0, this.vertexCount * 3),
       colors: this.colors.slice(0, this.vertexCount * 4),
       uvl: this.uvl.slice(0, this.vertexCount * 4),

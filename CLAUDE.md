@@ -126,13 +126,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   timing and crack stage).
 - `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
-  Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead),
+  Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
+  `faceStarts`: quads by face direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then torches),
   `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — chunk meshes into pages, opaque and transparent apart.
   `chunkPage.ts` — a page: a `BatchedMesh` used for its multi-draw path, with its own space
   (`pageAllocator.ts`, in quads, first fit), one shared index buffer, and a draw list built each
-  frame from the visible chunks in the frustum (blended ones farthest first). `blockMaterial.ts` — the texture
+  frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
+  only the face directions that can point at the camera (`faceRanges`). `blockMaterial.ts` — the texture
   array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
   textures. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
