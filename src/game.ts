@@ -150,6 +150,7 @@ const stats = new Stats(
     visible: loader.visibleChunks,
     meshed: chunks.count,
     unsent: chunks.waitingUpload,
+    mouse: { now: input.takeBiggestMove(), ever: input.biggestMoveEver },
     queued: loader.queued,
     inFlight: loader.inFlight,
     workerBusy: pool.busy(),

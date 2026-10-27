@@ -24,6 +24,8 @@ export interface EngineCounters {
   sceneTriangles: number;
   /** The last block edit: ms in all, ms of it for light, chunks remeshed (null before the first). */
   lastEdit: { ms: number; lightMs: number; chunks: number } | null;
+  /** The biggest mouse move in one event since the last redraw, and since load (px). */
+  mouse: { now: number; ever: number };
   /** Time of day and daylight, as text. */
   time: string;
   /** What saving is doing, as text. */
@@ -116,6 +118,7 @@ export class Stats {
       `main thread ${work.toFixed(1)} ms avg, ${workMax.toFixed(1)} max`,
       `  player physics ${physics.toFixed(2)} ms avg, ${physicsMax.toFixed(2)} max (${steps.toFixed(1)} steps a frame)`,
       `over ${LONG_FRAME_MS} ms: ${this.longFrames} frames since load`,
+      `mouse: biggest move ${c.mouse.now} px now, ${c.mouse.ever} px since load`,
       `draw calls ${r.calls}   triangles ${Math.round(r.triangles / 1000)}k drawn / ${Math.round(c.sceneTriangles / 1000)}k`,
       `chunks ${c.chunks} loaded, ${c.visible} could be seen, ${c.meshed} meshed, ${c.unsent} meshes still to upload`,
       `time ${c.time}`,

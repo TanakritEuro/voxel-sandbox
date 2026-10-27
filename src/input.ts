@@ -20,6 +20,9 @@ export class Input implements Controls {
   pitch = -0.25;
   /** Moving the mouse up looks down (a setting). */
   invertY = false;
+  /** The biggest mouse move in one event (px), since `takeBiggestMove` and since the mouse was first captured: for `?stats`. */
+  private biggestMove = 0;
+  biggestMoveEver = 0;
   private readonly held = new Set<string>();
   private readonly pressed = new Set<string>();
 
@@ -27,6 +30,9 @@ export class Input implements Controls {
     canvas.addEventListener('click', () => this.lock());
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
+      const size = Math.max(Math.abs(e.movementX), Math.abs(e.movementY));
+      this.biggestMove = Math.max(this.biggestMove, size);
+      this.biggestMoveEver = Math.max(this.biggestMoveEver, size);
       const s = TUNING.fly.mouseSensitivity;
       this.yaw -= e.movementX * s;
       this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch - e.movementY * s * (this.invertY ? -1 : 1)));
@@ -66,6 +72,13 @@ export class Input implements Controls {
 
   get locked(): boolean {
     return document.pointerLockElement === this.canvas;
+  }
+
+  /** The biggest mouse move in one event since the last call (px). */
+  takeBiggestMove(): number {
+    const m = this.biggestMove;
+    this.biggestMove = 0;
+    return m;
   }
 
   /** Is the key down now? */
