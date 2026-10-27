@@ -448,6 +448,29 @@ fix above was measured at radius 8; your setting is 16, where the loader itself 
 - **Test (1 new, 189 in all):** once loaded, 64 turns through two full circles start no work and
   don't walk again (the old loader walked on each one).
 
+**Still jumping: your recording (2026-10-27).** `?stats` now shows the biggest mouse move in
+one event, so the recording could tell a snapping view from slow frames. It showed both:
+- **The view snapped.** One event moved the mouse **722 px** while the ones around it moved
+  23–67 px; another was 737 px. That is a known fault of Chrome on Windows with pointer lock and
+  the system's mouse acceleration, and a script's turns can't show it (they make their own
+  events).
+  - **Fix:** the mouse is captured with raw input (`unadjustedMovement`: no system
+    acceleration, which avoids the fault). Where a browser doesn't have it, a move over 200 px
+    and more than 6 times the biggest of the 3 before it is dropped (`SpikeFilter` in
+    `input.ts`). A flick that builds up is kept; one from rest loses at most its first event.
+  - Raw input feels a little different from the system's pointer: slow moves turn a bit more,
+    fast ones less. The mouse sensitivity setting covers it.
+  - **Checked in Chrome:** clicking Play captures the mouse with raw input (`?stats`: "raw
+    input"). With raw input made to fail, it captures the plain way and drops a 722 px move
+    among 30–45 px ones ("1 spike dropped").
+- **Frames were slow all the time,** at your view distance 16 and 2560 px wide: about 20 ms
+  (50 fps) even standing still, half of all frames over 20 ms. The main thread took about 12 ms,
+  so the rest was most likely the GPU drawing 1.6–3.7 million triangles in about 840 draw
+  calls. That is beyond the budget (set for radius 8), and makes turning look uneven on a 60 Hz
+  screen. A lower view distance is the cure for now.
+- **Tests (3 new, 192 in all):** the recording's moves lose only the 722 px one; flicks that
+  build up and big moves after big ones are kept; a sudden flick from rest loses one event.
+
 ## Scope decisions
 
 - **Settings first**, because later steps add to them.

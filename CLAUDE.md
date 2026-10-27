@@ -155,7 +155,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
   `pool.ts` (`WorkerPool`).
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
-  until taken, mouse look and pointer lock.
+  until taken, mouse look and pointer lock (raw input where the browser has it, else `SpikeFilter`
+  drops Chrome's occasional huge moves).
 - `src/player.ts` — the player: physics at a fixed step, interpolated camera, fly toggle,
   waiting for the ground to load; `autopilot` for `?autofly`.
 - `src/main.ts` — entry point: the world list, or the game for `?world=<id>` (or an unsaved

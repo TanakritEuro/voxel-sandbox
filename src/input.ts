@@ -4,6 +4,36 @@
 
 import { TUNING } from './config';
 
+/** A mouse move bigger than this (px in one event)... */
+const SPIKE_PX = 200;
+/** ...and this many times the biggest of the few before it is a spike. */
+const SPIKE_RATIO = 6;
+
+/**
+ * Chrome on Windows, with pointer lock and the system's mouse acceleration, sometimes reports
+ * one move of hundreds of pixels in the middle of a quick turn, which snaps the view (seen in
+ * a playtest: 722 px between moves of 23–67). Raw input (`unadjustedMovement`) doesn't do it;
+ * without raw input, such moves are dropped. Every move counts as one of the recent ones,
+ * dropped or not, so a real flick loses at most its first event.
+ */
+export class SpikeFilter {
+  private readonly recent = [0, 0, 0];
+  private next = 0;
+  /** Moves dropped so far. */
+  dropped = 0;
+
+  /** Whether to use this move. */
+  accept(dx: number, dy: number): boolean {
+    const size = Math.max(Math.abs(dx), Math.abs(dy));
+    const before = Math.max(this.recent[0], this.recent[1], this.recent[2], 10);
+    this.recent[this.next] = size;
+    this.next = (this.next + 1) % this.recent.length;
+    const spike = size > SPIKE_PX && size > SPIKE_RATIO * before;
+    if (spike) this.dropped++;
+    return !spike;
+  }
+}
+
 /** What the player reads from the input (an interface, so tests can drive the player without a DOM). */
 export interface Controls {
   yaw: number;
@@ -23,6 +53,9 @@ export class Input implements Controls {
   /** The biggest mouse move in one event (px), since `takeBiggestMove` and since the mouse was first captured: for `?stats`. */
   private biggestMove = 0;
   biggestMoveEver = 0;
+  /** The mouse is captured with raw input (no system acceleration, no spikes). */
+  raw = false;
+  readonly spikes = new SpikeFilter();
   private readonly held = new Set<string>();
   private readonly pressed = new Set<string>();
 
@@ -33,6 +66,7 @@ export class Input implements Controls {
       const size = Math.max(Math.abs(e.movementX), Math.abs(e.movementY));
       this.biggestMove = Math.max(this.biggestMove, size);
       this.biggestMoveEver = Math.max(this.biggestMoveEver, size);
+      if (!this.raw && !this.spikes.accept(e.movementX, e.movementY)) return;
       const s = TUNING.fly.mouseSensitivity;
       this.yaw -= e.movementX * s;
       this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch - e.movementY * s * (this.invertY ? -1 : 1)));
@@ -65,9 +99,18 @@ export class Input implements Controls {
 
   /** Capture the mouse (from a click). */
   lock(): void {
-    // Some embedded browsers refuse, and browsers refuse for a moment after Esc; say so rather
-    // than leave an unhandled rejection.
-    if (!this.locked) this.canvas.requestPointerLock().catch((e: Error) => console.warn('Pointer lock refused:', e.message));
+    if (this.locked) return;
+    // Raw input where the browser has it (see `SpikeFilter`); otherwise the plain kind. Some
+    // embedded browsers refuse, and browsers refuse for a moment after Esc; say so rather than
+    // leave an unhandled rejection.
+    const refused = (e: Error) => console.warn('Pointer lock refused:', e.message);
+    this.canvas.requestPointerLock({ unadjustedMovement: true }).then(
+      () => (this.raw = true),
+      () => {
+        this.raw = false;
+        this.canvas.requestPointerLock().catch(refused);
+      },
+    );
   }
 
   get locked(): boolean {
