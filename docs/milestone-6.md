@@ -291,3 +291,37 @@ small ones at radius 16) can be tuned in step 6.
 - From outside a chunk, under 70 % of its quads are drawn.
 - The renderer's draw list over a chunk from above leaves out exactly the -y faces, of each
   visible chunk.
+
+## Step 2b: the sky drawn after the terrain — tried, not kept (2026-10-27)
+
+You asked for this between steps 2 and 3, after step 2 found the sky alone costing about 2.9 ms
+of GPU.
+
+**Tried:**
+- The sky dome was drawn after the opaque world instead of first (`renderOrder` −3 → 10).
+- It was put on the far plane (`gl_Position.z = gl_Position.w`, which keeps it behind anything
+  in view even at small view distances, where mountains can reach past its radius).
+- The idea: the depth test would skip the pixels the terrain already covers.
+- Day, dusk and stars looked the same.
+
+**Measured** side by side with step 2, alternating builds in the same session, radius 8,
+mountain spawn, GPU ms:
+
+| View | Step 2 (sky first) | Sky after the terrain |
+| --- | --- | --- |
+| Slow spin at the horizon | 5.9 | 6.3 |
+| Straight down (terrain fills the screen) | 5.9, 6.5 | 7.8, 7.2, 7.3 |
+| Straight up (only sky and clouds) | 2.5 | 2.6 |
+
+- **Looking down,** where it should have helped most, it was about 1 ms *slower*, every time.
+  - The dome's own shading is cheap: drawn first, it costs less than what this GPU (Intel UHD,
+    through ANGLE and Direct3D 11) loses on the order change.
+  - Why it loses is not known; one possibility is its depth hierarchy handling the far-plane
+    depth badly.
+- **Looking up,** nothing changed, so the 2.5 ms there isn't the dome's draw order.
+  - At half resolution (`?scale=0.5`) the same view takes 1.3 ms. So about 1.6 ms of it
+    follows the pixels (dome, clouds, clear) and about 0.9 ms is fixed.
+
+**Decision:** reverted; the sky is drawn first as before. It's recorded here so the idea isn't
+tried again blind. Cheaper sky and clouds per pixel (rather than their order) could still be
+looked at in step 6, with the render resolution.
