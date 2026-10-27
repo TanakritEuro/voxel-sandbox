@@ -3,6 +3,7 @@
 // four times a second and the graph is one small canvas.
 
 import type * as THREE from 'three';
+import { GpuTimer } from './render/gpuTimer';
 
 /** Engine numbers the overlay shows, read when it redraws. */
 export interface EngineCounters {
@@ -49,6 +50,9 @@ export class Stats {
   private readonly ctx: CanvasRenderingContext2D;
   /** Recent frames: [time, interval ms, main-thread work ms, player physics ms, physics steps]. */
   private readonly frames: [number, number, number, number, number][] = [];
+  /** GPU time of recent frames: [time read, ms]. */
+  private readonly gpu: [number, number][] = [];
+  private readonly gpuTimer: GpuTimer;
   private lastText = 0;
   /** Extra lines under the numbers (the autofly report). */
   note = '';
@@ -58,6 +62,7 @@ export class Stats {
     private readonly counters: () => EngineCounters,
     visible: boolean,
   ) {
+    this.gpuTimer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext);
     this.el = document.createElement('div');
     this.el.id = 'stats';
     this.text = document.createElement('pre');
@@ -83,6 +88,16 @@ export class Stats {
     this.el.hidden = !v;
   }
 
+  /** Before the frame's first draw call: GPU time is measured from here to `gpuEnd` (only while shown). */
+  gpuBegin(): void {
+    if (this.visible) this.gpuTimer.begin();
+  }
+
+  /** After the frame's last draw call. */
+  gpuEnd(): void {
+    this.gpuTimer.end();
+  }
+
   /**
    * Call once per frame after rendering: `interval` since the previous frame, `work` spent in
    * this one, of which `physicsMs` on the player's `physicsSteps` physics steps.
@@ -92,6 +107,8 @@ export class Stats {
     if (interval > LONG_FRAME_MS && document.visibilityState === 'visible') this.longFrames++;
     this.frames.push([now, interval, work, physicsMs, physicsSteps]);
     while (this.frames.length && this.frames[0][0] < now - GRAPH_SECONDS * 1000) this.frames.shift();
+    for (const ms of this.gpuTimer.read()) this.gpu.push([now, ms]);
+    while (this.gpu.length && this.gpu[0][0] < now - 1000) this.gpu.shift();
     if (!this.visible) return;
     this.drawGraph(now);
     if (now - this.lastText >= TEXT_INTERVAL_MS) {
@@ -116,6 +133,9 @@ export class Stats {
     this.text.textContent = [
       `${(1000 / avg).toFixed(0)} fps   frame ${avg.toFixed(1)} ms avg, ${max.toFixed(1)} max`,
       `main thread ${work.toFixed(1)} ms avg, ${workMax.toFixed(1)} max`,
+      this.gpuTimer.available
+        ? `GPU ${(this.gpu.reduce((s, g) => s + g[1], 0) / Math.max(this.gpu.length, 1)).toFixed(1)} ms avg, ${this.gpu.reduce((m, g) => Math.max(m, g[1]), 0).toFixed(1)} max`
+        : 'GPU time not available in this browser',
       `  player physics ${physics.toFixed(2)} ms avg, ${physicsMax.toFixed(2)} max (${steps.toFixed(1)} steps a frame)`,
       `over ${LONG_FRAME_MS} ms: ${this.longFrames} frames since load`,
       `mouse: biggest move ${c.mouse.now} px now, ${c.mouse.ever} px since load, ` + (c.mouse.raw ? 'raw input' : `${c.mouse.dropped} spike${c.mouse.dropped === 1 ? '' : 's'} dropped`),

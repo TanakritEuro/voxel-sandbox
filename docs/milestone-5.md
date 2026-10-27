@@ -472,6 +472,34 @@ one event, so the recording could tell a snapping view from slow frames. It show
   build up and big moves after big ones are kept; a sudden flick from rest loses one event.
 - **Your check (2026-10-27):** quick turns are smooth now on the live site.
 
+**Can it reach 120 fps? (2026-10-27, your question: about 50 fps flying over mountains.)**
+`?stats` now shows GPU time per frame (a WebGL2 timer query around the frame's draw calls,
+`render/gpuTimer.ts`; Chrome has it, Firefox and Safari don't). `?aa=0` turns antialiasing
+off and `?scale=0.5` draws at half resolution, for measuring.
+- **Your machine:** Intel UHD Graphics (built into the processor), a 120 Hz screen, the game
+  drawn at 2560 × 1201 (2048 wide at 125 % scaling).
+- **Measured** over the mountains of seed 20261022 (`?at=-368,400`), production build,
+  fully loaded, spinning slowly at the horizon for 8 s:
+
+  | | fps | frame ms | main thread ms | GPU ms | draw calls | triangles drawn |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | Radius 16 | 45 | 22.4 | 6.4 | 18.2 | 1221 | 5.7 M |
+  | Radius 16, `?aa=0` | 49 | 20.5 | 7.2 | 17.5 | 1230 | 5.7 M |
+  | Radius 16, `?scale=0.5` | 55 | 18.1 | 6.8 | 15.6 | 1254 | 5.8 M |
+  | Radius 12 | 65 | 15.4 | 4.0 | 11.7 | 628 | 3.1 M |
+  | Radius 8 | 88 | 11.4 | 2.5 | 7.5 | 253 | 1.3 M |
+
+- **What it says:**
+  - The GPU limits the frame rate, and its time follows the triangles: about 2.4 ms a million
+    plus 4 ms.
+  - Pixels cost little: a quarter of them saved 2.6 ms, and antialiasing 0.7 ms. So a lower
+    resolution setting wouldn't get far.
+  - At 120 Hz a frame has 8.3 ms. Even radius 8 (7.5 ms of GPU) doesn't fit yet, because the
+    frame is longer than the GPU and main thread times added up (the browser's own compositing
+    at this size).
+- **Tests (3 new, 195 in all):** the GPU timer reports nothing without the extension, reads
+  frames in order in milliseconds once their results are in, and drops disjoint results.
+
 ## Scope decisions
 
 - **Settings first**, because later steps add to them.

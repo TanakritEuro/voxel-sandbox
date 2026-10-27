@@ -52,8 +52,10 @@ const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const info = document.querySelector<HTMLDivElement>('#info')!;
 const hotbarEl = document.querySelector<HTMLDivElement>('#hotbar')!;
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// `?aa=0` turns antialiasing off and `?scale=0.5` draws at half the resolution: for measuring
+// how much of the GPU's time goes on pixels.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get('aa') !== '0' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * (Number(params.get('scale')) || 1));
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Draw calls and triangles counted over the whole frame (the world, then the held block), for `?stats`.
 renderer.info.autoReset = false;
@@ -371,10 +373,12 @@ function frame(now: number): void {
   // already there.
   loaderIdle = loader.pending === 0 ? loaderIdle + dt : 0;
   chunks.uploadSome(loaderIdle >= TUNING.view.uploadAfterIdle ? TUNING.view.uploadBytesPerSecond * dt : 0);
+  stats.gpuBegin();
   renderer.render(scene, camera);
   const eye = camera.position;
   held.set(hotbar[selected], world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)), sky.sunlight);
   held.render(renderer, camera.aspect, !autofly);
+  stats.gpuEnd();
   const work = performance.now() - start;
   stats.frame(now, interval, work, player.physicsMs, player.physicsSteps);
   autofly?.frameWork(work);
