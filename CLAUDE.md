@@ -128,7 +128,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   Uint16 indices),
   `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
-- `src/render/chunkRenderer.ts` — Three.js meshes per chunk. `blockMaterial.ts` — the texture
+- `src/render/chunkRenderer.ts` — Three.js meshes per chunk; meshes not yet seen are sent to the
+  GPU in the background when loading is idle (`uploadSome`), so quick turns don't stall. `blockMaterial.ts` — the texture
   array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
   textures. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.

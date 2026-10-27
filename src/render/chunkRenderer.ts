@@ -23,6 +23,12 @@ export class ChunkRenderer {
   triangles = 0;
   /** Bytes of vertex and index data currently in the scene, for `?stats`. */
   bytes = 0;
+  /**
+   * Meshes not drawn yet, so not yet on the GPU. Chunks loaded out of view would otherwise all
+   * upload in the one frame a quick turn brings them into view; `uploadSome` sends a few each
+   * frame instead, so by the time you turn they're there.
+   */
+  private readonly unsent = new Set<THREE.Mesh>();
 
   /** With `lightView`, chunks show their light as grey instead of their textures (`?light`). */
   constructor(lightView = false) {
@@ -41,6 +47,26 @@ export class ChunkRenderer {
     (u.flowA.value as THREE.Vector2).set(...flow.a);
     (u.flowB.value as THREE.Vector2).set(...flow.b);
     u.ripple.value = flow.ripple;
+  }
+
+  /**
+   * Once a frame, before drawing: have up to `budget` bytes of meshes that haven't been drawn
+   * yet (and can be seen) drawn this frame wherever the camera looks, which uploads them. Ones
+   * in view are drawn anyway and don't count.
+   */
+  uploadSome(budget: number): void {
+    let bytes = 0;
+    for (const m of this.unsent) {
+      if (bytes >= budget) break;
+      if (!m.visible || !m.frustumCulled) continue;
+      m.frustumCulled = false;
+      bytes += geometryBytes(m.geometry);
+    }
+  }
+
+  /** Meshes not on the GPU yet (for `?stats`). */
+  get waitingUpload(): number {
+    return this.unsent.size;
   }
 
   /** Show a chunk's mesh, replacing any it had. */
@@ -70,6 +96,7 @@ export class ChunkRenderer {
       this.triangles -= (m.geometry.index?.count ?? 0) / 3;
       this.bytes -= geometryBytes(m.geometry);
       this.group.remove(m);
+      this.unsent.delete(m);
       m.geometry.dispose();
     }
     this.meshes.delete(key);
@@ -96,6 +123,13 @@ export class ChunkRenderer {
     geo.boundingSphere = new THREE.Sphere(centre.clone(), CHUNK_RADIUS);
     const mesh = new THREE.Mesh(geo, material);
     mesh.matrixAutoUpdate = false; // positions are already in world space
+    // Not yet on the GPU: Three.js uploads a mesh's buffers the first time it draws it.
+    this.unsent.add(mesh);
+    mesh.onAfterRender = () => {
+      this.unsent.delete(mesh);
+      mesh.frustumCulled = true;
+      mesh.onAfterRender = () => {};
+    };
     return mesh;
   }
 }

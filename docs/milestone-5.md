@@ -385,6 +385,35 @@ easier.
   - a chosen block survives the world being written and read again, and an old record gets
     the default.
 
+**After the milestone: jumps when turning quickly (2026-10-27, your report).**
+- **Cause:** Three.js uploads a mesh's buffers to the GPU the first time it draws one. Chunks
+  that load behind or beside the player are never drawn until the camera faces them, so a
+  quick turn uploaded hundreds of them in a frame or two.
+  - Measured in the pane: the first fast 360° spin after loading made 1920 `bufferData`
+    calls (about 480 chunk meshes, 37 ms of them) and one 41.5 ms frame.
+  - The same spin again made none, and its slowest frame was 8.5 ms.
+  - No shaders were compiled, so it wasn't that.
+- **Fix:**
+  - `ChunkRenderer` keeps the meshes it hasn't drawn yet.
+  - Each frame, once the loader has had nothing to do for a second, `uploadSome` has up to
+    `TUNING.view.uploadBytesPerSecond` (20 MB a second) of them drawn whatever the frustum,
+    which uploads them. Each goes back to normal culling after its first draw.
+  - Meshes in view upload as before. `?stats` shows how many are still to upload.
+- **Two tries that were worse, while flying:**
+  1. Drawing every new mesh once as it arrived also uploaded the ones behind during sprint
+     flight.
+  2. A per-frame budget was too much at 120 Hz, and gating on the loader being idle at that
+     moment still caught the short gaps mid-flight.
+
+  With a full second of idleness required, flying is as before.
+- **After the fix:**
+  - The backlog is gone within 8 s of loading.
+  - Two fast spins at fresh places made no uploads, with a slowest frame of 8.5 ms.
+  - `?autofly` at radius 8 (the pane now at 120 Hz) had 4–5 frames over 20 ms against 0–8
+    in six runs of the build without it, the same main thread (p99 9.5–9.7 ms), and no holes.
+- **Tests (2 new, 188 in all):** meshes are counted until drawn or removed; uploads take a
+  budget of bytes at a time, skip hidden meshes, and go back to normal culling once drawn.
+
 ## Scope decisions
 
 - **Settings first**, because later steps add to them.
