@@ -51,6 +51,19 @@ describe('coarsening', () => {
     }
   });
 
+  it('gives a solid cell the surface layer taken out of the cell above it, but not a tree trunk', () => {
+    const { blocks, light } = empty();
+    // 4³ cells: stone up to y 3; on top, a layer of snow over x 0..3 and a lone trunk over x 4..7.
+    for (let y = 0; y < 4; y++) for (let z = 0; z < 4; z++) for (let x = 0; x < 8; x++) blocks[local(x, y, z)] = Block.Stone;
+    for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) blocks[local(x, 4, z)] = Block.Snow;
+    blocks[local(5, 4, 1)] = Block.Wood;
+    coarsen(blocks, light, 4);
+    expect(blocks[local(0, 4, 0)]).toBe(Block.Air); // the layer alone is a quarter of its cell
+    expect(blocks[local(0, 3, 0)]).toBe(Block.Snow); // so the cell under it is snow
+    expect(blocks[local(5, 4, 1)]).toBe(Block.Air);
+    expect(blocks[local(5, 3, 1)]).toBe(Block.Stone); // a trunk doesn't cover the ground
+  });
+
   it('counts a patch of the border solid only when all of it is, and never for 4³ cells', () => {
     const { blocks, light } = empty();
     // On the -x border: a full 2 × 2 patch of stone, and a patch with 3 of 4.

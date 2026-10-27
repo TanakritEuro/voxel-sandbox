@@ -12,8 +12,15 @@
 // Only chunks that could be seen are meshed and drawn: a walk from the player's chunk through
 // open space (`world/visibility.ts`) decides which, so cave walls deep under the ground stay
 // unmeshed until the player goes down there.
+//
+// Far columns are meshed at lower detail (`mesh/lod.ts`, `TUNING.view.lod`), walled on every
+// side so the gaps between levels are covered. A chunk's mesh is known by its stamp: its
+// version and the form it was meshed in (level and seams). When the player moves and a
+// column's form changes, its chunks are stale like edited ones and are meshed again, the old
+// mesh shown until the new one arrives.
 
 import { TUNING } from './config';
+import { type Lod, prepareLod, SEAM_NEG_X, SEAM_NEG_Z, SEAM_POS_X, SEAM_POS_Z } from './mesh/lod';
 import { type ChunkMesh, meshChunk } from './mesh/mesher';
 import { paddedBlocks, paddedLight, PADDED_VOLUME } from './mesh/padding';
 import type { JobResult, JobRunner, SavedChunk } from './workers/protocol';
@@ -45,6 +52,9 @@ interface Column {
   key: string;
   /** Within the view radius, so its chunks are meshed; otherwise only generated, as a neighbour. */
   mesh: boolean;
+  /** Level of detail its chunks are meshed at, and the sides it walls (`wallsFor`). */
+  lod: Lod;
+  seams: number;
   priority: number;
   /** Its chunks, from MIN_CHUNK_Y up, once all are loaded (they stay while it's in the order). */
   chunks: Chunk[] | null;
@@ -63,6 +73,36 @@ interface Column {
 const SPARE_PADDED = 32;
 
 const columnKey = (cx: number, cz: number): string => `${cx},${cz}`;
+
+/** What a chunk's mesh is made from: its version, its column's level and seams. */
+const stamp = (version: number, lod: number, seams: number): number => version * 64 + (lod | (seams << 2));
+const versionOf = (s: number): number => Math.floor(s / 64);
+
+/**
+ * The sides a column at `lod` walls (`mesh/lod.ts`): all four for a far one, none for a near one.
+ * Levels only grow away from the player, so the gaps between levels that can be seen are on
+ * the far side's edges, and the far side's walls cover them. Walling by its own level alone,
+ * rather than by its neighbours', means a column is meshed again only when its own level
+ * changes: walling only where the neighbour's level differs remeshed the neighbours of every
+ * column that changed too, and flying at view distance 16 fell behind (1,330 chunks waiting,
+ * holes in 19 of 20 seconds).
+ */
+export const wallsFor = (lod: Lod): number => (lod > 0 ? SEAM_NEG_X | SEAM_POS_X | SEAM_NEG_Z | SEAM_POS_Z : 0);
+
+/**
+ * The level of detail for a column `d` chunks from the player's, given the level it has now
+ * (null for a column just come into range): it changes only once `d` is
+ * `TUNING.view.lod.hysteresis` past a boundary.
+ */
+export function lodLevel(d: number, current: Lod | null): Lod {
+  const { near, far, hysteresis } = TUNING.view.lod;
+  if (current === null) return d < near ? 0 : d < far ? 1 : 2;
+  const bounds = [near, far];
+  let level: number = current;
+  while (level > 0 && d < bounds[level - 1] - hysteresis) level--;
+  while (level < 2 && d >= bounds[level] + hysteresis) level++;
+  return level as Lod;
+}
 
 /** New chunks change what can be seen, but walking again for every one is wasteful: at most this often (ms). */
 const WALK_INTERVAL = 100;
@@ -86,14 +126,14 @@ export function columnPriority(dx: number, dz: number, fx: number, fz: number): 
 }
 
 export class ChunkLoader {
-  /** Chunk key → the chunk version its current mesh was built from (all-air chunks too, which have none). */
+  /** Chunk key → the stamp its current mesh was built from (all-air chunks too, which have none). */
   private readonly meshed = new Map<string, number>();
   /** Columns being generated. */
   private readonly generating = new Set<string>();
   /** Columns whose saved chunks are being read, and those read, waiting to be generated. */
   private readonly reading = new Set<string>();
   private readonly read = new Map<string, SavedChunk[]>();
-  /** Chunk key → the version being meshed. */
+  /** Chunk key → the stamp being meshed. */
   private readonly meshing = new Map<string, number>();
   private running = 0;
   private nextId = 1;
@@ -148,6 +188,13 @@ export class ChunkLoader {
   /** Could chunk (cx, cy, cz) be seen from the player's chunk, as of the last walk? */
   canSee(cx: number, cy: number, cz: number): boolean {
     return this.reachable.has(chunkKey(cx, cy, cz));
+  }
+
+  /** Columns in view at full, half and quarter detail (for `?stats`). */
+  get levels(): [number, number, number] {
+    const n: [number, number, number] = [0, 0, 0];
+    for (const col of this.order) if (col.mesh) n[col.lod]++;
+    return n;
   }
 
   /** Work outstanding: not started, or running. */
@@ -248,9 +295,17 @@ export class ChunkLoader {
     const key = chunkKey(cx, cy, cz);
     const chunk = this.world.getChunk(cx, cy, cz);
     if (!chunk || !this.meshed.has(key) || !this.neighboursLoaded(cx, cz)) return;
+    const col = this.columns.get(columnKey(cx, cz));
+    const lod = col?.lod ?? 0;
+    const seams = col?.seams ?? 0;
     if (chunk.empty) this.renderer.remove(key);
-    else this.renderer.set(key, cx, cy, cz, meshChunk(paddedBlocks(this.world, cx, cy, cz, this.padded), cx, cy, cz, paddedLight(this.world, cx, cy, cz, this.paddedLight)));
-    this.meshed.set(key, chunk.version);
+    else {
+      const padded = paddedBlocks(this.world, cx, cy, cz, this.padded);
+      const light = paddedLight(this.world, cx, cy, cz, this.paddedLight);
+      if (lod || seams) prepareLod(padded, light, lod, seams);
+      this.renderer.set(key, cx, cy, cz, meshChunk(padded, cx, cy, cz, light, lod > 0));
+    }
+    this.meshed.set(key, stamp(chunk.version, lod, seams));
   }
 
   private apply(result: JobResult): void {
@@ -265,18 +320,23 @@ export class ChunkLoader {
       }
       return;
     }
-    const { cx, cy, cz, version } = result;
+    const { cx, cy, cz, version: made } = result;
     const key = chunkKey(cx, cy, cz);
     this.unsettle(cx, cz);
     if (this.spare.length < SPARE_PADDED) this.spare.push(result.padded);
     if (this.spareLight.length < SPARE_PADDED) this.spareLight.push(result.paddedLight);
-    if (this.meshing.get(key) === version) this.meshing.delete(key);
+    if (this.meshing.get(key) === made) this.meshing.delete(key);
     // Gone, out of range, or edited since: drop it. If still wanted, `dispatch` meshes it again.
     const chunk = this.world.getChunk(cx, cy, cz);
-    if (!chunk || chunk.version !== version || !this.inKeepRange(cx, cz)) return;
+    if (!chunk || chunk.version !== versionOf(made) || !this.inKeepRange(cx, cz)) return;
+    // Made in a form the column has since left: better than no mesh or an older one, but never
+    // in place of one in the form it has now (a newer job's result can arrive first).
+    const col = this.columns.get(columnKey(cx, cz));
+    const wanted = col ? stamp(chunk.version, col.lod, col.seams) : made;
+    if (made !== wanted && this.meshed.get(key) === wanted) return;
     this.renderer.set(key, cx, cy, cz, result.mesh);
     this.renderer.setVisible(key, this.reachable.has(key));
-    this.meshed.set(key, version);
+    this.meshed.set(key, made);
   }
 
   /** Work out which chunks could be seen from the player's chunk; show those meshes, hide the rest. */
@@ -315,78 +375,91 @@ export class ChunkLoader {
       return !outOfTime;
     };
     let queued = 0;
-    for (const col of this.order) {
-      if (col.settled) continue;
-      const { cx, cz, key } = col;
-      if (!col.chunks) {
-        if (world.hasColumn(cx, cz)) {
-          col.chunks = [];
-          for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) col.chunks.push(world.getChunk(cx, cy, cz)!);
+    // Two passes: first generation and chunks with no mesh at all (holes); then chunks meshed in
+    // a form their column has since left (a level change), which show the old mesh meanwhile.
+    // Flying at view distance 16, level changes otherwise took the workers from the holes.
+    for (const remeshing of [false, true]) {
+      for (const col of this.order) {
+        if (col.settled) continue;
+        if (remeshing && !col.chunks) continue;
+        const { cx, cz, key } = col;
+        if (!col.chunks) {
+          if (world.hasColumn(cx, cz)) {
+            col.chunks = [];
+            for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) col.chunks.push(world.getChunk(cx, cy, cz)!);
+          }
         }
-      }
-      if (!col.chunks) {
-        if (this.generating.has(key) || this.reading.has(key)) continue;
-        // A column with saved chunks is read first (from IndexedDB: a few ms, off this thread).
-        if (this.saves?.has(cx, cz) && !this.read.has(key)) {
-          this.reading.add(key);
-          queued++;
-          this.saves.load(cx, cz).then(
-            (saved) => this.readDone(key, saved),
-            (e: unknown) => {
-              console.error('reading saved chunks failed:', e);
-              this.readDone(key, []);
-            },
-          );
+        if (!col.chunks) {
+          if (this.generating.has(key) || this.reading.has(key)) continue;
+          // A column with saved chunks is read first (from IndexedDB: a few ms, off this thread).
+          if (this.saves?.has(cx, cz) && !this.read.has(key)) {
+            this.reading.add(key);
+            queued++;
+            this.saves.load(cx, cz).then(
+              (saved) => this.readDone(key, saved),
+              (e: unknown) => {
+                console.error('reading saved chunks failed:', e);
+                this.readDone(key, []);
+              },
+            );
+            continue;
+          }
+          if (!canStart()) {
+            queued++;
+            continue;
+          }
+          const saved = this.read.get(key) ?? [];
+          this.read.delete(key);
+          this.generating.add(key);
+          this.running++;
+          this.runner.run({ kind: 'generate', id: this.nextId++, seed: world.generator.seed, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
           continue;
         }
-        if (!canStart()) {
-          queued++;
+        if (!col.mesh) {
+          col.settled = true;
           continue;
         }
-        const saved = this.read.get(key) ?? [];
-        this.read.delete(key);
-        this.generating.add(key);
-        this.running++;
-        this.runner.run({ kind: 'generate', id: this.nextId++, seed: world.generator.seed, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
-        continue;
-      }
-      if (!col.mesh) {
-        col.settled = true;
-        continue;
-      }
 
-      // Busy: something here is waiting or running, so look again next time.
-      let busy = false;
-      for (const cy of this.heights) {
-        const chunk = col.chunks[cy - MIN_CHUNK_Y];
-        const key = chunk.key;
-        if (this.meshed.get(key) === chunk.version) continue;
-        if (this.meshing.get(key) === chunk.version) {
+        // Busy: something here is waiting or running, so look again next time.
+        let busy = false;
+        for (const cy of this.heights) {
+          const chunk = col.chunks[cy - MIN_CHUNK_Y];
+          const key = chunk.key;
+          const want = stamp(chunk.version, col.lod, col.seams);
+          const shown = this.meshed.get(key);
+          if (shown === want) continue;
+          if (this.meshing.get(key) === want) {
+            busy = true;
+            continue;
+          }
+          // A remesh waits for the second pass; a chunk with no mesh was the first pass's.
+          if (shown === undefined ? remeshing : !remeshing) {
+            if (shown !== undefined || this.reachable.has(key)) busy = true;
+            continue;
+          }
+          // All air has no faces (the faces of blocks next to it belong to their own chunks).
+          if (chunk.empty) {
+            this.renderer.remove(key);
+            this.meshed.set(key, want);
+            continue;
+          }
+          // Can't be seen from here: leave it until it can.
+          if (!this.reachable.has(key)) continue;
+          // Border faces and AO need the neighbours, or they'd be drawn against "air".
+          col.ready ||= this.neighboursLoaded(cx, cz);
           busy = true;
-          continue;
+          if (!col.ready || !canStart()) {
+            queued++;
+            continue;
+          }
+          const padded = paddedBlocks(world, cx, cy, cz, this.spare.pop() ?? new Uint8Array(PADDED_VOLUME));
+          const light = paddedLight(world, cx, cy, cz, this.spareLight.pop() ?? new Uint8Array(PADDED_VOLUME));
+          this.meshing.set(key, want);
+          this.running++;
+          this.runner.run({ kind: 'mesh', id: this.nextId++, cx, cy, cz, version: want, padded, paddedLight: light, lod: col.lod, seams: col.seams });
         }
-        // All air has no faces (the faces of blocks next to it belong to their own chunks).
-        if (chunk.empty) {
-          this.renderer.remove(key);
-          this.meshed.set(key, chunk.version);
-          continue;
-        }
-        // Can't be seen from here: leave it until it can.
-        if (!this.reachable.has(key)) continue;
-        // Border faces and AO need the neighbours, or they'd be drawn against "air".
-        col.ready ||= this.neighboursLoaded(cx, cz);
-        busy = true;
-        if (!col.ready || !canStart()) {
-          queued++;
-          continue;
-        }
-        const padded = paddedBlocks(world, cx, cy, cz, this.spare.pop() ?? new Uint8Array(PADDED_VOLUME));
-        const light = paddedLight(world, cx, cy, cz, this.spareLight.pop() ?? new Uint8Array(PADDED_VOLUME));
-        this.meshing.set(key, chunk.version);
-        this.running++;
-        this.runner.run({ kind: 'mesh', id: this.nextId++, cx, cy, cz, version: chunk.version, padded, paddedLight: light });
+        if (!busy && remeshing) col.settled = true;
       }
-      if (!busy) col.settled = true;
     }
     this.queued = queued;
     this.dirty = outOfTime;
@@ -405,11 +478,16 @@ export class ChunkLoader {
     return true;
   }
 
-  /** Columns to mesh (within the view radius) and their neighbours (to generate), by `columnPriority`. */
+  /**
+   * Columns to mesh (within the view radius) and their neighbours (to generate), by
+   * `columnPriority`; the level of detail of each to mesh, kept from before within the
+   * hysteresis, and its seams.
+   */
   private rebuildOrder(): void {
     const { cx, cz } = this.centre;
     const r = TUNING.view.radius;
     const inView = (dx: number, dz: number) => dx * dx + dz * dz <= r * r;
+    const before = new Map(this.columns);
     this.order = [];
     this.columns.clear();
     for (let dz = -r - 1; dz <= r + 1; dz++) {
@@ -418,7 +496,11 @@ export class ChunkLoader {
         let neighbour = false;
         for (let ez = -1; ez <= 1 && !mesh && !neighbour; ez++) for (let ex = -1; ex <= 1; ex++) if (inView(dx + ex, dz + ez)) neighbour = true;
         if (!mesh && !neighbour) continue;
-        const col: Column = { cx: cx + dx, cz: cz + dz, key: columnKey(cx + dx, cz + dz), mesh, priority: 0, chunks: null, ready: false, settled: false };
+        const key = columnKey(cx + dx, cz + dz);
+        // The level it has now counts only if it was drawn (columns only generated have none).
+        const was = before.get(key);
+        const lod = mesh ? lodLevel(Math.sqrt(dx * dx + dz * dz), was?.mesh ? was.lod : null) : 0;
+        const col: Column = { cx: cx + dx, cz: cz + dz, key, mesh, lod, seams: wallsFor(lod), priority: 0, chunks: null, ready: false, settled: false };
         this.order.push(col);
         this.columns.set(col.key, col);
       }

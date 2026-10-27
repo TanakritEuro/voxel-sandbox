@@ -41,6 +41,8 @@ const radiusParam = Number(params.get('radius'));
 const radiusHeld = Number.isInteger(radiusParam) && radiusParam > 0;
 const settings = loadSettings();
 TUNING.view.radius = radiusHeld ? radiusParam : settings.viewDistance;
+// `?lod=0`: every column at full detail (for comparing).
+if (params.get('lod') === '0') TUNING.view.lod.near = TUNING.view.lod.far = Number.POSITIVE_INFINITY;
 // `?time=0.5` holds the time of day there (0 midnight, 0.5 noon), for screenshots and measuring;
 // `?daylength=60` makes a day last that many seconds, to watch it go round.
 const timeParam = params.get('time');
@@ -152,6 +154,7 @@ const stats = new Stats(
     visible: loader.visibleChunks,
     meshed: chunks.count,
     pages: chunks.pages,
+    levels: loader.levels,
     mouse: { now: input.takeBiggestMove(), ever: input.biggestMoveEver, raw: input.raw, dropped: input.spikes.dropped },
     queued: loader.queued,
     inFlight: loader.inFlight,

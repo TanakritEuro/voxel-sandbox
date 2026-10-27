@@ -29,7 +29,11 @@ export type Job =
       cx: number;
       cy: number;
       cz: number;
-      /** The chunk's version when the job was made: a result for an older version is stale. */
+      /**
+       * The chunk's version when the job was made, with the form it was meshed in:
+       * `version * 64 + (lod | seams << 2)` (the loader's stamp). A result for an older
+       * version is stale.
+       */
       version: number;
       /** `paddedBlocks` output; comes back in the result to be reused. */
       padded: Uint8Array;

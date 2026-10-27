@@ -16,8 +16,9 @@
 // as solid: far chunks wall their edges, the hidden walls costing some quads.
 //
 // Seams: where a column borders one of another level, its surfaces don't meet the neighbour's,
-// and there would be gaps. On those sides the border is made air (`wallSeams`), so the chunk
-// makes walls there that cover them. Both chunks of such a pair get them. Pure.
+// and there would be gaps. On the sides asked for, the border is made air (`wallSeams`), so
+// the chunk makes walls there that cover them (the loader walls every side of a far chunk,
+// `wallsFor`). Pure.
 
 import { Block, BLOCKS } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
@@ -31,8 +32,10 @@ const WATER = Block.Water;
 
 /** Blocks a cell's solidity counts: opaque cubes and leaves (not air, water, glass or torches). */
 const SOLID = new Uint8Array(256);
+const OPAQUE = new Uint8Array(256);
 BLOCKS.forEach((info, b) => {
   SOLID[b] = (info.opaque || info.cutout) && info.shape === 'cube' ? 1 : 0;
+  OPAQUE[b] = info.opaque && info.shape === 'cube' ? 1 : 0;
 });
 
 /** Cell size in blocks by level of detail. */
@@ -59,13 +62,19 @@ const brighter = (a: number, b: number): number => (Math.max(a >> 4, b >> 4) << 
 /** The chunk's blocks in cells of k³, and its border in patches of k² (see the top of the file). */
 export function coarsen(blocks: Uint8Array, light: Uint8Array, k: number): void {
   const half = (k * k * k) / 2;
-  for (let y0 = 1; y0 <= S; y0 += k) {
-    for (let z0 = 1; z0 <= S; z0 += k) {
-      for (let x0 = 1; x0 <= S; x0 += k) {
+  // A column of cells at a time, from the top down: a thin surface layer (snow, grass) in a cell
+  // that isn't solid is taken out, and the solid cell under it takes its block instead. Only a
+  // layer covering at least half the cell's floor, of opaque blocks: not a tree trunk or leaves.
+  for (let z0 = 1; z0 <= S; z0 += k) {
+    for (let x0 = 1; x0 <= S; x0 += k) {
+      let surface = AIR;
+      for (let y0 = S + 1 - k; y0 >= 1; y0 -= k) {
         let solid = 0;
         let top = AIR;
         let fill = AIR;
         let lit = 0;
+        let floor = 0;
+        let floorBlock = AIR;
         // From the top layer down, so `top` is the highest solid block.
         for (let y = y0 + k - 1; y >= y0; y--) {
           for (let z = z0; z < z0 + k; z++) {
@@ -75,6 +84,10 @@ export function coarsen(blocks: Uint8Array, light: Uint8Array, k: number): void 
               if (SOLID[b]) {
                 solid++;
                 if (top === AIR) top = b;
+                if (y === y0 && OPAQUE[b]) {
+                  floor++;
+                  floorBlock = b;
+                }
               } else {
                 if (b === WATER) fill = WATER;
                 lit = brighter(lit, light[i]);
@@ -82,8 +95,15 @@ export function coarsen(blocks: Uint8Array, light: Uint8Array, k: number): void 
             }
           }
         }
-        if (solid === 0) continue;
+        if (solid === 0) {
+          surface = AIR;
+          continue;
+        }
         const whole = solid >= half;
+        if (whole) {
+          if (surface !== AIR) top = surface;
+          surface = AIR;
+        } else surface = floor * 2 >= k * k ? floorBlock : AIR;
         for (let y = y0; y < y0 + k; y++) {
           for (let z = z0; z < z0 + k; z++) {
             for (let x = x0; x < x0 + k; x++) {

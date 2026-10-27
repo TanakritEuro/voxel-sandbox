@@ -21,6 +21,13 @@ export const TUNING = {
      */
     behindWeight: 1,
     fov: 75,
+    /**
+     * Lower detail for far columns (`mesh/lod.ts`), by distance in chunks from the player's
+     * column: full within `near`, cells of 2³ from there, 4³ from `far`. A column changes level
+     * only once it is `hysteresis` past the boundary, so moving along one doesn't remesh back
+     * and forth. `?lod=0` keeps everything at full detail.
+     */
+    lod: { near: 7, far: 11, hysteresis: 0.5 },
   },
   workers: {
     /** At most this many chunk workers (otherwise one per core, less one for the main thread). */

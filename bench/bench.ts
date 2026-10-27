@@ -6,6 +6,7 @@
 // the work is split differently (columns instead of chunks, empty chunks skipped).
 
 import { it } from 'vitest';
+import { wallsFor } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
 import { meshCulled } from '../src/mesh/culled';
 import { type Lod, prepareLod } from '../src/mesh/lod';
@@ -26,13 +27,13 @@ const RUNS = 5;
 const CHUNKS_PER_COLUMN = MAX_CHUNK_Y - MIN_CHUNK_Y + 1;
 
 type Mesher = (padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array) => ChunkMesh;
-/** Far chunks (`mesh/lod.ts`): coarsened copies (in the worker the padded arrays are coarsened in place), flat faces. */
+/** Far chunks (`mesh/lod.ts`) as the loader asks for them: walled on every side (`wallsFor`), coarsened copies (in the worker the padded arrays are coarsened in place), flat faces. */
 const lodMesher =
   (lod: Lod): Mesher =>
   (padded, cx, cy, cz, light) => {
     const b = padded.slice();
     const l = light.slice();
-    prepareLod(b, l, lod, 0);
+    prepareLod(b, l, lod, wallsFor(lod));
     return meshChunk(b, cx, cy, cz, l, true);
   };
 const MESHERS: Record<string, Mesher> = { culled: meshCulled, greedy: meshChunk, 'lod 1': lodMesher(1), 'lod 2': lodMesher(2) };

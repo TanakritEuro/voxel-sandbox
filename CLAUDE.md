@@ -43,7 +43,8 @@ per 5 × 5 cell and written across chunk borders) in 32³ chunks, 256 blocks tal
 share one empty array until edited. Chunks within
 8 chunks of the camera are generated and meshed in a pool of Web Workers, near and in
 front of the camera first, scheduled from the main thread, and unloaded when far away
-(`chunkLoader.ts`). The mesher
+(`chunkLoader.ts`); columns from 7 chunks away are meshed at half detail and from 11 at a
+quarter (`mesh/lod.ts`). The mesher
 (`mesh/mesher.ts`) is greedy with per-vertex ambient occlusion and directional shading in
 the vertex colours, multiplied in the shader with 16 × 16 textures made at startup
 (`world/textures.ts`, one texture array); leaves are alpha-tested, water and glass go in a
@@ -105,7 +106,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 
 - `src/settings.ts` — player settings (view distance, FOV, mouse, volume) in localStorage,
   cleaned on load.
-- `src/config.ts` — `TUNING`: seed, view radius, frame budget, player movement, fly speed,
+- `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, light, day length, sky.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties, textures and sound per face, the default
@@ -151,7 +152,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   visibility walk reaches and hides the rest, drops stale or out-of-range results, remeshes
   edits on the main thread; reads a column's saved chunks before generating it. Columns with
   nothing left to do are skipped until a walk, an edit or a result changes that, and turning
-  only re-sorts them (no walk), so view distance 16 loads and turns cheaply.
+  only re-sorts them (no walk), so view distance 16 loads and turns cheaply. Each column has a
+  level of detail by distance (`lodLevel`, with hysteresis; far ones walled on every side,
+  `wallsFor`); a mesh is known by its stamp (version and form), so a level change remeshes like
+  an edit, after the chunks with no mesh at all, the old mesh shown meanwhile.
 - `src/audio/` — `cues.ts` (which sounds movement and digging make, when: pure), `sound.ts`
   (Web Audio: a recipe per block material, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
@@ -177,7 +181,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
   an unsaved world), `?light` shows light as grey,
-  `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?aa=0` turns antialiasing
+  `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  column at full detail, `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.
 - `tests/` — world, generation, padding, mesher (greedy against culled, AO and light against

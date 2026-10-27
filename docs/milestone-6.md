@@ -435,3 +435,94 @@ and the ordinary greedy mesher does the rest.
   level only +x faces on that side, lit by full sun; at LOD 2, one face a side.
 - **Water** at the same height and within a fifth of the area at every level.
 - **The mesh job** with a level and seams makes exactly what the functions make.
+
+## Step 5: lower detail in the loader — built (2026-10-27)
+
+**What changed:**
+- **Levels by distance** (`lodLevel`, `TUNING.view.lod`): full detail within 7 chunks of the
+  player's column, half from 7, a quarter from 11. A column changes level only once it is half
+  a chunk past a boundary (hysteresis), so moving along a boundary doesn't remesh it back and
+  forth.
+  - Only a column that was drawn keeps its level. Columns only generated as neighbours had
+    level 0, and the first version took that as their level when they came into view (found by
+    the test).
+- **A mesh is known by its stamp:** the chunk's version × 64 + its form (level | walls << 2).
+  - A changed level makes a chunk stale the way an edit does, and the job carries its level
+    and walls to the worker.
+  - The old mesh stays on screen until the new one arrives. A result in a form the column has
+    since left still shows if nothing newer is there, but never replaces a mesh in the
+    current form.
+  - Edits remesh on the main thread at the column's level.
+- **Walls: every side of a far chunk** (`wallsFor`), whatever its neighbours.
+  - The first version walled only the sides bordering another level, as planned. Then a level
+    change also remeshed the neighbours, whose walls changed. Flying at view distance 16 the
+    loader fell behind: 1,330 chunks waiting at worst, holes in 19 of 20 seconds (415 chunks at
+    worst), main thread 10.1 ms a frame (median).
+  - Levels only grow away from the player, so the gaps between levels that can be seen are
+    covered by the far side's walls. Walling by its own level alone, a column is remeshed only
+    when its own level changes: 349 waiting at worst, holes in 11 s.
+  - The walls cost 5 % more triangles at half detail (bench: 733 k against 695 k) and none at a
+    quarter, which walled its edges already.
+- **Holes first:** `dispatch` makes two passes, first generation and chunks with no mesh, then
+  chunks to mesh again in a new form. That took the holes down to full detail's (below).
+- **A thin surface layer is carried down** (`coarsen`). Snow (one block thick) on a slope often
+  sits in a cell that isn't solid, so it was taken out, and the cell under it showed its stone.
+  Far snowy mountains looked grey and patchy.
+  - Now a solid cell takes the block of a layer covering at least half the floor of the cell
+    above, made of opaque blocks. A tree trunk or leaves don't count, so the ground under trees
+    stays as it was.
+  - Side by side from above at radius 16, the far mountains now look much like full detail's.
+- **`?lod=0`** keeps every column at full detail, for comparing. `?stats` shows the columns at
+  each level.
+
+**Measured** in Chrome on your laptop, 2560 × 1201, the same build with and without `?lod=0`,
+alternating:
+
+- **Mountain probe** (seed 20261022, `?at=-368,400`, fully loaded, a slow spin at the horizon):
+
+  | | fps | frame ms | main thread ms | GPU ms | triangles drawn | load |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | Radius 16, full detail | 61, 61 | 16.4, 16.2 | 6.7, 6.4 | 12.5, 12.3 | 3.26 M | 17–18 s |
+  | Radius 16, LOD | **82, 84** | 12.2, 11.9 | 5.1, 5.3 | **8.1, 7.8** | **1.38 M** | 12 s |
+  | Radius 8, full detail | 96 | 10.4 | 3.4 | 6.1 | 0.80 M | 5 s |
+  | Radius 8, LOD | **102** | 9.8 | 2.9 | 5.8 | 0.69 M | 5 s |
+
+  - Mesh memory at radius 16: 245 MB against about 700 MB.
+  - Radius 8 gains a little too: its outer ring (7–8) is at half detail.
+
+- **`?autofly=20`:**
+
+  | | frames over 20 ms | over 33 ms | main thread p50 / p99 | holes | waiting at most |
+  | --- | --- | --- | --- | --- | --- |
+  | Radius 8, full detail | 12 | 0 | 3.6 / 8.8 ms | none | 21 |
+  | Radius 8, LOD | 12 | 0 | 3.5 / 9.0 ms | none | 76 |
+  | Radius 16, full detail (2 runs) | 134, 173 | 1, 9 | 6.3–6.7 / 15–19 ms | at most 8–9, in 3–4 s | 78–84 |
+  | Radius 16, LOD (2 runs) | 201, 98 | 14, 1 | 6.5–6.8 / 19–20 ms | at most 5, in 2–3 s | 350–379 |
+
+  - Flying is on par: the frame-time differences are within the noise between runs, and holes
+    are as few or fewer.
+  - More chunks wait, but they are meshes to redo in a new form, with the old ones still
+    showing. Flying at radius 16 is about 60 fps either way: the GPU, the main thread's loading
+    work and the browser's 4 ms don't fit two frames' worth into one.
+
+**Where it stands against the goal (120 fps, a frame of 8.3 ms):**
+- **Radius 16 standing:** 83 fps (was 45 at the start of the milestone). The frame is 12 ms:
+  GPU 8, the browser's 4 ms.
+- **Radius 8:** 102 fps. GPU 5.8 ms.
+- Both are still the GPU plus the browser's fixed cost. What's left for step 6:
+  - **The opaque shader's `discard`,** which may switch off early depth rejection for all
+    terrain (step 3's notes). Leaves in their own pass would avoid that.
+  - **Tuning the LOD distances:** nearer is faster.
+  - **Page size:** main thread 5 ms at radius 16.
+  - **Antialiasing or render resolution:** your call, since it changes how it looks.
+
+**Tests (4 new, 215 in all):**
+- **Levels:** by distance, changing only past the hysteresis, and a jump past both boundaries
+  at once.
+- **The loader:** each column's chunks meshed exactly as at its level with its walls, in a
+  radius with all three levels.
+- **Moving one column** remeshes exactly the columns whose level changed (hysteresis applied),
+  keeps every old mesh on screen until results arrive, and ends with every mesh in its new
+  form.
+- **Coarsening:** a cell under a removed snow layer becomes snow; under a lone trunk it stays
+  stone.

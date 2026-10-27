@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ChunkLoader, type ChunkSink, columnPriority } from '../src/chunkLoader';
+import { ChunkLoader, type ChunkSink, columnPriority, lodLevel } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
+import { type Lod, prepareLod, SEAM_NEG_X, SEAM_NEG_Z, SEAM_POS_X, SEAM_POS_Z } from '../src/mesh/lod';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { WorldSaver } from '../src/save/saver';
@@ -339,5 +340,95 @@ describe('chunk loader', () => {
     settle(s, 16, 16);
     expect(s.loader.missing(3)).toBe(0);
     expect(shown().some(([cx, , cz]) => cx * cx + cz * cz > 4)).toBe(true);
+  });
+});
+
+describe('levels of detail', () => {
+  it('pick a level by distance, and change it only past the hysteresis', () => {
+    TUNING.view.lod = { near: 7, far: 11, hysteresis: 0.5 };
+    expect([0, 6.9, 7, 10.9, 11, 16].map((d) => lodLevel(d, null))).toEqual([0, 0, 1, 1, 2, 2]);
+    expect(lodLevel(7.4, 0)).toBe(0); // inside the band: stays
+    expect(lodLevel(7.5, 0)).toBe(1);
+    expect(lodLevel(6.6, 1)).toBe(1);
+    expect(lodLevel(6.4, 1)).toBe(0);
+    expect(lodLevel(11.4, 1)).toBe(1);
+    expect(lodLevel(12, 0)).toBe(2); // a jump straight past both
+    expect(lodLevel(3, 2)).toBe(0);
+  });
+
+  /** What a chunk meshed at `lod` with `seams` looks like. */
+  const lodMesh = (world: World, cx: number, cy: number, cz: number, lod: Lod, seams: number) => {
+    const b = paddedBlocks(world, cx, cy, cz);
+    const l = paddedLight(world, cx, cy, cz);
+    prepareLod(b, l, lod, seams);
+    return meshChunk(b, cx, cy, cz, l, lod > 0);
+  };
+  /**
+   * The level and seams column (cx, cz) should have with the player in column (pcx, pcz), the
+   * player having been in column (from) before (hysteresis), or nowhere.
+   */
+  const formOf = (cx: number, cz: number, pcx: number, pcz: number, from: [number, number] | null = null): [Lod, number] => {
+    const r = TUNING.view.radius;
+    const level = (x: number, z: number): Lod => {
+      const was = from && (x - from[0]) ** 2 + (z - from[1]) ** 2 <= r * r ? lodLevel(Math.hypot(x - from[0], z - from[1]), null) : null;
+      return lodLevel(Math.hypot(x - pcx, z - pcz), was);
+    };
+    const lod = level(cx, cz);
+    return [lod, lod > 0 ? SEAM_NEG_X | SEAM_POS_X | SEAM_NEG_Z | SEAM_POS_Z : 0];
+  };
+
+  it('mesh each column at its level, far ones walled on every side', () => {
+    TUNING.view.lod = { near: 1, far: 2, hysteresis: 0.5 };
+    const s = setup();
+    settle(s, 16, 16);
+    const levels = new Set<number>();
+    let compared = 0;
+    for (const [cx, cy, cz] of inView(0, 0)) {
+      const key = chunkKey(cx, cy, cz);
+      if (!s.sink.meshes.has(key) || s.sink.hidden.has(key)) continue;
+      const [lod, seams] = formOf(cx, cz, 0, 0);
+      levels.add(lod);
+      expect(s.sink.meshes.get(key), `${key} at level ${lod}, seams ${seams}`).toEqual(lodMesh(s.world, cx, cy, cz, lod, seams));
+      compared++;
+    }
+    expect(compared).toBeGreaterThan(10);
+    expect([...levels].sort()).toEqual([0, 1, 2]);
+    expect(s.loader.levels).toEqual([1, 8, 4]); // the radius-2 circle: the centre, the 8 round it, 4 at distance 2
+  });
+
+  it('remesh only the columns whose level changes when the player moves, keeping the old mesh meanwhile', () => {
+    TUNING.view.radius = 4;
+    TUNING.view.lod = { near: 2, far: 3, hysteresis: 0.5 };
+    const s = setup(64);
+    settle(s, 16, 16);
+    const before = new Map(s.sink.sets);
+    const shown = new Map(s.sink.meshes);
+    // One column along +x: the jobs start, but no result is in yet; every mesh is still there.
+    s.loader.update(48, EYE, 16, 1, 0);
+    for (const [key, mesh] of shown) expect(s.sink.meshes.get(key), key).toBe(mesh);
+    s.runner.deliver();
+    settle(s, 48, 16);
+    let remeshed = 0;
+    let kept = 0;
+    const around = (pcx: number) => {
+      const out: [number, number, number][] = [];
+      for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) if (dx * dx + dz * dz <= 16) for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) out.push([pcx + dx, cy, dz]);
+      return out;
+    };
+    const after = new Set(around(1).map((c) => c.join()));
+    for (const [cx, cy, cz] of around(0)) {
+      if (!after.has([cx, cy, cz].join())) continue; // gone out of view
+      const key = chunkKey(cx, cy, cz);
+      if (!before.has(key) || !s.sink.meshes.has(key) || s.sink.hidden.has(key)) continue;
+      const [oldLod, oldSeams] = formOf(cx, cz, 0, 0);
+      const [lod, seams] = formOf(cx, cz, 1, 0, [0, 0]);
+      const changed = oldLod !== lod || oldSeams !== seams;
+      expect(s.sink.sets.get(key)! - before.get(key)!, key).toBe(changed ? 1 : 0);
+      if (changed) remeshed++;
+      else kept++;
+      expect(s.sink.meshes.get(key), `${key} at level ${lod}, seams ${seams} (was ${oldLod}, ${oldSeams})`).toEqual(lodMesh(s.world, cx, cy, cz, lod, seams));
+    }
+    expect(remeshed).toBeGreaterThan(0);
+    expect(kept).toBeGreaterThan(0);
   });
 });
