@@ -11,8 +11,8 @@ export interface EngineCounters {
   /** Chunks that could be seen from the player's chunk (the rest aren't meshed or drawn). */
   visible: number;
   meshed: number;
-  /** Chunk meshes not on the GPU yet. */
-  unsent: number;
+  /** Pages of chunk meshes (`render/chunkPage.ts`), and the share of their space in use. */
+  pages: { count: number; full: number };
   queued: number;
   inFlight: number;
   /** Fraction of worker time spent on jobs, or null before there are workers. */
@@ -140,7 +140,7 @@ export class Stats {
       `over ${LONG_FRAME_MS} ms: ${this.longFrames} frames since load`,
       `mouse: biggest move ${c.mouse.now} px now, ${c.mouse.ever} px since load, ` + (c.mouse.raw ? 'raw input' : `${c.mouse.dropped} spike${c.mouse.dropped === 1 ? '' : 's'} dropped`),
       `draw calls ${r.calls}   triangles ${Math.round(r.triangles / 1000)}k drawn / ${Math.round(c.sceneTriangles / 1000)}k`,
-      `chunks ${c.chunks} loaded, ${c.visible} could be seen, ${c.meshed} meshed, ${c.unsent} meshes still to upload`,
+      `chunks ${c.chunks} loaded, ${c.visible} could be seen, ${c.meshed} meshed, in ${c.pages.count} pages ${Math.round(c.pages.full * 100)}% full`,
       `time ${c.time}`,
       `saving ${c.saving}`,
       `jobs ${c.queued} queued, ${c.inFlight} in flight` + (c.workerBusy === null ? '' : `, workers ${Math.round(c.workerBusy * 100)}% busy`),

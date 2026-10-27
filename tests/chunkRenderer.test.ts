@@ -1,52 +1,99 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { meshChunk } from '../src/mesh/mesher';
-import { paddedBlocks } from '../src/mesh/padding';
+import { paddedBlocks, paddedLight } from '../src/mesh/padding';
+import type { ChunkPage } from '../src/render/chunkPage';
 import { ChunkRenderer } from '../src/render/chunkRenderer';
 import { World } from '../src/world/world';
 
-/** A rendered frame, as far as the renderer is concerned: Three.js calls this after drawing a mesh. */
-const drawn = (m: THREE.Object3D) => m.onAfterRender(undefined as never, undefined as never, undefined as never, undefined as never, undefined as never, undefined as never);
-const meshesOf = (r: ChunkRenderer) => r.group.children as THREE.Mesh[];
+const world = new World(20261022);
+for (let cz = -1; cz <= 1; cz++) for (let cx = -1; cx <= 1; cx++) world.ensureColumn(cx, cz);
+const meshAt = (cx: number, cy: number, cz: number) => meshChunk(paddedBlocks(world, cx, cy, cz), cx, cy, cz, paddedLight(world, cx, cy, cz));
+/** A chunk with ground and water (seed 20261022 has the sea at the origin's south). */
+const ground = meshAt(0, 1, 0);
+const quadsOf = (m: { positions: Float32Array }) => m.positions.length / 12;
 
-describe('chunk renderer uploads', () => {
-  const world = new World(20261022);
-  world.ensureColumn(0, 0);
-  const mesh = meshChunk(paddedBlocks(world, 0, 2, 0), 0, 2, 0);
+const pagesOf = (r: ChunkRenderer) => r.group.children as ChunkPage[];
+type Internals = { _multiDrawStarts: Int32Array; _multiDrawCounts: Int32Array; _multiDrawCount: number };
+/** The draw list a page makes for this camera: [first quad, quads] per range. */
+function drawList(page: ChunkPage, camera: THREE.PerspectiveCamera): [number, number][] {
+  camera.updateMatrixWorld();
+  page.onBeforeRender(undefined as never, undefined as never, camera);
+  const b = page as unknown as Internals;
+  const out: [number, number][] = [];
+  for (let i = 0; i < b._multiDrawCount; i++) out.push([b._multiDrawStarts[i] / (6 * page.geometry.index!.array.BYTES_PER_ELEMENT), b._multiDrawCounts[i] / 6]);
+  return out;
+}
 
-  it('keeps count of meshes never drawn, and forgets them once drawn or removed', () => {
-    const r = new ChunkRenderer();
-    r.set('a', 0, 2, 0, mesh);
-    r.set('b', 0, 2, 0, mesh);
-    const n = meshesOf(r).length;
-    expect(r.waitingUpload).toBe(n);
-    drawn(meshesOf(r)[0]);
-    expect(r.waitingUpload).toBe(n - 1);
-    // What's left is chunk a's, one of which has been drawn.
-    r.remove('b');
-    expect(r.waitingUpload).toBe(meshesOf(r).length - 1);
+describe('chunk meshes', () => {
+  it('give every quad the same indices, so pages can share one index buffer', () => {
+    for (const m of [ground.opaque, ground.transparent, meshAt(1, 2, -1).opaque]) {
+      for (let q = 0; q < m.indices.length / 6; q++) {
+        const b = q * 4;
+        expect([...m.indices.subarray(q * 6, q * 6 + 6)]).toEqual([b, b + 1, b + 2, b, b + 2, b + 3]);
+      }
+    }
+  });
+});
+
+describe('chunk renderer pages', () => {
+  it('copies passes into pages, counts them, and frees their space on remove and remesh', () => {
+    const r = new ChunkRenderer(false, 100_000);
+    r.set('a', 0, 1, 0, ground);
+    const quads = quadsOf(ground.opaque) + quadsOf(ground.transparent);
+    expect(r.triangles).toBe(quads * 2);
+    expect(r.count).toBe(1);
+    // Remeshing replaces: the space is the same as for one copy.
+    r.set('a', 0, 1, 0, ground);
+    expect(pagesOf(r).reduce((s, p) => s + p.space.used, 0)).toBe(quads);
+    expect(r.triangles).toBe(quads * 2);
+    r.remove('a');
+    expect(r.triangles).toBe(0);
+    expect(r.bytes).toBe(0);
+    expect(pagesOf(r).every((p) => p.space.used === 0 && p.size === 0)).toBe(true);
   });
 
-  it('sends unseen meshes a budget of bytes at a time, by drawing them once whatever the frustum', () => {
-    const r = new ChunkRenderer();
-    for (let i = 0; i < 6; i++) r.set(`c${i}`, 0, 2, 0, mesh);
-    const all = meshesOf(r);
-    expect(all.every((m) => m.frustumCulled)).toBe(true);
-    // A budget of nothing sends nothing; a little sends one; it never picks hidden meshes.
-    r.uploadSome(0);
-    expect(all.filter((m) => !m.frustumCulled)).toHaveLength(0);
-    all[0].visible = false;
-    r.uploadSome(1);
-    const sent = all.filter((m) => !m.frustumCulled);
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).not.toBe(all[0]);
-    // Drawn: culled normally again, and no longer waiting.
-    const before = r.waitingUpload;
-    drawn(sent[0]);
-    expect(sent[0].frustumCulled).toBe(true);
-    expect(r.waitingUpload).toBe(before - 1);
-    // A big budget sends every visible one left.
-    r.uploadSome(1e12);
-    expect(all.filter((m) => !m.frustumCulled)).toHaveLength(all.length - 2);
+  it('opens a new page when one is full, and fills freed space again', () => {
+    const q = quadsOf(ground.opaque);
+    const solid = { ...ground, transparent: { ...ground.transparent, positions: new Float32Array(0), indices: new Uint16Array(0) } };
+    const r = new ChunkRenderer(false, Math.ceil(q * 2.5));
+    for (const k of ['a', 'b', 'c']) r.set(k, 0, 1, 0, solid);
+    expect(pagesOf(r)).toHaveLength(2); // two fit in the first page
+    r.remove('a');
+    r.set('d', 0, 1, 0, solid);
+    expect(pagesOf(r)).toHaveLength(2); // into a's old place
+  });
+
+  it('uses 16-bit indices in small pages, and gives a mesh too big for one a page of its own', () => {
+    const q = quadsOf(ground.opaque);
+    const r = new ChunkRenderer(false, Math.floor(q / 2));
+    r.set('small', 0, 1, 0, { ...ground, opaque: { positions: ground.opaque.positions.subarray(0, 12), colors: ground.opaque.colors.subarray(0, 16), uvl: ground.opaque.uvl.subarray(0, 16), indices: ground.opaque.indices.subarray(0, 6) } });
+    r.set('big', 0, 1, 0, ground);
+    const [small] = pagesOf(r);
+    expect(small.geometry.index!.array).toBeInstanceOf(Uint16Array);
+    const big = pagesOf(r).find((p) => p.quads === q);
+    expect(big?.space.used).toBe(q);
+  });
+
+  it('draws the visible chunks in the frustum, and the blended ones farthest first', () => {
+    const r = new ChunkRenderer(false, 1_000_000);
+    const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1000);
+    camera.position.set(16, 120, 16);
+    camera.lookAt(16, 0, 16); // straight down on chunk (0, *, 0)
+    r.set('here', 0, 1, 0, ground);
+    r.set('below', 0, 0, 0, meshAt(0, 0, 0));
+    r.set('behind', 0, 1, 40, ground); // far outside the view
+    const [opaque, blended] = pagesOf(r);
+    const here = drawList(opaque, camera);
+    expect(here.length).toBe(2);
+    expect(here.every(([, n]) => n > 0)).toBe(true);
+    r.setVisible('below', false);
+    expect(drawList(opaque, camera)).toHaveLength(1);
+
+    // Water in two chunks, both in view: the farther one first.
+    r.set('near water', 0, 2, 0, ground);
+    const order = drawList(blended, camera);
+    expect(order).toHaveLength(2);
+    expect(order[0][0]).toBe(0); // 'here' (cy 1) went in first and is farther from the camera above
   });
 });

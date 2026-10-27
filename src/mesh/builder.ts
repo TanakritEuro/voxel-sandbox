@@ -68,15 +68,18 @@ export class MeshBuilder {
    */
   quad(flip = false): void {
     const b = this.vertexCount - 4;
+    // Flipped, the corners are turned one place (1, 2, 3, 0: still counter-clockwise) so the
+    // split is always 0–2. Every quad then has the same indices, 4q + (0, 1, 2, 0, 2, 3), which
+    // is what lets chunk pages share one index buffer (`render/chunkPage.ts`).
+    if (flip) {
+      rotate(this.positions, b, 3);
+      rotate(this.colors, b, 4);
+      rotate(this.uvl, b, 4);
+    }
     const i = this.indexCount;
     const idx = this.indices;
-    if (flip) {
-      idx[i] = b + 1; idx[i + 1] = b + 2; idx[i + 2] = b + 3;
-      idx[i + 3] = b + 1; idx[i + 4] = b + 3; idx[i + 5] = b;
-    } else {
-      idx[i] = b; idx[i + 1] = b + 1; idx[i + 2] = b + 2;
-      idx[i + 3] = b; idx[i + 4] = b + 2; idx[i + 5] = b + 3;
-    }
+    idx[i] = b; idx[i + 1] = b + 1; idx[i + 2] = b + 2;
+    idx[i + 3] = b; idx[i + 4] = b + 2; idx[i + 5] = b + 3;
     this.indexCount += 6;
   }
 
@@ -94,6 +97,18 @@ export class MeshBuilder {
       uvl: this.uvl.slice(0, this.vertexCount * 4),
       indices: small ?? indices.slice(),
     };
+  }
+}
+
+/** Vertices b..b+3 of `a` (`size` values each) moved one place down: b+1, b+2, b+3, b. */
+function rotate(a: Float32Array | Uint8Array, b: number, size: number): void {
+  const at = b * size;
+  for (let c = 0; c < size; c++) {
+    const first = a[at + c];
+    a[at + c] = a[at + size + c];
+    a[at + size + c] = a[at + 2 * size + c];
+    a[at + 2 * size + c] = a[at + 3 * size + c];
+    a[at + 3 * size + c] = first;
   }
 }
 

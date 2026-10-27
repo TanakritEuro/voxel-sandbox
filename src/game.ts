@@ -151,7 +151,7 @@ const stats = new Stats(
     chunks: world.chunks.size,
     visible: loader.visibleChunks,
     meshed: chunks.count,
-    unsent: chunks.waitingUpload,
+    pages: chunks.pages,
     mouse: { now: input.takeBiggestMove(), ever: input.biggestMoveEver, raw: input.raw, dropped: input.spikes.dropped },
     queued: loader.queued,
     inFlight: loader.inFlight,
@@ -299,7 +299,6 @@ showPause();
 
 let last = performance.now();
 /** Seconds the loader has had nothing to do. */
-let loaderIdle = 0;
 /** Where the feet were last frame, for footsteps. */
 let lastFeet = { x: player.body.x, z: player.body.z };
 let fps = 60;
@@ -368,11 +367,6 @@ function frame(now: number): void {
     (loader.pending ? ` · loading ${loader.pending}` : '') +
     (target ? ` · ${BLOCKS[target.block].name}` : '');
 
-  // Unseen meshes go to the GPU in the background once nothing has been loading for a while
-  // (not while flying through new land, where the frames are busy), so a quick turn finds them
-  // already there.
-  loaderIdle = loader.pending === 0 ? loaderIdle + dt : 0;
-  chunks.uploadSome(loaderIdle >= TUNING.view.uploadAfterIdle ? TUNING.view.uploadBytesPerSecond * dt : 0);
   stats.gpuBegin();
   renderer.render(scene, camera);
   const eye = camera.position;

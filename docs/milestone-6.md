@@ -1,4 +1,7 @@
-# Milestone 6: 120 fps on a laptop GPU — plan (for your approval)
+# Milestone 6: 120 fps on a laptop GPU
+
+**Plan approved (2026-10-27)** as proposed: this is Milestone 6 (the optional one moves to 7), LOD
+from 7 and 11 chunks to tune in step 6, water and glass at full detail, LOD always on.
 
 **Goal.** On your laptop (Intel UHD Graphics, 120 Hz screen, the game drawn at 2560 × 1201),
 flying over mountains:
@@ -155,7 +158,7 @@ Three.js to handle.
    - does anything pop in or out while flying;
    - the frame rate at 8, 12 and 16.
 
-## Decisions for you
+## Decisions (approved)
 - **Numbering:** this becomes Milestone 6, and the optional one (mobs, flowing water, logic
   blocks, multiplayer) moves to 7.
 - **LOD distances:** full detail within 7 chunks (224 blocks), half from there, a quarter from 11
@@ -163,3 +166,71 @@ Three.js to handle.
   (282 blocks at 16). To be tuned in step 6 with you.
 - **Water and glass at full detail** everywhere, as above.
 - **No settings changes:** LOD is always on. `?lod=0` is only for measuring.
+
+## Step 1: batched chunk drawing — built (2026-10-27)
+
+**What changed:**
+- Chunk meshes are copied into **pages** (`render/chunkPage.ts`), each a Three.js `BatchedMesh`
+  used for its multi-draw path. The batch's own geometry bookkeeping is replaced:
+  - space is handed out by `render/pageAllocator.ts`, in quads, first fit, freed ranges merged;
+  - each frame, a page builds its draw list from the chunks that are visible (the visibility
+    walk) and in the frustum, with blended ones (water, glass) farthest first;
+  - Three.js's per-instance culling and sorting are off.
+- **One index buffer for every page.** `MeshBuilder.quad` now turns a flipped quad's corners
+  (1, 2, 3, 0, still counter-clockwise) instead of using other indices, so every quad has the
+  indices 4q + (0, 1, 2, 0, 2, 3). Only vertices are ever uploaded, just the range written.
+- **Pages of 16,384 quads** (65,536 vertices, 16-bit indices, 1.3 MB). A mesh bigger than that
+  gets a page of its own size.
+  - The first try used pages of 262,144 quads (26 MB). Each new page is uploaded whole when
+    first drawn, and pages added while flying made 40–50 ms frames (main thread max 46 ms).
+    Small pages took the main thread's max to 11–12 ms.
+- **The background upload of unseen meshes is gone** (`uploadSome`, `TUNING.view.upload*`). A
+  chunk's vertices now go to the GPU when its mesh arrives, into a buffer that already exists,
+  so a quick turn has nothing to upload.
+- `?stats` shows the pages and how full they are.
+
+**Measured** in Chrome on your laptop, production build, 2560 × 1201:
+
+- **Mountain probe** (seed 20261022, `?at=-368,400`, fully loaded, a slow spin at the horizon
+  for 8 s). Before is the end of Milestone 5; each cell is before → after.
+
+  | | fps | frame ms | main thread ms | GPU ms | draw calls | triangles drawn |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | Radius 16 | 45 → 45 | 22.4 → 22.4 | 6.4 → 4.0 | 18.2 → 18.6 | 1221 → 387 | 5.7 M |
+  | Radius 12 | 65 → 64 | 15.4 → 15.5 | 4.0 → 2.5 | 11.7 → 11.7 | 628 → 207 | 3.1 M |
+  | Radius 8 | 88 → 86 | 11.4 → 11.7 | 2.5 → 1.9 | 7.5 → 7.8 | 253 → 91 | 1.3 M |
+
+- **`?autofly=20` at radius 8,** alternating builds:
+
+  | | frames over 20 ms | over 33 ms | main thread p50 / p99 / max |
+  | --- | --- | --- | --- |
+  | Before (3 runs) | 27, 23, 39 | 0, 0, 1 | 5.9–6.0 / 11.3–11.7 / 14–20 ms |
+  | After (4 runs) | 48, 28, 26, 29 | 3, 1, 0, 0 | 1.6–1.8 / 9.0–9.6 / 11–12 ms |
+
+  The first run after looks like noise: the three after it match the build before. The frames
+  over 20 ms are 25 ms frames (three refreshes at 120 Hz), with the main thread far below
+  that: the GPU, not our code.
+
+**What it says:**
+- The batching works: the main thread is down by a third to a half, and draw calls by
+  two thirds.
+- The frame rate didn't move, because the GPU limits it, as expected; steps 2–4 are for that.
+- 16-bit indices made no difference to the GPU (the big pages had 32-bit ones). So fetching
+  indices isn't what costs: the work per triangle is. That favours step 2 (fewer triangles)
+  and is a warning for step 3 (fewer bytes per vertex may not help much).
+- **New: about 4 ms of every frame is GPU work outside our draws.** The frame is the GPU time
+  plus about 4 ms, whatever the main thread does. That is most likely the browser compositing
+  and resolving the antialiased 2560 × 1201 canvas. It grows with pixels: half the resolution
+  saved 4.3 ms of frame against 2.6 ms of GPU, and antialiasing off saved 1.9 against 0.7.
+  - So for 120 fps (8.3 ms) our own GPU work has about **4.3 ms**, not the 6.5 the plan
+    assumed. Antialiasing or the render resolution may have to be part of step 6.
+
+**Decision: go.** The batching stays; its page size (main thread 2.5 ms with big pages, 4.0 with
+small ones at radius 16) can be tuned in step 6.
+
+**Tests (8 new in place of the 2 upload tests, 201 in all):**
+- Every quad's indices are 4q + (0, 1, 2, 0, 2, 3).
+- Pages count and free their space on remove and remesh, open a new page when full, fill freed
+  space again, use 16-bit indices when small, and give an oversized mesh a page of its own.
+- The draw list holds the visible chunks in the frustum, blended ones farthest first.
+- The allocator: first fit, merging, and never the same quad twice through 5,000 random steps.

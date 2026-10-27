@@ -3,35 +3,44 @@ import type { MeshData } from '../mesh/builder';
 import type { ChunkMesh } from '../mesh/mesher';
 import { CHUNK_SIZE } from '../world/coords';
 import { createBlockMaterial, createBlockTextures } from './blockMaterial';
+import { BYTES_PER_QUAD, ChunkPage, type PageEntry } from './chunkPage';
 import type { WaterFlow } from './water';
 
-/** Radius of the sphere around a chunk cube; every chunk mesh fits inside it. */
-const CHUNK_RADIUS = (CHUNK_SIZE * Math.sqrt(3)) / 2;
+/**
+ * Quads per page: 65 536 vertices, so 16-bit indices, and 1.3 MB of vertices. Small, so a new
+ * page (uploaded whole when first drawn) never costs a frame: pages of 1 M vertices made
+ * frames of 40–50 ms when they were added while flying. A chunk mesh bigger than this (rare)
+ * gets a page of its own size.
+ */
+export const PAGE_QUADS = 1 << 14;
 
-/** Owns the Three.js meshes for chunks: creates, replaces and disposes them. */
+/**
+ * Owns the chunk meshes: copies each chunk's passes into pages (`chunkPage.ts`), opaque and
+ * transparent ones apart, and frees them when the chunk is remeshed or unloaded.
+ */
 export class ChunkRenderer {
   readonly group = new THREE.Group();
-  private readonly meshes = new Map<string, THREE.Mesh[]>();
+  private readonly meshes = new Map<string, PageEntry[]>();
   /** The block texture array, shared with the held block. */
   readonly textures = createBlockTextures();
   /** Solid blocks, and leaves with their holes cut out (alpha test). */
   private readonly opaqueMaterial: THREE.ShaderMaterial;
   /** Water and glass, blended. */
   private readonly transparentMaterial: THREE.ShaderMaterial;
+  private readonly opaquePages: ChunkPage[] = [];
+  private readonly transparentPages: ChunkPage[] = [];
 
   /** Triangles currently in the scene, for the stats line. */
   triangles = 0;
-  /** Bytes of vertex and index data currently in the scene, for `?stats`. */
+  /** Bytes of vertex data in use, for `?stats`. */
   bytes = 0;
-  /**
-   * Meshes not drawn yet, so not yet on the GPU. Chunks loaded out of view would otherwise all
-   * upload in the one frame a quick turn brings them into view; `uploadSome` sends a few each
-   * frame instead, so by the time you turn they're there.
-   */
-  private readonly unsent = new Set<THREE.Mesh>();
 
   /** With `lightView`, chunks show their light as grey instead of their textures (`?light`). */
-  constructor(lightView = false) {
+  constructor(
+    lightView = false,
+    /** Smaller in tests. */
+    private readonly pageQuads = PAGE_QUADS,
+  ) {
     this.opaqueMaterial = createBlockMaterial(this.textures, { alphaTest: 0.5, transparent: false, lightView });
     this.transparentMaterial = createBlockMaterial(this.textures, { alphaTest: 0.01, transparent: true, lightView });
   }
@@ -49,42 +58,16 @@ export class ChunkRenderer {
     u.ripple.value = flow.ripple;
   }
 
-  /**
-   * Once a frame, before drawing: have up to `budget` bytes of meshes that haven't been drawn
-   * yet (and can be seen) drawn this frame wherever the camera looks, which uploads them. Ones
-   * in view are drawn anyway and don't count.
-   */
-  uploadSome(budget: number): void {
-    let bytes = 0;
-    for (const m of this.unsent) {
-      if (bytes >= budget) break;
-      if (!m.visible || !m.frustumCulled) continue;
-      m.frustumCulled = false;
-      bytes += geometryBytes(m.geometry);
-    }
-  }
-
-  /** Meshes not on the GPU yet (for `?stats`). */
-  get waitingUpload(): number {
-    return this.unsent.size;
-  }
-
   /** Show a chunk's mesh, replacing any it had. */
   set(key: string, cx: number, cy: number, cz: number, data: ChunkMesh): void {
     this.remove(key);
-    // Frustum culling uses this; the chunk's own bounds are free, measuring the vertices isn't.
     const centre = new THREE.Vector3(cx + 0.5, cy + 0.5, cz + 0.5).multiplyScalar(CHUNK_SIZE);
-    const list: THREE.Mesh[] = [];
-    if (data.opaque.indices.length) list.push(this.make(data.opaque, this.opaqueMaterial, centre));
-    if (data.transparent.indices.length) {
-      const water = this.make(data.transparent, this.transparentMaterial, centre);
-      water.renderOrder = 1;
-      list.push(water);
-    }
-    for (const m of list) {
-      this.group.add(m);
-      this.triangles += (m.geometry.index?.count ?? 0) / 3;
-      this.bytes += geometryBytes(m.geometry);
+    const list: PageEntry[] = [];
+    if (data.opaque.indices.length) list.push(this.place(data.opaque, this.opaquePages, this.opaqueMaterial, false, centre));
+    if (data.transparent.indices.length) list.push(this.place(data.transparent, this.transparentPages, this.transparentMaterial, true, centre));
+    for (const e of list) {
+      this.triangles += e.quads * 2;
+      this.bytes += e.quads * BYTES_PER_QUAD;
     }
     this.meshes.set(key, list);
   }
@@ -92,18 +75,16 @@ export class ChunkRenderer {
   remove(key: string): void {
     const list = this.meshes.get(key);
     if (!list) return;
-    for (const m of list) {
-      this.triangles -= (m.geometry.index?.count ?? 0) / 3;
-      this.bytes -= geometryBytes(m.geometry);
-      this.group.remove(m);
-      this.unsent.delete(m);
-      m.geometry.dispose();
+    for (const e of list) {
+      this.triangles -= e.quads * 2;
+      this.bytes -= e.quads * BYTES_PER_QUAD;
+      e.page.removeMesh(e);
     }
     this.meshes.delete(key);
   }
 
   setVisible(key: string, visible: boolean): void {
-    for (const m of this.meshes.get(key) ?? []) m.visible = visible;
+    for (const e of this.meshes.get(key) ?? []) e.visible = visible;
   }
 
   get count(): number {
@@ -118,19 +99,26 @@ export class ChunkRenderer {
     return this.meshes.keys();
   }
 
-  private make(data: MeshData, material: THREE.Material, centre: THREE.Vector3): THREE.Mesh {
-    const geo = chunkGeometry(data);
-    geo.boundingSphere = new THREE.Sphere(centre.clone(), CHUNK_RADIUS);
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.matrixAutoUpdate = false; // positions are already in world space
-    // Not yet on the GPU: Three.js uploads a mesh's buffers the first time it draws it.
-    this.unsent.add(mesh);
-    mesh.onAfterRender = () => {
-      this.unsent.delete(mesh);
-      mesh.frustumCulled = true;
-      mesh.onAfterRender = () => {};
-    };
-    return mesh;
+  /** Pages, and the share of their space in use (for `?stats`). */
+  get pages(): { count: number; full: number } {
+    const all = [...this.opaquePages, ...this.transparentPages];
+    const used = all.reduce((s, p) => s + p.space.used, 0);
+    const capacity = all.reduce((s, p) => s + p.quads, 0);
+    return { count: all.length, full: capacity ? used / capacity : 0 };
+  }
+
+  /** Into the first page with room, or a new one. */
+  private place(data: MeshData, pages: ChunkPage[], material: THREE.Material, backToFront: boolean, centre: THREE.Vector3): PageEntry {
+    for (const page of pages) {
+      const e = page.addMesh(data, centre);
+      if (e) return e;
+    }
+    const page = new ChunkPage(Math.max(this.pageQuads, data.positions.length / 12), material, backToFront);
+    if (backToFront) page.renderOrder = 1;
+    pages.push(page);
+    this.group.add(page);
+    const e = page.addMesh(data, centre);
+    return e!; // an empty page of at least this size always has room
   }
 }
 
@@ -142,10 +130,4 @@ export function chunkGeometry(data: MeshData): THREE.BufferGeometry {
   geo.setAttribute('uvl', new THREE.BufferAttribute(data.uvl, 4));
   geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
   return geo;
-}
-
-function geometryBytes(geo: THREE.BufferGeometry): number {
-  let bytes = geo.index?.array.byteLength ?? 0;
-  for (const a of Object.values(geo.attributes)) bytes += a.array.byteLength;
-  return bytes;
 }

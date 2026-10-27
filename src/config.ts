@@ -16,14 +16,6 @@ export const TUNING = {
      */
     applyBudgetMs: 3,
     /**
-     * Bytes a second of chunk meshes not yet seen that are sent to the GPU anyway once nothing
-     * is loading, so a quick turn doesn't upload hundreds of them in one frame (a jump). In
-     * view, they go at once.
-     */
-    uploadBytesPerSecond: 20_000_000,
-    /** …after the loader has been idle this long (s). */
-    uploadAfterIdle: 1,
-    /**
      * Loading order: how much further a column straight behind the camera counts than one
      * straight ahead (1: twice as far). 0 loads in plain rings.
      */

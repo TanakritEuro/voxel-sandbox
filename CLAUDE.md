@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 6 (120 fps on a laptop GPU) in progress, plan approved (`docs/milestone-6.md`).
 Milestones 1–5 built (`docs/milestone-1.md` to `docs/milestone-5.md`), waiting for playtests
 (Milestone 3's laptop measurement is in: inside the budget). Milestone 5 added settings, a sky with sun, moon, stars and clouds,
 fog by biome, moving water, synthesised sounds (footsteps, digging, breaking, placing,
@@ -66,8 +67,8 @@ Known limits, each fixed by a milestone below: visibility culling is per chunk a
 - **Meshing** (`src/mesh/`): pure. Input is a chunk's blocks plus a one-block border from
   its neighbours (`paddedBlocks`, 34³), output is typed arrays. This is exactly the
   shape that can be posted to and from a Web Worker with transferable buffers.
-- **Presentation** (`src/render/`, `main.ts`, `player.ts`): turns mesh data into Three.js
-  meshes, one or two per chunk, frustum-culled by their bounding spheres.
+- **Presentation** (`src/render/`, `main.ts`, `player.ts`): copies chunk mesh data into
+  shared pages, each drawn with one multi-draw call; chunks are frustum-culled one by one there.
 - **Scheduling** (`chunkLoader.ts`): decides what to generate, mesh and unload, nearest
   first, within a per-frame budget. When workers arrive it stays on the main thread and
   becomes a job queue with priorities and cancellation.
@@ -125,11 +126,13 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   timing and crack stage).
 - `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
-  Uint16 indices),
+  Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead),
   `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
-- `src/render/chunkRenderer.ts` — Three.js meshes per chunk; meshes not yet seen are sent to the
-  GPU in the background when loading is idle (`uploadSome`), so quick turns don't stall. `blockMaterial.ts` — the texture
+- `src/render/chunkRenderer.ts` — chunk meshes into pages, opaque and transparent apart.
+  `chunkPage.ts` — a page: a `BatchedMesh` used for its multi-draw path, with its own space
+  (`pageAllocator.ts`, in quads, first fit), one shared index buffer, and a draw list built each
+  frame from the visible chunks in the frustum (blended ones farthest first). `blockMaterial.ts` — the texture
   array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
   textures. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
@@ -237,7 +240,10 @@ structures, tests, how you'll measure) and check it with me.
    and digging sounds (synthesised, as in the earlier games), block particles when
    breaking, a hand or held block, an inventory with creative-mode block picker, settings
    (view distance, mouse sensitivity, FOV).
-6. **Optional, pick one:** simple mobs with A* pathfinding on the voxel grid; flowing water
+6. **120 fps on a laptop GPU** (`docs/milestone-6.md`). Batched chunk drawing (multi-draw),
+   faces pointing away from the camera skipped, packed vertices, lower detail for far chunks.
+   Target: 120 fps at view radius 8 over mountains on an Intel UHD laptop, radius 16 near it.
+7. **Optional, pick one:** simple mobs with A* pathfinding on the voxel grid; flowing water
    (cellular automaton); redstone-like logic blocks; multiplayer (a Node WebSocket server
    that owns the world and streams chunks and edits, building on the online code in the
    earlier games).
