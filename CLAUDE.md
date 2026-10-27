@@ -29,7 +29,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 Milestones 1–4 built (`docs/milestone-1.md` to `docs/milestone-4.md`), waiting for playtests
 (Milestone 3's laptop measurement is in: inside the budget). Milestone 5 in progress (`docs/milestone-5.md`): settings, a sky with sun, moon, stars and clouds,
 fog by biome, moving water, synthesised sounds (footsteps, digging, breaking, placing,
-landing, splashing), block particles, and the held block. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
+landing, splashing), block particles, the held block, and a creative block picker (E) with the
+hotbar saved per world. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
 saving
 (edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
 A seeded world of four biomes
@@ -106,7 +107,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/config.ts` — `TUNING`: seed, view radius, frame budget, player movement, fly speed,
   reach, light, day length, sky.
 - `src/math.ts` — seeded PRNG and coordinate hash.
-- `src/world/` — `blocks.ts` (block ids, properties, textures per face, hotbar), `textures.ts`
+- `src/world/` — `blocks.ts` (block ids, properties, textures and sound per face, the default
+  hotbar, `PLACEABLE`, `hotbarFrom`), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
@@ -127,7 +129,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes, opaque and transparent passes), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
 - `src/render/chunkRenderer.ts` — Three.js meshes per chunk. `blockMaterial.ts` — the texture
-  array, the chunk shader, hotbar icons. `sky.ts` — time of day to daylight, sunlight colour, sky
+  array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
+  textures. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
   `clouds.ts` — the blocky cloud layer and its tiling pattern. `fog.ts` — fog colour and
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
@@ -156,7 +159,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   world). `src/game.ts` — the game: opening the world, editing, HUD, frame loop, pause,
   autosave.
 - `src/ui/` — `worldList.ts` (play, new, rename, delete, settings), `pauseMenu.ts` (play,
-  settings, save and quit, keys), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
+  settings, save and quit, keys), `inventory.ts` (the block picker), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,

@@ -1,6 +1,6 @@
 # Milestone 5 plan: polish
 
-## Status: in progress (steps 1–6 done; inventory next)
+## Status: in progress (steps 1–7 done; notes and playtest next)
 
 Approved 2026-10-26 as proposed: blocky clouds at y = 192, a creative inventory with the
 hotbar saved per world, the settings as listed with view distance up to 16, a held block
@@ -273,6 +273,46 @@ easier.
   - its light: given sunlight in the vertex colours, and a lamp at full glow in the dark;
   - motion at rest, a bob within its height when walking, the swing's pitch and its return,
     and the dip.
+
+**Step 7 (creative block picker).**
+- **`blocks.ts`:**
+  - `PLACEABLE` lists every block but air: 22 of them, ores, water and the lamp included.
+  - `hotbarFrom` cleans a saved hotbar: nine placeable blocks, with the default for any slot
+    that's missing, air, a block id that doesn't exist, or not a whole number.
+- **The hotbar is saved per world:** `WorldRecord.hotbar` holds it (optional, so worlds from
+  before get the default). It's written with the record as soon as a block is chosen.
+- **`render/icons.ts`:** an isometric cube per block, drawn on a 48 × 48 canvas at startup from
+  its own textures.
+  - The top, then the side twice: the left 20 % darker and the right 35 %, darkened only
+    where the texture is, so leaves and glass keep their holes.
+  - The torch keeps its own flat icon.
+  - These replace the flat side textures in the hotbar (the old `textureIcon` is gone), so
+    grass no longer looks like dirt there.
+- **`ui/inventory.ts`:**
+  - E or Tab opens a grid of every placeable block, with its icon and name. The block in the
+    selected slot is highlighted.
+  - Clicking one puts it in that slot. The number keys move the slot while it's open.
+  - E, Tab or Esc closes it and captures the mouse again.
+  - Opening it frees the mouse without the pause menu, and the player and clock stand still
+    as when paused.
+- **A world that isn't there** (`?world=` an id that was deleted) now goes back to the list
+  quietly, rather than throwing after starting to leave.
+- **Checked in the pane (production build):**
+  - The pane's storage had been reset since the last session, so I made a new test world
+    from the list.
+  - E showed the grid of icons, every block recognisable, with Grass (slot 1) highlighted.
+  - Crystal ore went into slot 1. Then 3 and Lamp put a lamp in slot 3, and the help line
+    followed the slot.
+  - E closed it and took the mouse back without the pause menu.
+  - The hotbar showed the new icons, and after reloading the world it was still Crystal ore,
+    Dirt, Lamp, ….
+  - `?world=missing` landed on the list with nothing in the console.
+- **Tests (3 new, 186 in all):**
+  - the picker offers every block but air, once each;
+  - `hotbarFrom` keeps a good hotbar and repairs a bad one slot by slot, without touching the
+    default;
+  - a chosen block survives the world being written and read again, and an old record gets
+    the default.
 
 ## Scope decisions
 

@@ -26,6 +26,8 @@ export interface WorldRecord {
   player: PlayerState | null;
   /** Time of day, 0–1. */
   time: number;
+  /** The hotbar's nine blocks (`hotbarFrom` cleans it; missing in worlds from before the picker). */
+  hotbar?: number[];
 }
 
 /** A chunk's place and its RLE-encoded blocks. */

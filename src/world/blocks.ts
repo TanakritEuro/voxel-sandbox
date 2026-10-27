@@ -152,7 +152,10 @@ const SOUNDS: Partial<Record<Block, BlockSound>> = {
 
 export const BLOCKS: readonly BlockInfo[] = TABLE.map((info, b) => ({ ...info, sound: SOUNDS[b as Block] ?? 'stone' }));
 
-/** Blocks the player can place, in hotbar order (keys 1–9). */
+/** Every block the creative picker offers: all but air, in id order. */
+export const PLACEABLE: readonly Block[] = BLOCKS.map((_, b) => b as Block).filter((b) => b !== Block.Air);
+
+/** The hotbar a new world starts with (keys 1–9); the picker changes it, per world. */
 export const HOTBAR: readonly Block[] = [
   Block.Grass,
   Block.Dirt,
@@ -164,3 +167,15 @@ export const HOTBAR: readonly Block[] = [
   Block.Glass,
   Block.Water,
 ];
+
+/**
+ * A world's hotbar from its record: nine placeable blocks. Anything else in a slot (a record
+ * from before the picker, a block id that doesn't exist, air) gets the default for that slot.
+ */
+export function hotbarFrom(saved: unknown): Block[] {
+  const list = Array.isArray(saved) ? saved : [];
+  return HOTBAR.map((fallback, i) => {
+    const b: unknown = list[i];
+    return typeof b === 'number' && Number.isInteger(b) && b > Block.Air && b < BLOCKS.length ? (b as Block) : fallback;
+  });
+}

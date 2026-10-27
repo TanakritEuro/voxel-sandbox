@@ -2,12 +2,12 @@
 // array, a layer per block texture, sampled by a small shader (vertex shade × light ×
 // texture, alpha test for leaves, Three.js fog). In the transparent pass, water moves: two
 // copies of its texture drift different ways and are blended, and its brightness ripples
-// slowly (`water.ts` works out the offsets); nothing is remeshed. Hotbar icons are drawn from the same pixels. `?light` draws
+// slowly (`water.ts` works out the offsets); nothing is remeshed. `?light` draws
 // the light the mesher put in the vertices instead of the textures, for checking it.
 
 import * as THREE from 'three';
 import { TUNING } from '../config';
-import { makeTextures, TEXTURE_NAMES, TEXTURE_SIZE, type TextureName, textureLayer } from '../world/textures';
+import { makeTextures, TEXTURE_NAMES, TEXTURE_SIZE, textureLayer } from '../world/textures';
 
 const vertexShader = /* glsl */ `
   attribute vec4 color;
@@ -156,15 +156,4 @@ export function createBlockMaterial(
       blendDstAlpha: THREE.OneFactor,
     }),
   });
-}
-
-/** A data URL of one texture, for an `<img>` or CSS background (hotbar icons). */
-export function textureIcon(name: TextureName, pixels: Uint8Array = makeTextures()): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = TEXTURE_SIZE;
-  const area = TEXTURE_SIZE * TEXTURE_SIZE * 4;
-  const layer = textureLayer(name);
-  const image = new ImageData(new Uint8ClampedArray(pixels.subarray(layer * area, (layer + 1) * area)), TEXTURE_SIZE, TEXTURE_SIZE);
-  canvas.getContext('2d')!.putImageData(image, 0, 0);
-  return canvas.toDataURL();
 }

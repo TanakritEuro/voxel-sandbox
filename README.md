@@ -22,6 +22,7 @@ play: what you build, where you are and the time of day.
 | Left button (hold) | Break block (stone takes longest) |
 | Right click | Place block |
 | 1–9 or wheel | Pick a block |
+| E or Tab | Block picker: click a block to put it in the selected slot |
 | Esc | Pause (play on, or save and go back to the world list) |
 | M | Mute or unmute |
 

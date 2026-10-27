@@ -14,20 +14,21 @@ import { loadSettings, saveSettings, type Settings } from './settings';
 import { WorldSaver } from './save/saver';
 import { IndexedDbStore, MemoryStore, newWorldRecord, type PlayerState, type WorldStore } from './save/store';
 import { isUnsavedUrl } from './save/worlds';
+import { Inventory } from './ui/inventory';
 import { PauseMenu } from './ui/pauseMenu';
-import { textureIcon } from './render/blockMaterial';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
 import { Clouds } from './render/clouds';
 import { blendFog, easeFog, fogColour } from './render/fog';
 import { HeldBlock } from './render/heldBlock';
+import { blockIcons } from './render/icons';
 import { brightness, ParticleMesh, Particles } from './render/particles';
 import { clock, skyAt } from './render/sky';
 import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
-import { Block, BLOCKS, HOTBAR } from './world/blocks';
+import { Block, BLOCKS, hotbarFrom } from './world/blocks';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock } from './world/physics';
@@ -76,8 +77,9 @@ const unsaved = isUnsavedUrl(params);
 const store: WorldStore = unsaved ? new MemoryStore() : await openStore();
 const found = unsaved ? undefined : await store.getWorld(params.get('world') ?? '');
 if (!unsaved && !found) {
-  location.href = location.pathname;
-  throw new Error(`no world "${params.get('world')}"`);
+  // Back to the list, and nothing more here: the page is going.
+  location.replace(location.pathname);
+  await new Promise<never>(() => {});
 }
 const record = found ?? newWorldRecord('unsaved', 'Unsaved world', Number(params.get('seed') ?? TUNING.world.seed), TUNING.day.start);
 record.played = Date.now();
@@ -186,13 +188,31 @@ let lastEdit: { ms: number; lightMs: number; chunks: number } | null = null;
 let target: RayHit | null = null;
 const mining = new Mining();
 
-/** Each hotbar block shown by its icon, or else its side texture. */
-const hotbarIcons = HOTBAR.map((b) => textureIcon(BLOCKS[b].icon ?? BLOCKS[b].textures.side));
+/** The world's hotbar (kept in its record, so saved with it), and every block's icon. */
+const hotbar = hotbarFrom(record.hotbar);
+record.hotbar = hotbar;
+const icons = blockIcons();
+
+// The block picker: choosing a block puts it in the selected slot, and the world remembers it.
+const inventory = new Inventory(document.body, icons, (block) => {
+  hotbar[selected] = block;
+  renderHotbar();
+  void saver.saveRecord(playerState(), time);
+});
+function openInventory(): void {
+  inventory.show(selected, hotbar[selected]);
+  document.exitPointerLock();
+}
+function closeInventory(): void {
+  inventory.hide();
+  input.lock();
+}
 
 function renderHotbar(): void {
-  hotbarEl.innerHTML = HOTBAR.map(
+  inventory.refresh(selected, hotbar[selected]);
+  hotbarEl.innerHTML = hotbar.map(
     (b, i) =>
-      `<div class="slot${i === selected ? ' selected' : ''}" title="${BLOCKS[b].name}"><span style="background-image: url(${hotbarIcons[i]})"></span><em>${i + 1}</em></div>`,
+      `<div class="slot${i === selected ? ' selected' : ''}" title="${BLOCKS[b].name}"><span style="background-image: url(${icons[b]})"></span><em>${i + 1}</em></div>`,
   ).join('');
 }
 
@@ -221,7 +241,7 @@ function editing(dt: number): void {
     const x = target.x + target.nx;
     const y = target.y + target.ny;
     const z = target.z + target.nz;
-    const block = HOTBAR[selected];
+    const block = hotbar[selected];
     // Not inside the player (water and other passable blocks can go there); torches only on
     // top of a solid block, in air.
     const torchFits = BLOCKS[world.getBlock(x, y - 1, z)].opaque && world.getBlock(x, y, z) === Block.Air;
@@ -240,14 +260,20 @@ window.addEventListener('keydown', (e) => {
     saveSettings(settings);
     applySettings(settings);
   }
+  // E or Tab opens and closes the block picker; Esc closes it too.
+  if (e.code === 'KeyE' || e.code === 'Tab') {
+    e.preventDefault();
+    if (inventory.open) closeInventory();
+    else if (input.locked) openInventory();
+  } else if (e.code === 'Escape' && inventory.open) closeInventory();
   const n = Number(e.key);
-  if (n >= 1 && n <= HOTBAR.length) {
+  if (n >= 1 && n <= hotbar.length) {
     selected = n - 1;
     renderHotbar();
   }
 });
 window.addEventListener('wheel', (e) => {
-  selected = (selected + Math.sign(e.deltaY) + HOTBAR.length) % HOTBAR.length;
+  selected = (selected + Math.sign(e.deltaY) + hotbar.length) % hotbar.length;
   renderHotbar();
 });
 // Paused whenever the mouse isn't captured (at the start, and after Esc), except under `?autofly`.
@@ -258,7 +284,8 @@ const pauseMenu = new PauseMenu(document.body, record.name, !unsaved, settings, 
 });
 applySettings(settings);
 const paused = () => !input.locked && !autofly;
-const showPause = () => (pauseMenu.visible = paused());
+// The picker frees the mouse too, without the pause menu.
+const showPause = () => (pauseMenu.visible = paused() && !inventory.open);
 document.addEventListener('pointerlockchange', showPause);
 showPause();
 
@@ -334,7 +361,7 @@ function frame(now: number): void {
 
   renderer.render(scene, camera);
   const eye = camera.position;
-  held.set(HOTBAR[selected], world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)), sky.sunlight);
+  held.set(hotbar[selected], world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)), sky.sunlight);
   held.render(renderer, camera.aspect, !autofly);
   const work = performance.now() - start;
   stats.frame(now, interval, work, player.physicsMs, player.physicsSteps);
