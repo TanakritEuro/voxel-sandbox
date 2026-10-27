@@ -22,12 +22,15 @@ export function settingsControls(parent: HTMLElement, settings: Settings, onChan
   parent.append(warning);
   showWarning();
   slider(parent, 'Field of view', 'fov', settings, (v) => `${v}°`, changed);
+  slider(parent, 'Resolution', 'resolution', settings, (v) => `${Math.round(v * 100)} %`, changed);
   slider(parent, 'Mouse speed', 'sensitivity', settings, (v) => v.toFixed(1), changed);
   slider(parent, 'Volume', 'volume', settings, (v) => `${Math.round(v * 100)} %`, changed);
 
   const toggles = el(parent, 'div', 'menu-row');
   toggle(toggles, 'Invert mouse Y', () => settings.invertY, (v) => (settings.invertY = v), changed);
   toggle(toggles, 'Mute (M)', () => settings.muted, (v) => (settings.muted = v), changed);
+  toggle(toggles, 'Antialiasing', () => settings.antialias, (v) => (settings.antialias = v), changed);
+  el(parent, 'p', 'menu-help', 'Lower resolution or antialiasing off is faster on a slow GPU. Antialiasing changes the next time a world is opened.');
 }
 
 function slider(

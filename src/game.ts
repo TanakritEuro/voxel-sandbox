@@ -59,10 +59,13 @@ const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const info = document.querySelector<HTMLDivElement>('#info')!;
 const hotbarEl = document.querySelector<HTMLDivElement>('#hotbar')!;
 
-// `?aa=0` turns antialiasing off and `?scale=0.5` draws at half the resolution: for measuring
-// how much of the GPU's time goes on pixels.
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get('aa') !== '0' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * (Number(params.get('scale')) || 1));
+// Antialiasing and resolution from the settings; `?aa=0` turns antialiasing off and `?scale=0.5`
+// draws at half the resolution on top, for measuring how much of the GPU's time goes on pixels.
+// Antialiasing belongs to the WebGL context, so a change shows the next time a world is opened.
+const scaleParam = Number(params.get('scale')) || 1;
+const pixelRatio = (s: Settings) => Math.min(window.devicePixelRatio, 2) * s.resolution * scaleParam;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.antialias && params.get('aa') !== '0' });
+renderer.setPixelRatio(pixelRatio(settings));
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Draw calls and triangles counted over the whole frame (the world, then the held block), for `?stats`.
 renderer.info.autoReset = false;
@@ -391,9 +394,11 @@ function frame(now: number): void {
 
 /**
  * Settings take effect at once: the view distance (unless `?radius` holds it) moves the
- * loader's radius, the fog and the far plane; field of view, the mouse and the volume.
+ * loader's radius, the fog and the far plane; field of view, resolution, the mouse and the
+ * volume. Antialiasing waits for the next world opened.
  */
 function applySettings(s: Settings): void {
+  if (renderer.getPixelRatio() !== pixelRatio(s)) renderer.setPixelRatio(pixelRatio(s));
   if (!radiusHeld && s.viewDistance !== TUNING.view.radius) {
     TUNING.view.radius = s.viewDistance;
     loader.radiusChanged();

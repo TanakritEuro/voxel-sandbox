@@ -10,6 +10,13 @@ export interface Settings {
   viewDistance: number;
   /** Vertical field of view, degrees. */
   fov: number;
+  /**
+   * The share of the screen's resolution the world is drawn at, 0.5–1: lower is faster on a
+   * slow GPU (75 % took view distance 16 from 89–94 to 115 fps on a laptop) and softer.
+   */
+  resolution: number;
+  /** Smooth edges (MSAA). Off is faster; changes from the next time a world is opened. */
+  antialias: boolean;
   /** Mouse look: thousandths of a radian per pixel. */
   sensitivity: number;
   invertY: boolean;
@@ -21,6 +28,8 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   viewDistance: TUNING.view.radius,
   fov: TUNING.view.fov,
+  resolution: 1,
+  antialias: true,
   sensitivity: TUNING.fly.mouseSensitivity * 1000,
   invertY: false,
   volume: 0.8,
@@ -31,6 +40,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
 export const RANGES = {
   viewDistance: { min: 4, max: 16, step: 1 },
   fov: { min: 60, max: 100, step: 1 },
+  resolution: { min: 0.5, max: 1, step: 0.05 },
   sensitivity: { min: 0.5, max: 6, step: 0.1 },
   volume: { min: 0, max: 1, step: 0.05 },
 } as const;
@@ -58,7 +68,7 @@ export function cleanSettings(raw: unknown): Settings {
     s[key] = Math.min(max, Math.max(min, v));
   }
   s.viewDistance = Math.round(s.viewDistance);
-  for (const key of ['invertY', 'muted'] as const) if (typeof r[key] === 'boolean') s[key] = r[key];
+  for (const key of ['invertY', 'muted', 'antialias'] as const) if (typeof r[key] === 'boolean') s[key] = r[key];
   return s;
 }
 

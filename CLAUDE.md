@@ -26,8 +26,10 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 6 (120 fps on a laptop GPU) in progress, plan approved (`docs/milestone-6.md`).
-Milestones 1–5 built (`docs/milestone-1.md` to `docs/milestone-5.md`), waiting for playtests
+Milestones 1–6 built (`docs/milestone-1.md` to `docs/milestone-6.md`), waiting for playtests
+(Milestone 6, 120 fps on a laptop GPU: chunks drawn in batched pages with multi-draw, faces
+pointing away skipped, far columns at lower detail, leaves in their own pass so solid blocks
+never discard; antialiasing and render resolution in the settings)
 (Milestone 3's laptop measurement is in: inside the budget). Milestone 5 added settings, a sky with sun, moon, stars and clouds,
 fog by biome, moving water, synthesised sounds (footsteps, digging, breaking, placing,
 landing, splashing), block particles, the held block, and a creative block picker (E) with the
@@ -43,7 +45,7 @@ per 5 × 5 cell and written across chunk borders) in 32³ chunks, 256 blocks tal
 share one empty array until edited. Chunks within
 8 chunks of the camera are generated and meshed in a pool of Web Workers, near and in
 front of the camera first, scheduled from the main thread, and unloaded when far away
-(`chunkLoader.ts`); columns from 7 chunks away are meshed at half detail and from 11 at a
+(`chunkLoader.ts`); columns from 8 chunks away are meshed at half detail and from 13 at a
 quarter (`mesh/lod.ts`). The mesher
 (`mesh/mesher.ts`) is greedy with per-vertex ambient occlusion and directional shading in
 the vertex colours, multiplied in the shader with 16 × 16 textures made at startup
@@ -104,7 +106,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 
 ## Layout
 
-- `src/settings.ts` — player settings (view distance, FOV, mouse, volume) in localStorage,
+- `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, light, day length, sky.

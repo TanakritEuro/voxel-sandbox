@@ -614,3 +614,74 @@ wouldn't make it faster.
 - Updated: leaves are in the cutout pass (held block, textures, greedy against culled with
   three passes, no holes at LOD over both passes); the worker sends 14 buffers; a trunk is
   kept at LOD.
+
+## Step 7: settings, the final rings, and the end of the milestone (2026-10-27)
+
+**What changed** (your choices after step 6):
+- **Settings: Resolution** (50–100 %, default 100 %) **and Antialiasing** (default on), in the
+  settings panel of the world list and the pause menu, saved with the others.
+  - Resolution applies at once (the renderer's pixel ratio).
+  - Antialiasing belongs to the WebGL context, so it applies the next time a world is opened;
+    the panel says so.
+  - `?aa=0` and `?scale=` still work on top, for measuring.
+  - **Checked in Chrome:** saved at 75 % with antialiasing off, the game drew at 1920 × 901
+    (75 % of 2560 × 1201) and the context reported antialiasing off.
+- **The far rings start at 8 and 13 chunks** (were 7 and 11), so the blocky skyline is
+  further away. `?lod=7,11` still shows the old ones.
+
+**Final measurements** in Chrome on your laptop, 2560 × 1201, production build:
+
+- **Mountain probe** (seed 20261022, `?at=-368,400`, a slow spin at the horizon):
+
+  | | fps | frame ms | main thread ms | GPU ms | triangles drawn |
+  | --- | --- | --- | --- | --- | --- |
+  | Radius 16, start of the milestone | 45 | 22.4 | 6.4 | 18.2 | 5.7 M |
+  | Radius 16, now (rings 8 / 13) | **81** | 12.4 | 5.4 | 8.4 | 1.61 M |
+  | Radius 16, now with rings 7 / 11 | 87.5 | 11.5 | 5.2 | 7.5 | 1.41 M |
+  | Radius 16, antialiasing off and 75 % resolution (rings 8 / 13) | **104** | 9.7 | 3.2 | 6.8 | 1.62 M |
+  | Radius 16, the same with rings 7 / 11 (step 6) | 120 | 8.3 | 3.9 | 5.3 | 1.40 M |
+  | Radius 8, start of the milestone | 88 | 11.4 | 2.5 | 7.5 | 1.3 M |
+  | Radius 8, now (rings 8 / 13) | **108** | 9.2 | 3.2 | 5.3 | 0.81 M |
+  | Radius 8, now with rings 7 / 11 | 114 | 8.8 | 3.2 | 4.8 | 0.69 M |
+  | Radius 8, antialiasing off (rings 7 / 11, step 6) | 120 | 8.3 | 4.0 | 4.5 | 0.68 M |
+
+  The laptop measured a little slower in this session than in step 6: rings 7 / 11 gave 87.5
+  fps at radius 16 here, against 89–94 there. Rows from step 6 are marked.
+
+- **What moving the rings to 8 / 13 cost:** about 6 % at both distances.
+  - At radius 8 the 7–8 ring is full detail now, which was half before.
+  - Antialiasing off then gives about 115 fps at radius 8 rather than 120.
+  - If you'd rather have the speed, `TUNING.view.lod` is one line, and `?lod=7,11` tries it.
+
+- **`?autofly=20`:**
+  - **Radius 8:** 1,998 frames, 5 over 20 ms (12 before step 6), none over 33 ms, no holes.
+  - **Radius 16:** 1,464 frames, 64 over 20 ms, 4 over 33, holes at most 5 chunks, in 3 of 20 s.
+
+**Against the goal:**
+- **120 fps at view distance 8:** **108–115 fps with the defaults** (88 at the start), and 120
+  with antialiasing off at rings 7 / 11. Not reached with every default.
+- **View distance 16 near 120:** **81–94 fps with the defaults** (45 at the start), and
+  104–120 with antialiasing off and 75 % resolution.
+- **What's left is the browser's own work** to show a 2560 × 1201 picture, about 4 ms a frame
+  that grows with pixels and antialiasing. That's why those two settings are what gets the rest
+  of the way.
+- **The Milestone 5 budget (no frame over 20 ms flying at radius 8):** 5 such frames in 2,000,
+  against 12 before step 6 and 23–39 at the start of the milestone.
+
+**Tests (216 in all):** settings keep a resolution and antialiasing as saved, clamp the
+resolution to 50–100 %, and take the default for a bad value.
+
+## Playtest questions
+
+1. **Frame rate:** with `?stats` (F3), standing over mountains, at view distance 8 and 16:
+   what does the first line say, and does turning and flying feel smoother than before the
+   milestone?
+2. **The new settings:** try Resolution at 75 % and Antialiasing off (reopen the world for
+   antialiasing). How much worse does it look, and is the speed worth it? Which would you
+   keep?
+3. **Far land at view distance 16:** with the rings at 8 and 13, can you see where the detail
+   drops? Do far trees still look odd? (They keep their trunks now.)
+4. **Seams and popping:** any slits of sky or see-through spots where near and far land meet,
+   or land visibly switching detail as you fly?
+5. **Leaves:** do trees and their leaves look as before, holes and all, near and far?
+6. **Anything that looks wrong** that didn't before: water, glass, torches, the held block.
