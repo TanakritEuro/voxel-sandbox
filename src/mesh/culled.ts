@@ -40,6 +40,7 @@ function faceVisible(a: Block, b: Block): boolean {
 }
 
 const opaque = new MeshBuilder();
+const cutout = new MeshBuilder();
 const transparent = new MeshBuilder();
 
 function quad(out: MeshBuilder, x: number, y: number, z: number, face: Face, r: number, g: number, b: number): void {
@@ -51,6 +52,7 @@ function quad(out: MeshBuilder, x: number, y: number, z: number, face: Face, r: 
 /** Mesh one chunk from its padded blocks, one quad per visible face. */
 export function meshCulled(padded: Uint8Array, cx: number, cy: number, cz: number): ChunkMesh {
   opaque.reset();
+  cutout.reset();
   transparent.reset();
   const x0 = cx * S;
   const y0 = cy * S;
@@ -66,7 +68,7 @@ export function meshCulled(padded: Uint8Array, cx: number, cy: number, cz: numbe
         const info = BLOCKS[b];
         // Torches are their own small boxes, not faces of the grid.
         if (info.shape !== 'cube') continue;
-        const out = info.transparent ? transparent : opaque;
+        const out = info.transparent ? transparent : info.cutout ? cutout : opaque;
         const wx = x0 + x - 1;
         const wy = y0 + y - 1;
         const wz = z0 + z - 1;
@@ -82,5 +84,5 @@ export function meshCulled(padded: Uint8Array, cx: number, cy: number, cz: numbe
       }
     }
   }
-  return { opaque: opaque.build(), transparent: transparent.build(), quads };
+  return { opaque: opaque.build(), cutout: cutout.build(), transparent: transparent.build(), quads };
 }

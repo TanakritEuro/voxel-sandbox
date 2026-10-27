@@ -13,7 +13,7 @@ const within = (d: MeshData, lo: number[], hi: number[]) => {
 };
 
 describe('held block', () => {
-  it('is the mesher’s lone block: six faces of a cube, a torch’s five, glass in the transparent pass', () => {
+  it('is the mesher’s lone block: six faces of a cube, a torch’s five, leaves in the cutout pass, glass in the transparent one', () => {
     const stone = heldMesh(Block.Stone, 0xf0);
     expect(quads(stone.opaque)).toBe(6);
     expect(quads(stone.transparent)).toBe(0);
@@ -21,7 +21,8 @@ describe('held block', () => {
     const torch = heldMesh(Block.Torch, 0xf0);
     expect(quads(torch.opaque)).toBe(5);
     within(torch.opaque, [7 / 16, 0, 7 / 16], [9 / 16, 10 / 16, 9 / 16]);
-    expect(quads(heldMesh(Block.Leaves, 0xf0).opaque)).toBe(6);
+    expect(quads(heldMesh(Block.Leaves, 0xf0).cutout)).toBe(6);
+    expect(quads(heldMesh(Block.Leaves, 0xf0).opaque)).toBe(0);
     expect(quads(heldMesh(Block.Glass, 0xf0).transparent)).toBe(6);
     expect(heldMesh(Block.Air, 0xf0).quads).toBe(0);
   });

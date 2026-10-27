@@ -21,7 +21,7 @@ interface Quad {
   /** Axis the quad faces along and the sign of its normal (from the winding). */
   axis: number;
   sign: number;
-  pass: 'opaque' | 'transparent';
+  pass: 'opaque' | 'cutout' | 'transparent';
 }
 
 function quadsOf(data: MeshData, pass: Quad['pass']): Quad[] {
@@ -45,7 +45,7 @@ function quadsOf(data: MeshData, pass: Quad['pass']): Quad[] {
 
 /** The quads on the block grid (not torches, whose corners are within their blocks). */
 const quadsOfMesh = (m: ChunkMesh) =>
-  [...quadsOf(m.opaque, 'opaque'), ...quadsOf(m.transparent, 'transparent')].filter((q) => q.corners.every((c) => c.every(Number.isInteger)));
+  [...quadsOf(m.opaque, 'opaque'), ...quadsOf(m.cutout, 'cutout'), ...quadsOf(m.transparent, 'transparent')].filter((q) => q.corners.every((c) => c.every(Number.isInteger)));
 
 const otherAxes = (axis: number): [number, number] => [(axis + 1) % 3, (axis + 2) % 3];
 

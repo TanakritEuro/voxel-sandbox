@@ -75,6 +75,27 @@ describe('chunk renderer pages', () => {
     expect(big?.space.used).toBe(q);
   });
 
+  it('draws solid blocks with a shader that never discards, and leaves after them with one that does', () => {
+    const r = new ChunkRenderer(false, 100_000);
+    // A chunk with trees: solid blocks and leaves.
+    let trees: ReturnType<typeof meshAt> | undefined;
+    for (let cy = 1; cy <= 3 && !trees; cy++)
+      for (let cz = -1; cz <= 1 && !trees; cz++)
+        for (let cx = -1; cx <= 1 && !trees; cx++) {
+          const m = meshAt(cx, cy, cz);
+          if (m.cutout.indices.length && m.opaque.indices.length) trees = m;
+        }
+    if (!trees) throw new Error('no chunk with leaves near the origin');
+    r.set('trees', 0, 2, 0, trees);
+    const pages = pagesOf(r);
+    const alphaTested = (p: ChunkPage) => 'ALPHA_TEST' in ((p.material as THREE.ShaderMaterial).defines ?? {});
+    const solid = pages.filter((p) => !alphaTested(p) && !(p.material as THREE.Material).transparent);
+    const leaves = pages.filter((p) => alphaTested(p) && !(p.material as THREE.Material).transparent);
+    expect(solid).toHaveLength(1);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].renderOrder).toBeGreaterThan(solid[0].renderOrder);
+  });
+
   it('draws the visible chunks in the frustum, and the blended ones farthest first', () => {
     const r = new ChunkRenderer(false, 1_000_000);
     const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1000);

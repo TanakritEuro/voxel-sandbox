@@ -23,11 +23,14 @@ export class ChunkRenderer {
   private readonly meshes = new Map<string, PageEntry[]>();
   /** The block texture array, shared with the held block. */
   readonly textures = createBlockTextures();
-  /** Solid blocks, and leaves with their holes cut out (alpha test). */
+  /** Solid blocks: no alpha test, so the GPU skips hidden pixels before shading them. */
   private readonly opaqueMaterial: THREE.ShaderMaterial;
+  /** Leaves, with their holes cut out (alpha test), drawn after the solid blocks. */
+  private readonly cutoutMaterial: THREE.ShaderMaterial;
   /** Water and glass, blended. */
   private readonly transparentMaterial: THREE.ShaderMaterial;
   private readonly opaquePages: ChunkPage[] = [];
+  private readonly cutoutPages: ChunkPage[] = [];
   private readonly transparentPages: ChunkPage[] = [];
 
   /** Triangles currently in the scene, for the stats line. */
@@ -41,13 +44,14 @@ export class ChunkRenderer {
     /** Smaller in tests. */
     private readonly pageQuads = PAGE_QUADS,
   ) {
-    this.opaqueMaterial = createBlockMaterial(this.textures, { alphaTest: 0.5, transparent: false, lightView });
+    this.opaqueMaterial = createBlockMaterial(this.textures, { alphaTest: 0, transparent: false, lightView });
+    this.cutoutMaterial = createBlockMaterial(this.textures, { alphaTest: 0.5, transparent: false, lightView });
     this.transparentMaterial = createBlockMaterial(this.textures, { alphaTest: 0.01, transparent: true, lightView });
   }
 
   /** Sunlight's colour and brightness for the time of day (`sky.ts`), on every chunk at once. */
   setSunlight([r, g, b]: [number, number, number]): void {
-    for (const m of [this.opaqueMaterial, this.transparentMaterial]) (m.uniforms.sunlight.value as THREE.Vector3).set(r, g, b);
+    for (const m of [this.opaqueMaterial, this.cutoutMaterial, this.transparentMaterial]) (m.uniforms.sunlight.value as THREE.Vector3).set(r, g, b);
   }
 
   /** Where the water's texture has drifted to (`water.ts`). */
@@ -64,6 +68,7 @@ export class ChunkRenderer {
     const centre = new THREE.Vector3(cx + 0.5, cy + 0.5, cz + 0.5).multiplyScalar(CHUNK_SIZE);
     const list: PageEntry[] = [];
     if (data.opaque.indices.length) list.push(this.place(data.opaque, this.opaquePages, this.opaqueMaterial, false, centre));
+    if (data.cutout.indices.length) list.push(this.place(data.cutout, this.cutoutPages, this.cutoutMaterial, false, centre));
     if (data.transparent.indices.length) list.push(this.place(data.transparent, this.transparentPages, this.transparentMaterial, true, centre));
     for (const e of list) {
       this.triangles += e.quads * 2;
@@ -114,7 +119,9 @@ export class ChunkRenderer {
       if (e) return e;
     }
     const page = new ChunkPage(Math.max(this.pageQuads, data.positions.length / 12), material, backToFront);
+    // Leaves after the solid blocks (whose depth then hides most of them early), water last.
     if (backToFront) page.renderOrder = 1;
+    else if (material === this.cutoutMaterial) page.renderOrder = 0.5;
     pages.push(page);
     this.group.add(page);
     const e = page.addMesh(data, centre);

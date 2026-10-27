@@ -74,7 +74,11 @@ const fragmentShader = /* glsl */ `
     } else
     #endif
     texel = sampleTile(vUv, dx, dy);
+    // Only where asked: a shader that can discard loses early depth rejection on many GPUs, for
+    // everything it draws (solid terrain took twice the GPU time on a laptop with leaves' discard).
+    #ifdef ALPHA_TEST
     if (texel.a < alphaTest) discard;
+    #endif
     #ifdef LIGHT_VIEW
       // The brighter of sunlight and block light as grey, shaded so shapes still read.
       texel.rgb = vec3(pow(max(vLight.x, vLight.y), 2.2));
@@ -113,7 +117,7 @@ export function createBlockTextures(): THREE.DataArrayTexture {
   return texture;
 }
 
-/** A chunk material: `alphaTest` cuts holes (leaves) in the opaque pass. */
+/** A chunk material: `alphaTest` above 0 cuts holes (leaves); 0 for solid blocks, which never discard. */
 export function createBlockMaterial(
   map: THREE.DataArrayTexture,
   options: { alphaTest: number; transparent: boolean; lightView?: boolean },
@@ -137,7 +141,11 @@ export function createBlockMaterial(
     uniforms,
     vertexShader,
     fragmentShader,
-    defines: { ...(options.transparent ? { WATER: '' } : { OPAQUE: '' }), ...(options.lightView && { LIGHT_VIEW: '' }) },
+    defines: {
+      ...(options.transparent ? { WATER: '' } : { OPAQUE: '' }),
+      ...(options.alphaTest > 0 && { ALPHA_TEST: '' }),
+      ...(options.lightView && { LIGHT_VIEW: '' }),
+    },
     fog: true,
     transparent: options.transparent,
     depthWrite: !options.transparent,

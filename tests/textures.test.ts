@@ -103,7 +103,7 @@ describe('textured meshes', () => {
     });
     // Each block's 6 faces, the shared pair included: merged, the outer faces of the pair are
     // 4 long quads and 2 ends, plus the 2 faces between them.
-    const faces = quads(leaves.opaque).length;
+    const faces = quads(leaves.cutout).length;
     expect(faces).toBe(8);
     const glass = chunkWith((set) => {
       set(5, 5, 5, Block.Glass);

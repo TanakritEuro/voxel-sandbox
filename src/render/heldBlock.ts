@@ -81,19 +81,21 @@ export class HeldBlock {
   private readonly camera = new THREE.PerspectiveCamera(70, 1, 0.01, 10);
   private readonly holder = new THREE.Group();
   private readonly opaque: THREE.ShaderMaterial;
+  private readonly cutout: THREE.ShaderMaterial;
   private readonly transparent: THREE.ShaderMaterial;
   private block: Block | null = null;
   private light = -1;
 
   constructor(textures: THREE.DataArrayTexture) {
-    this.opaque = createBlockMaterial(textures, { alphaTest: 0.5, transparent: false });
+    this.opaque = createBlockMaterial(textures, { alphaTest: 0, transparent: false });
+    this.cutout = createBlockMaterial(textures, { alphaTest: 0.5, transparent: false });
     this.transparent = createBlockMaterial(textures, { alphaTest: 0.01, transparent: true });
     this.scene.add(this.holder);
   }
 
   /** Hold `block`, lit by `light` (packed, where the eyes are), under the day's `sunlight`; nothing for air. */
   set(block: Block, light: number, sunlight: [number, number, number]): void {
-    for (const m of [this.opaque, this.transparent]) (m.uniforms.sunlight.value as THREE.Vector3).set(...sunlight);
+    for (const m of [this.opaque, this.cutout, this.transparent]) (m.uniforms.sunlight.value as THREE.Vector3).set(...sunlight);
     if (block === this.block && light === this.light) return;
     if (this.block !== null && block !== this.block) this.motion.switched();
     this.block = block;
@@ -106,6 +108,7 @@ export class HeldBlock {
     const mesh = heldMesh(block, light);
     for (const [data, material] of [
       [mesh.opaque, this.opaque],
+      [mesh.cutout, this.cutout],
       [mesh.transparent, this.transparent],
     ] as const) {
       if (!data.indices.length) continue;

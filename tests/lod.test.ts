@@ -51,7 +51,7 @@ describe('coarsening', () => {
     }
   });
 
-  it('gives a solid cell the surface layer taken out of the cell above it, but not a tree trunk', () => {
+  it('gives a solid cell the surface layer taken out of the cell above it; keeps a tree trunk as it is', () => {
     const { blocks, light } = empty();
     // 4³ cells: stone up to y 3; on top, a layer of snow over x 0..3 and a lone trunk over x 4..7.
     for (let y = 0; y < 4; y++) for (let z = 0; z < 4; z++) for (let x = 0; x < 8; x++) blocks[local(x, y, z)] = Block.Stone;
@@ -60,8 +60,8 @@ describe('coarsening', () => {
     coarsen(blocks, light, 4);
     expect(blocks[local(0, 4, 0)]).toBe(Block.Air); // the layer alone is a quarter of its cell
     expect(blocks[local(0, 3, 0)]).toBe(Block.Snow); // so the cell under it is snow
-    expect(blocks[local(5, 4, 1)]).toBe(Block.Air);
-    expect(blocks[local(5, 3, 1)]).toBe(Block.Stone); // a trunk doesn't cover the ground
+    expect(blocks[local(5, 4, 1)]).toBe(Block.Wood); // trunks are kept, so canopies don't float
+    expect(blocks[local(5, 3, 1)]).toBe(Block.Stone); // and a trunk doesn't cover the ground
   });
 
   it('counts a patch of the border solid only when all of it is, and never for 4³ cells', () => {
@@ -117,7 +117,8 @@ describe('far chunk meshes', () => {
     const quads = [0, 0, 0];
     for (const lod of [0, 1, 2] as Lod[]) for (const [cx, cz] of columns) for (let cy = 0; cy <= 7; cy++) quads[lod] += meshAt(cx, cy, cz, lod).mesh.opaque.faceStarts[7];
     expect(quads[1]).toBeLessThan(quads[0] * 0.4);
-    expect(quads[2]).toBeLessThan(quads[1] * 0.6);
+    // Under two thirds: the trunks kept at full detail (mountain spruces are dense) cost a little.
+    expect(quads[2]).toBeLessThan(quads[1] * 0.67);
   });
 
   it('leave no face out where two chunks of the same level meet', () => {
@@ -138,8 +139,9 @@ describe('far chunk meshes', () => {
         // FACE_ORDER: +x, +y, +z, -x, -y, -z.
         const plus = FACE_ORDER.indexOf((axis * 2) as never);
         const minus = FACE_ORDER.indexOf((axis * 2 + 1) as never);
-        const fromA = covered(A.mesh.opaque, plus, axis, originA, S);
-        const fromB = covered(B.mesh.opaque, minus, axis, originB, 0);
+        // Solid blocks and leaves are in two passes; either covers.
+        const fromA = covered(A.mesh.opaque, plus, axis, originA, S).map((c, i) => c | covered(A.mesh.cutout, plus, axis, originA, S)[i]);
+        const fromB = covered(B.mesh.opaque, minus, axis, originB, 0).map((c, i) => c | covered(B.mesh.cutout, minus, axis, originB, 0)[i]);
         const [ua, va] = axis === 0 ? [2, 1] : axis === 1 ? [0, 2] : [0, 1];
         for (let v = 0; v < S; v++) {
           for (let u = 0; u < S; u++) {

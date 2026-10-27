@@ -5,8 +5,8 @@
 //
 // A cell is solid when at least half its blocks are (opaque cubes and leaves), and takes the
 // highest solid block in it, so grass tops stay green and snow white. Otherwise its solid blocks
-// are taken out (water where the cell has water, else air) and everything else is kept as it
-// was: water and glass stay at full detail, the sea level exact.
+// are taken out (water where the cell has water, else air), except tree trunks and cacti, and
+// everything else is kept as it was: water and glass stay at full detail, the sea level exact.
 //
 // The one-block border from the neighbours can't be coarsened exactly (a cell of the neighbour's
 // is 2 or 4 blocks deep). For LOD 1 a patch of the border counts as solid only when all of it
@@ -33,6 +33,12 @@ const WATER = Block.Water;
 /** Blocks a cell's solidity counts: opaque cubes and leaves (not air, water, glass or torches). */
 const SOLID = new Uint8Array(256);
 const OPAQUE = new Uint8Array(256);
+/**
+ * Kept as they are in a cell that isn't solid: tree trunks and cacti, one block wide, would
+ * otherwise vanish and leave canopies floating (seen at the far skyline in a playtest).
+ */
+const KEEP = new Uint8Array(256);
+for (const b of [Block.Wood, Block.SpruceWood, Block.Cactus]) KEEP[b] = 1;
 BLOCKS.forEach((info, b) => {
   SOLID[b] = (info.opaque || info.cutout) && info.shape === 'cube' ? 1 : 0;
   OPAQUE[b] = info.opaque && info.shape === 'cube' ? 1 : 0;
@@ -109,7 +115,7 @@ export function coarsen(blocks: Uint8Array, light: Uint8Array, k: number): void 
             for (let x = x0; x < x0 + k; x++) {
               const i = at(x, y, z);
               if (whole) blocks[i] = top;
-              else if (SOLID[blocks[i]]) {
+              else if (SOLID[blocks[i]] && !KEEP[blocks[i]]) {
                 blocks[i] = fill;
                 light[i] = lit;
               }

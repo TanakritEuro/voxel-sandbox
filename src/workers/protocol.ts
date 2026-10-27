@@ -83,6 +83,6 @@ export function resultTransferables(result: JobResult): ArrayBuffer[] {
     const arrays = [...result.chunks, ...result.light].filter((a): a is Uint8Array => a instanceof Uint8Array);
     return arrays.map((a) => a.buffer as ArrayBuffer);
   }
-  const { opaque, transparent } = result.mesh;
-  return [result.padded, result.paddedLight, ...[opaque, transparent].flatMap((d) => [d.positions, d.colors, d.uvl, d.indices])].map((a) => a.buffer as ArrayBuffer);
+  const { opaque, cutout, transparent } = result.mesh;
+  return [result.padded, result.paddedLight, ...[opaque, cutout, transparent].flatMap((d) => [d.positions, d.colors, d.uvl, d.indices])].map((a) => a.buffer as ArrayBuffer);
 }

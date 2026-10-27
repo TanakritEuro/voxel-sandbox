@@ -30,7 +30,10 @@ import { FACE_ORDER, MeshBuilder, type MeshData } from './builder';
 import { ALL_SUNLIT, PADDED } from './padding';
 
 export interface ChunkMesh {
+  /** Solid blocks (and torches): drawn by a shader that never discards, so hidden pixels are skipped early. */
   opaque: MeshData;
+  /** Blocks with holes (leaves): drawn after, alpha-tested. */
+  cutout: MeshData;
   transparent: MeshData;
   /** Number of quads, for stats. */
   quads: number;
@@ -106,6 +109,7 @@ const NO_AO = 0xff;
 
 // Reused for every chunk (one set per thread).
 const opaque = new MeshBuilder();
+const cutout = new MeshBuilder();
 const transparent = new MeshBuilder();
 /** Per face: block | AO << 8; and its corners' sunlight and block light, a byte per corner. */
 const mask = new Int32Array(S * S);
@@ -128,6 +132,7 @@ const flat = (l: number): number => (l * 0x01010101) | 0;
  */
 export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array = ALL_SUNLIT, flatFaces = false): ChunkMesh {
   opaque.reset();
+  cutout.reset();
   transparent.reset();
   shaped.length = 0;
   const origin = [cx * S, cy * S, cz * S];
@@ -135,6 +140,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
 
   for (const dir of FACE_ORDER) {
     opaque.mark();
+    cutout.mark();
     transparent.mark();
     const d = dir >> 1; // the axis the faces point along
     const s = dir & 1 ? -1 : 1;
@@ -244,7 +250,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
           const g1 = (gk >> 8) & 255;
           const g2 = (gk >> 16) & 255;
           const g3 = (gk >>> 24) & 255;
-          const out = TRANSPARENT[b] ? transparent : opaque;
+          const out = TRANSPARENT[b] ? transparent : CUTOUT[b] ? cutout : opaque;
           const shade = dir * 4;
           const layer = LAYER[b * 6 + dir];
           const u0 = origin[ua] + u;
@@ -267,9 +273,10 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   }
 
   opaque.mark();
+  cutout.mark();
   transparent.mark();
   for (const i of shaped) quads += torch(padded, light, i, origin);
-  return { opaque: opaque.build(), transparent: transparent.build(), quads };
+  return { opaque: opaque.build(), cutout: cutout.build(), transparent: transparent.build(), quads };
 }
 
 function corner(
