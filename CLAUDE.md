@@ -129,11 +129,12 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
   `faceStarts`: quads by face direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then torches),
-  `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes, opaque and transparent passes;
+  `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes; opaque, cutout (leaves) and transparent passes;
   `flatFaces` for far chunks), `lod.ts` (far chunks: the padded input coarsened in place into
-  cells of 2³ or 4³ blocks, water kept exact, walls on seams between levels), `culled.ts` (the
+  cells of 2³ or 4³ blocks, water kept exact, trunks kept, walls on seams between levels), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).
-- `src/render/chunkRenderer.ts` — chunk meshes into pages, opaque and transparent apart.
+- `src/render/chunkRenderer.ts` — chunk meshes into pages, opaque, cutout and transparent apart:
+  solid blocks drawn by a shader with no `discard` (keeps early depth rejection), leaves after.
   `chunkPage.ts` — a page: a `BatchedMesh` used for its multi-draw path, with its own space
   (`pageAllocator.ts`, in quads, first fit), one shared index buffer, and a draw list built each
   frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
@@ -182,7 +183,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
   an unsaved world), `?light` shows light as grey,
   `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
-  column at full detail, `?aa=0` turns antialiasing
+  column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.
 - `tests/` — world, generation, padding, mesher (greedy against culled, AO and light against

@@ -41,8 +41,13 @@ const radiusParam = Number(params.get('radius'));
 const radiusHeld = Number.isInteger(radiusParam) && radiusParam > 0;
 const settings = loadSettings();
 TUNING.view.radius = radiusHeld ? radiusParam : settings.viewDistance;
-// `?lod=0`: every column at full detail (for comparing).
-if (params.get('lod') === '0') TUNING.view.lod.near = TUNING.view.lod.far = Number.POSITIVE_INFINITY;
+// `?lod=0`: every column at full detail; `?lod=8,13`: half detail from 8 chunks, a quarter from 13 (for comparing).
+const lodParam = params.get('lod');
+if (lodParam === '0') TUNING.view.lod.near = TUNING.view.lod.far = Number.POSITIVE_INFINITY;
+else if (lodParam) {
+  const [near, far] = lodParam.split(',').map(Number);
+  if (near > 0 && far >= near) TUNING.view.lod = { ...TUNING.view.lod, near, far };
+}
 // `?time=0.5` holds the time of day there (0 midnight, 0.5 noon), for screenshots and measuring;
 // `?daylength=60` makes a day last that many seconds, to watch it go round.
 const timeParam = params.get('time');

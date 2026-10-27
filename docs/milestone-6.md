@@ -526,3 +526,91 @@ alternating:
   form.
 - **Coarsening:** a cell under a removed snow layer becomes snow; under a lone trunk it stays
   stone.
+
+## Step 6: tuning — leaves in their own pass, far trunks, measurements (2026-10-27)
+
+**Your look at view distance 16** (four screenshots, flying over mountains):
+- **The "missing" middle** of the first screenshot wasn't a hole. You were at y = 241, above
+  the cloud layer (y = 192), and the flat white areas with straight edges are clouds from
+  above. They had drifted between screenshots.
+- **The same spot with and without LOD,** from your own `?stats`: 79 fps against 56, GPU 8.4
+  against 13.0 ms, 1.41 M triangles against 3.20 M.
+- **Side by side:** up close and in the middle distance there was no visible difference. At the
+  far skyline (quarter detail) ridges were lumpier, and trees became scattered green cubes,
+  some floating without trunks.
+
+**1. Leaves in their own pass** (the lead from step 3):
+- **First, a throwaway build** with the `discard` taken out of the opaque shader (leaves
+  drawn wrongly), at radius 8:
+  - slow spin: GPU 4.1 against 5.8 ms, 117 against 103 fps;
+  - looking straight down at terrain: GPU 3.7 against 7.4 ms.
+
+  The one line leaves need was costing every solid block its early depth test, half the GPU's
+  time with terrain filling the screen.
+- **So:**
+  - Leaves have their own **cutout pass** (`ChunkMesh.cutout`, own pages, drawn after the
+    solid blocks).
+  - Only materials with an alpha test compile the `discard` (`ALPHA_TEST` define). Solid
+    blocks and torches (whose texture has no holes) are drawn without it.
+  - The held block has the three passes too.
+- **Measured** side by side with step 5:
+
+  | | fps | GPU ms | frame ms |
+  | --- | --- | --- | --- |
+  | Radius 8, spin, step 5 | 94 | 5.9 | 11.0 |
+  | Radius 8, spin, leaves apart | **116** | **4.4** | **8.6** |
+  | Radius 8, looking down, step 5 | | 6.6 | 10.9 |
+  | Radius 8, looking down, leaves apart | | **4.6** | **8.4** |
+  | Radius 16, spin, step 5 | 86 | 7.7 | 11.6 |
+  | Radius 16, spin, leaves apart | **94** | **6.7** | **10.6** |
+
+  Leaves look as before, holes and all.
+
+**2. Far trees keep their trunks** (`lod.ts`, `KEEP`):
+- In a cell that isn't solid, tree trunks (oak and spruce) and cacti are kept as they are,
+  instead of taken out. Far canopies stand on their trunks instead of floating.
+- It costs about 3 % more triangles at quarter detail (bench: 425 k against 413 k).
+
+**3. Where the far rings start** (`?lod=near,far` now compares them in one build), radius 16:
+
+| Half / quarter detail from | fps | GPU ms | triangles drawn |
+| --- | --- | --- | --- |
+| 6 / 10 chunks | 95 | 6.6 | 1.30 M |
+| 7 / 11 (as now) | 89–94 | 6.8 | 1.41 M |
+| 8 / 13 | 90 | 7.2 | 1.61 M |
+
+Pushing the skyline out to 8 / 13 costs about 0.4 ms of GPU: cheap, if the far skyline bothers
+you.
+
+**4. Page size:** not changed. The frame is the GPU plus the browser's fixed cost, and the
+main thread (about 5 ms at radius 16, 3 ms at 8) isn't what holds it back, so bigger pages
+wouldn't make it faster.
+
+**5. Antialiasing and resolution, with all the above** (your call, since they change the look):
+
+| | fps | frame ms | GPU ms |
+| --- | --- | --- | --- |
+| Radius 8, as now | 115 | 8.7 | 4.7 |
+| Radius 8, antialiasing off | **120** (held) | 8.3 | 4.5 |
+| Radius 16, as now | 89–94 | 10.6–11.6 | 6.7–6.8 |
+| Radius 16, antialiasing off | 101 | 9.8 | 6.8 |
+| Radius 16, 75 % resolution | 115 | 8.7 | 5.7 |
+| Radius 16, antialiasing off and 75 % resolution | **120** (held) | 8.3 | 5.3 |
+
+- Antialiasing off saves little GPU time inside the frame. Most of its cost is the browser
+  resolving the antialiased 2560 × 1201 picture, part of the fixed cost.
+- 120 fps at radius 8 is a hair away: antialiasing off gets there.
+- At radius 16 it takes both.
+
+**Where the milestone stands:**
+
+| | Start of the milestone | Now |
+| --- | --- | --- |
+| Radius 8 | 88 fps | 115 fps (120 with antialiasing off) |
+| Radius 16 | 45 fps | 89–94 fps (120 with antialiasing off and 75 % resolution) |
+
+**Tests (1 new, 216 in all):**
+- Solid blocks are drawn by a material without the alpha test and leaves by one with it, after.
+- Updated: leaves are in the cutout pass (held block, textures, greedy against culled with
+  three passes, no holes at LOD over both passes); the worker sends 14 buffers; a trunk is
+  kept at LOD.
