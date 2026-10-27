@@ -7,7 +7,8 @@ describe('the block picker and the hotbar', () => {
   it('offers every block but air, once each', () => {
     expect(PLACEABLE).not.toContain(Block.Air);
     expect(new Set(PLACEABLE).size).toBe(PLACEABLE.length);
-    expect(PLACEABLE.length).toBe(BLOCKS.length - 1);
+    // All but air and the four wall torches (placed as the torch).
+    expect(PLACEABLE.length).toBe(BLOCKS.length - 5);
     for (const b of HOTBAR) expect(PLACEABLE).toContain(b);
   });
 

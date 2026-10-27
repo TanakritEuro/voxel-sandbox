@@ -685,3 +685,45 @@ resolution to 50–100 %, and take the default for a bad value.
    or land visibly switching detail as you fly?
 5. **Leaves:** do trees and their leaves look as before, holes and all, near and far?
 6. **Anything that looks wrong** that didn't before: water, glass, torches, the held block.
+
+## After the milestone: torches on walls (2026-10-27, your request)
+
+Milestone 4 had torches on floors only (your choice then, to keep it small). Now they go on
+walls too.
+
+**What changed:**
+- **Placing:** a torch goes on the face of a solid block you click.
+  - On a top it's a floor torch, as before. On a side it's a wall torch, hanging on the block
+    clicked. Under a ceiling, nothing.
+  - `torchFor` in `world/blocks.ts` picks it from the face's normal.
+- **Four block ids,** one per wall (`WallTorchNegX`, `PosX`, `NegZ`, `PosZ`, 23–26), each with
+  the light (14), sound and textures of the torch.
+  - They are the torch: the picker doesn't offer them, and a saved hotbar can't hold them
+    (`pickable`).
+  - Old worlds and saving are unchanged.
+- **Look:** the same 2 × 10 × 2-sixteenths stick, leaning 22.5° away from its wall. Its foot is
+  2/16 from the wall and 3.5/16 up.
+  - The mesher rotates the upright stick's corners about the foot (`lean`). A rotation keeps
+    the faces counter-clockwise.
+  - The bottom face shows, since it's lifted off the floor.
+- **Breaking a block takes the torches it holds up:** the floor torch on top, and wall torches
+  hanging on its sides, but not a torch beside it hanging on something else (`torchesHeldBy`
+  in `world/torches.ts`).
+- Far chunks keep wall torches as they are: they aren't solid.
+
+**Checked in Chrome:**
+- Placing on a stone wall head-on and in a corner: seen from the side, it leans out from the
+  wall with the flame on top, as the floor torch's.
+- At night it lights the wall around it.
+- No console errors.
+
+**Tests (5 new, 221 in all):**
+- **Which torch for which face:** a top gives a floor torch, a side a wall torch hanging on the
+  block clicked, a ceiling none. All are passable, with light 14.
+- **Kept out of the picker** and out of a saved hotbar.
+- **The shape, on each of the four walls:** six faces, every corner inside the block, the foot
+  within 2/16 of the wall but not in it, the top over 0.3 out from it. Counter-clockwise from
+  outside, and only the torch's textures.
+- **Light:** 14 at a wall torch, 11 three blocks away.
+- **Breaking a block** takes exactly the floor torch on it and the two wall torches hanging on
+  it, not the one beside it on another wall nor the one under it.

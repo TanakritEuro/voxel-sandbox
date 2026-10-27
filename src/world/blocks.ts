@@ -30,6 +30,11 @@ export enum Block {
   Cactus = 20,
   Torch = 21,
   Lamp = 22,
+  /** Torches on a wall, by the side their wall is on: placed with the torch, never picked. */
+  WallTorchNegX = 23,
+  WallTorchPosX = 24,
+  WallTorchNegZ = 25,
+  WallTorchPosZ = 26,
 }
 
 type RGB = [number, number, number];
@@ -45,8 +50,15 @@ export interface BlockInfo {
   passable: boolean;
   /** The raycast stops at it, so it can be broken and built against (not air or water). */
   targetable: boolean;
-  /** A full cube, or a torch: a small stick standing on the block below, never merged. */
+  /**
+   * A full cube, or a torch: a small stick standing on the block below, or leaning out from the
+   * wall beside it (`wall`), never merged.
+   */
   shape: 'cube' | 'torch';
+  /** A wall torch's wall: the horizontal step from it to the block it hangs on. */
+  wall?: { x: number; z: number };
+  /** Offered by the block picker (wall torches aren't: they are the torch, placed on a wall). */
+  pickable: boolean;
   /** Drawn in the transparent pass (sorted, blended). */
   transparent: boolean;
   /**
@@ -83,6 +95,7 @@ const solid = (name: string, hardness: number, textures: BlockInfo['textures'], 
   passable: false,
   targetable: true,
   shape: 'cube',
+  pickable: true,
   transparent: false,
   cutout: false,
   liquid: false,
@@ -128,6 +141,21 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
     icon: 'torch_item',
   },
   { ...solid('Lamp', 0.6, faces('lamp'), 0xe8c070), light: 15 },
+  ...([
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+  ] as const).map(([x, z]) => ({
+    ...solid('Wall torch', 0.05, faces('torch_top', 'torch'), 0xffc24a, 0x7a5532),
+    opaque: false,
+    passable: true,
+    shape: 'torch' as const,
+    wall: { x, z },
+    pickable: false,
+    light: 14,
+    icon: 'torch_item' as const,
+  })),
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
@@ -148,12 +176,36 @@ const SOUNDS: Partial<Record<Block, BlockSound>> = {
   [Block.Cactus]: 'leaves',
   [Block.Torch]: 'wood',
   [Block.Lamp]: 'glass',
+  [Block.WallTorchNegX]: 'wood',
+  [Block.WallTorchPosX]: 'wood',
+  [Block.WallTorchNegZ]: 'wood',
+  [Block.WallTorchPosZ]: 'wood',
 };
 
 export const BLOCKS: readonly BlockInfo[] = TABLE.map((info, b) => ({ ...info, sound: SOUNDS[b as Block] ?? 'stone' }));
 
-/** Every block the creative picker offers: all but air, in id order. */
-export const PLACEABLE: readonly Block[] = BLOCKS.map((_, b) => b as Block).filter((b) => b !== Block.Air);
+/** Every block the creative picker offers: all but air and wall torches, in id order. */
+export const PLACEABLE: readonly Block[] = BLOCKS.map((_, b) => b as Block).filter((b) => b !== Block.Air && BLOCKS[b].pickable);
+
+/**
+ * The torch block to place against the face of a block whose normal is (nx, ny, nz): a floor
+ * torch on a top, a wall torch on a side (its wall the block clicked), none under a ceiling.
+ */
+export function torchFor(nx: number, ny: number, nz: number): Block | null {
+  if (ny > 0) return Block.Torch;
+  if (ny < 0) return null;
+  return nx < 0 ? Block.WallTorchPosX : nx > 0 ? Block.WallTorchNegX : nz < 0 ? Block.WallTorchPosZ : Block.WallTorchNegZ;
+}
+
+/** For a torch, the step to the block holding it up (below, or its wall); null for other blocks. */
+export function torchSupport(block: Block): [number, number, number] | null {
+  const info = BLOCKS[block];
+  if (info.shape !== 'torch') return null;
+  return info.wall ? [info.wall.x, 0, info.wall.z] : [0, -1, 0];
+}
+
+/** Is `block` a torch, on a floor or a wall? */
+export const isTorch = (block: Block): boolean => BLOCKS[block].shape === 'torch';
 
 /** The hotbar a new world starts with (keys 1–9); the picker changes it, per world. */
 export const HOTBAR: readonly Block[] = [
@@ -176,6 +228,6 @@ export function hotbarFrom(saved: unknown): Block[] {
   const list = Array.isArray(saved) ? saved : [];
   return HOTBAR.map((fallback, i) => {
     const b: unknown = list[i];
-    return typeof b === 'number' && Number.isInteger(b) && b > Block.Air && b < BLOCKS.length ? (b as Block) : fallback;
+    return typeof b === 'number' && PLACEABLE.includes(b as Block) ? (b as Block) : fallback;
   });
 }

@@ -28,7 +28,8 @@ import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
-import { Block, BLOCKS, hotbarFrom } from './world/blocks';
+import { Block, BLOCKS, hotbarFrom, isTorch, torchFor } from './world/blocks';
+import { torchesHeldBy } from './world/torches';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock } from './world/physics';
@@ -251,18 +252,19 @@ function editing(dt: number): void {
     sound.play({ name: 'break', material: info.sound, gain: 1 });
     held.motion.swing();
     particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
-    // A torch goes with the block it stood on.
-    if (world.getBlock(broken.x, broken.y + 1, broken.z) === Block.Torch) edit(broken.x, broken.y + 1, broken.z, Block.Air);
+    // Torches go with the block they stood on or hung from.
+    for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) edit(x, y, z, Block.Air);
   }
   if (input.take('Mouse2') && target) {
     const x = target.x + target.nx;
     const y = target.y + target.ny;
     const z = target.z + target.nz;
-    const block = hotbar[selected];
-    // Not inside the player (water and other passable blocks can go there); torches only on
-    // top of a solid block, in air.
-    const torchFits = BLOCKS[world.getBlock(x, y - 1, z)].opaque && world.getBlock(x, y, z) === Block.Air;
-    if (block === Block.Torch ? torchFits : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) {
+    // A torch on the face clicked: on top of a solid block, or on its side, in air (not under it).
+    const torch = isTorch(hotbar[selected]) ? torchFor(target.nx, target.ny, target.nz) : null;
+    const block = torch ?? hotbar[selected];
+    const torchFits = torch !== null && BLOCKS[world.getBlock(target.x, target.y, target.z)].opaque && world.getBlock(x, y, z) === Block.Air;
+    // Not inside the player (water and other passable blocks can go there).
+    if (isTorch(hotbar[selected]) ? torchFits : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) {
       edit(x, y, z, block);
       sound.play({ name: 'place', material: BLOCKS[block].sound, gain: 1 });
       held.motion.swing();

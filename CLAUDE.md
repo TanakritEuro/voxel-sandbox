@@ -33,7 +33,7 @@ never discard; antialiasing and render resolution in the settings)
 (Milestone 3's laptop measurement is in: inside the budget). Milestone 5 added settings, a sky with sun, moon, stars and clouds,
 fog by biome, moving water, synthesised sounds (footsteps, digging, breaking, placing,
 landing, splashing), block particles, the held block, and a creative block picker (E) with the
-hotbar saved per world. Milestone 4 added light (sunlight and block light, smooth, following edits; torches and lamps), day and night,
+hotbar saved per world. Milestone 4 added light (sunlight and block light, smooth, following edits; torches, on floors and walls, and lamps), day and night,
 saving
 (edited chunks in IndexedDB, RLE; the player and time of day), named worlds with a world list and a pause menu.
 A seeded world of four biomes
@@ -112,7 +112,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   reach, light, day length, sky.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties, textures and sound per face, the default
-  hotbar, `PLACEABLE`, `hotbarFrom`), `textures.ts`
+  hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport`),
+  `torches.ts` (`torchesHeldBy`: the torches a block holds up), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a

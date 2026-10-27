@@ -56,6 +56,9 @@ const OPAQUE = new Uint8Array(256);
 const TRANSPARENT = new Uint8Array(256);
 const CUTOUT = new Uint8Array(256);
 const SHAPED = new Uint8Array(256);
+/** A wall torch's wall, the step from it to the block it hangs on (0, 0 for everything else). */
+const WALL_X = new Int8Array(256);
+const WALL_Z = new Int8Array(256);
 const GLOW = new Uint8Array(256);
 /** Texture array layer by block and direction: LAYER[block * 6 + dir]. */
 const LAYER = new Uint8Array(256 * 6);
@@ -64,6 +67,10 @@ BLOCKS.forEach((info, b) => {
   TRANSPARENT[b] = info.transparent ? 1 : 0;
   CUTOUT[b] = info.cutout ? 1 : 0;
   SHAPED[b] = info.shape !== 'cube' ? 1 : 0;
+  if (info.wall) {
+    WALL_X[b] = info.wall.x;
+    WALL_Z[b] = info.wall.z;
+  }
   GLOW[b] = info.light * 17;
   for (let dir = 0; dir < 6; dir++) LAYER[b * 6 + dir] = textureLayer(dir === 2 ? info.textures.top : dir === 3 ? info.textures.bottom : info.textures.side);
 });
@@ -301,10 +308,17 @@ function corner(
 
 /** A torch's box within its block: 2 × 10 × 2 sixteenths, standing in the middle of the floor. */
 const TORCH_LO = [7 / 16, 0, 7 / 16];
+/** A wall torch: the same stick, its foot this far up and this far from its wall, leaning away from it by this much. */
+const WALL_FOOT_Y = 3.5 / 16;
+const WALL_FOOT_OUT = 2 / 16;
+const WALL_LEAN = Math.PI / 8;
+const LEAN_COS = Math.cos(WALL_LEAN);
+const LEAN_SIN = Math.sin(WALL_LEAN);
 const TORCH_HI = [9 / 16, 10 / 16, 9 / 16];
 
 /**
- * The torch at padded index i: its box's faces but the bottom (it stands on a block), each
+ * The torch at padded index i: its box's faces but the bottom (it stands on a block), or all
+ * six leaning out from its wall for a wall torch (`lean`), each
  * with the whole texture across it (the textures are made for that), lit flat by the torch's
  * own block. Returns the quads made.
  */
@@ -317,9 +331,14 @@ function torch(padded: Uint8Array, light: Uint8Array, i: number, origin: number[
   const l = light[i];
   const sun = (l >> 4) * 17;
   const glow = Math.max((l & 15) * 17, GLOW[b]);
+  // On a wall: leaning out, away from it (lx, lz), about its foot, which is near the wall.
+  const lx = -WALL_X[b];
+  const lz = -WALL_Z[b];
+  const onWall = lx !== 0 || lz !== 0;
   let quads = 0;
   for (let dir = 0; dir < 6; dir++) {
-    if (dir === 3) continue;
+    // The bottom stands on the block below; a wall torch's is lifted off it and shows.
+    if (dir === 3 && !onWall) continue;
     const d = dir >> 1;
     const s = dir & 1 ? -1 : 1;
     const ua = s > 0 ? (d + 1) % 3 : (d + 2) % 3;
@@ -342,10 +361,32 @@ function torch(padded: Uint8Array, light: Uint8Array, i: number, origin: number[
       // The texture spans the face: 0 at its low edge, 1 at its high one, on each texture axis.
       const tx = p[tu] === base[tu] + TORCH_HI[tu] ? 1 : 0;
       const ty = p[tv] === base[tv] + TORCH_HI[tv] ? 1 : 0;
+      if (onWall) lean(p, base, lx, lz);
       opaque.vertex(p[0], p[1], p[2], shade, sun, glow, tx, ty, layer);
     }
     opaque.quad();
     quads++;
   }
   return quads;
+}
+
+/**
+ * A point of an upright torch in block `base` moved to the wall torch: tilted by WALL_LEAN
+ * towards (lx, lz) about the stick's foot, the foot then put WALL_FOOT_OUT from the wall and
+ * WALL_FOOT_Y up. A rotation, so faces stay counter-clockwise from outside.
+ */
+function lean(p: Float64Array, base: number[], lx: number, lz: number): void {
+  // Relative to the upright stick's foot, the middle of its bottom.
+  const rx = p[0] - base[0] - 0.5;
+  const ry = p[1] - base[1];
+  const rz = p[2] - base[2] - 0.5;
+  const along = rx * lx + rz * lz;
+  const leaned = along * LEAN_COS + ry * LEAN_SIN;
+  const up = ry * LEAN_COS - along * LEAN_SIN;
+  // The foot: WALL_FOOT_OUT from the wall, which is half a block back from the middle.
+  const fx = 0.5 - lx * (0.5 - WALL_FOOT_OUT);
+  const fz = 0.5 - lz * (0.5 - WALL_FOOT_OUT);
+  p[0] = base[0] + fx + rx + (leaned - along) * lx;
+  p[1] = base[1] + WALL_FOOT_Y + up;
+  p[2] = base[2] + fz + rz + (leaned - along) * lz;
 }
