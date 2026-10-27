@@ -88,6 +88,22 @@ export const TUNING = {
     /** Seconds after breaking a block before the next one starts, while the button stays held. */
     breakPause: 0.2,
   },
+  particles: {
+    /** Cubes in a break's burst, and chips each digging hit. */
+    breakCount: 20,
+    digCount: 3,
+    /** Size (blocks) of a burst's cubes and of chips. */
+    size: 0.12,
+    digSize: 0.08,
+    /** Outward and upward speed (blocks / s), gravity, how much of the speed a bounce keeps, how much sliding keeps per bounce. */
+    speed: 5,
+    lift: 3.5,
+    gravity: 18,
+    bounce: 0.3,
+    friction: 0.6,
+    /** Seconds they live, from and to. */
+    life: [0.6, 1.1],
+  },
   sound: {
     /** A footstep every this many blocks walked on the ground. */
     stride: 1.6,

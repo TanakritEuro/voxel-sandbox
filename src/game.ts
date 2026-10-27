@@ -20,6 +20,7 @@ import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
 import { Clouds } from './render/clouds';
 import { blendFog, easeFog, fogColour } from './render/fog';
+import { brightness, ParticleMesh, Particles } from './render/particles';
 import { clock, skyAt } from './render/sky';
 import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
@@ -92,6 +93,11 @@ const skyDome = new SkyDome(TUNING.sky.sunTilt);
 scene.add(skyDome.group);
 const clouds = new Clouds(record.seed, TUNING.sky.cloudCover, TUNING.sky.cloudHeight, TUNING.sky.cloudCell);
 scene.add(clouds.mesh);
+const particles = new Particles();
+const particleMesh = new ParticleMesh(particles);
+scene.add(particleMesh.mesh);
+/** Daylight this frame, for lighting new particles. */
+let daylightNow = 1;
 /** The fog where the player is (`fog.ts`), eased towards the biomes there each frame. */
 let fog: ReturnType<typeof blendFog> | null = null;
 // `?light` shows light as grey instead of textures.
@@ -200,8 +206,10 @@ function edit(x: number, y: number, z: number, block: Block): void {
 function editing(dt: number): void {
   const broken = mining.update(target, input.isHeld('Mouse0'), dt);
   if (broken) {
+    const info = BLOCKS[broken.block];
     edit(broken.x, broken.y, broken.z, Block.Air);
-    sound.play({ name: 'break', material: BLOCKS[broken.block].sound, gain: 1 });
+    sound.play({ name: 'break', material: info.sound, gain: 1 });
+    particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
     // A torch goes with the block it stood on.
     if (world.getBlock(broken.x, broken.y + 1, broken.z) === Block.Torch) edit(broken.x, broken.y + 1, broken.z, Block.Air);
   }
@@ -272,11 +280,22 @@ function frame(now: number): void {
     const moved = Math.hypot(b.x - lastFeet.x, b.z - lastFeet.z);
     const digging = mining.target ? BLOCKS[mining.target.block].sound : null;
     const ground = underfoot(world, b.x, b.y, b.z);
-    for (const e of cues.frame({ dt, moved, vy: b.vy, onGround: b.onGround, flying: player.flying, inWater: b.inWater, ground, digging })) sound.play(e);
+    for (const e of cues.frame({ dt, moved, vy: b.vy, onGround: b.onGround, flying: player.flying, inWater: b.inWater, ground, digging })) {
+      sound.play(e);
+      // Each digging hit knocks a few chips off the face being dug.
+      if (e.name === 'dig' && target) {
+        const t = target;
+        const info = BLOCKS[t.block];
+        particles.chips(t.x, t.y, t.z, t.nx, t.ny, t.nz, [info.top, info.side], brightness(world.getLight(t.x + t.nx, t.y + t.ny, t.z + t.nz), daylightNow));
+      }
+    }
+    particles.step(dt, (x, y, z) => !BLOCKS[world.getBlock(x, y, z)].passable);
   }
   lastFeet = { x: player.body.x, z: player.body.z };
   if (!timeHeld && !paused()) time = (time + dt / TUNING.day.length) % 1;
   const sky = skyAt(time);
+  daylightNow = sky.daylight;
+  particleMesh.update();
   chunks.setSunlight(sky.sunlight);
   chunks.setWaterFlow(waterFlow(now / 1000, TUNING.water.flow));
   // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).

@@ -1,6 +1,6 @@
 # Milestone 5 plan: polish
 
-## Status: in progress (steps 1–4 done; particles next)
+## Status: in progress (steps 1–5 done; held block next)
 
 Approved 2026-10-26 as proposed: blocky clouds at y = 192, a creative inventory with the
 hotbar saved per world, the settings as listed with view distance up to 16, a held block
@@ -211,6 +211,37 @@ easier.
   - splashes fast and not slow;
   - digging hits at once, then every interval;
   - underfoot at an edge, water not counting as ground, and every block having a sound.
+
+**Step 5 (particles).**
+- **`render/particles.ts`:**
+  - *`Particles`* is the simulation, pure: struct of arrays for at most 512 particles. Slots
+    are used in turn, so when full the oldest is reused.
+    - `burst`: 20 cubes from anywhere in a broken block, outwards and up.
+    - `chips`: 3 smaller ones just in front of the face being dug, at each digging hit.
+  - *Movement:* gravity, then a move one axis at a time against the world. A move into a
+    solid block is undone and bounces back at 0.3; landing slows the sliding. So none ever
+    ends up inside a block.
+  - *Life:* 0.6–1.1 s; they shrink away over the last third. The numbers are in
+    `TUNING.particles`.
+  - *Colours* are the block's top and side colours from `BLOCKS`, varied ±15 %, lit once when
+    made. `brightness` gives the light where they appear, by the same curve as the chunk
+    shader (daylight on sunlight; block light as it is).
+  - *`ParticleMesh`* draws the living ones as one `InstancedMesh` of unit cubes, with a
+    matrix and colour per instance and fog: one draw call.
+- **In the game:** breaking a block bursts it, each digging hit (the sound cue) chips the
+  face, and particles move only when not paused.
+- **Checked in the pane (production build):**
+  - Breaking grass on the plains (`?at=36,53`) burst green and brown cubes out of the hole;
+    they fell into it and settled.
+  - Digging without stop for 3 s: main thread 2.4–2.5 ms on average against 2.3 standing
+    still. The peaks (up to 7.3 ms) are the edits' remeshing, as before.
+  - No console errors.
+- **Tests (5 new, 179 in all):**
+  - a burst's count, and its cubes falling onto a floor and never inside it;
+  - all gone after their life;
+  - chips in front of the dug face;
+  - the limit, with the newest burst all there;
+  - brightness (dark, daylight, night, a lamp), and colours times the light.
 
 ## Scope decisions
 
