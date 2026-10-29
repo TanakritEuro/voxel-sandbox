@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 7 (mobs) in progress, plan approved (`docs/milestone-7.md`).
 Milestones 1–6 built (`docs/milestone-1.md` to `docs/milestone-6.md`), waiting for playtests
 (Milestone 6, 120 fps on a laptop GPU: chunks drawn in batched pages with multi-draw, faces
 pointing away skipped, far columns at lower detail, leaves in their own pass so solid blocks
@@ -125,9 +126,13 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   and the walk from the player's chunk that decides what to mesh and draw),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
-  `raycast.ts` (grid traversal), `physics.ts` (player box: swept collision, walking, jumping,
+  `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
   crouching at edges, swimming, flying; `overlapsBlock` for placing), `mining.ts` (break
   timing and crack stage).
+- `src/mobs/` — `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
+  cutting, swimming at the surface, node and range limits; typed arrays reused between
+  searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
+  `World.getBlock`).
 - `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;

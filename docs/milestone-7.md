@@ -1,4 +1,7 @@
-# Milestone 7: mobs — plan (for your approval)
+# Milestone 7: mobs
+
+**Plan approved (2026-10-29)** as proposed: the four animals, all passive, not saved, three hits and
+they're gone with no drops, up to 24 around you.
 
 **Goal.** Simple invented animals that make the world feel alive:
 - they appear on the land around you, each kind in its own biome;
@@ -164,7 +167,7 @@ thread time (AI, paths, physics, drawing).
 5. Hitting, fleeing and the puff; mob sounds.
 6. Measurements, notes and playtest questions.
 
-## Decisions for you
+## Decisions (approved)
 - **The animals:** the four above, one or two per biome, all passive. Different ones, or
   hostile ones at night, can come later.
 - **Not saved:** mobs live around you and appear again when you return. Saving them means
@@ -172,3 +175,62 @@ thread time (AI, paths, physics, drawing).
 - **Hitting:** three hits and they're gone, no drops (creative mode). Or should hitting only
   scare them away?
 - **How many:** up to 24 around you.
+
+## Step 1: bodies of any size, and the pathfinder — built (2026-10-29)
+
+**What changed:**
+- **`world/physics.ts`:** a `Body` has its own `halfWidth` and `height` (`createBody` defaults
+  to the player's 0.3 and 1.8). Collision, ground, water and placing checks read them instead
+  of the constants. The player is unchanged: all its tests pass as before.
+- **`mobs/pathfind.ts`, `findPath`:** A* over standing places, as planned.
+  - **Moves:** 8 directions with no corner cutting. A step lands on the highest place within
+    the climb (`step`) and drop (`drop`), with head room to jump up or an open column to fall
+    down. Swimming at the surface only when allowed, at 4× the cost.
+  - **Limits:** the search stops at `maxNodes` places or `range` blocks (at most 24).
+  - **"Near" goals** (arrive within so many blocks), for fleeing and wandering.
+- **Speed:**
+  - Costs, links and open/closed marks are typed arrays covering the whole range box,
+    reused from search to search (a stamp per search). The open list is a binary heap of
+    node indices. Block flags are local arrays.
+  - **`mobs/blockCache.ts`:** blocks for a search through number-keyed chunks, remembering
+    the last one. `World.getBlock` builds a string key per read, and a search reads
+    thousands.
+  - Together that halved the time of the longest searches.
+
+**Bench** (`npm run bench`, `mob paths`): 300 searches each between dry places 4–16 blocks
+apart, at the spawn (plains, forest, the shore) and over the mountains (seed 20261022 at
+(-368, 400)). Under Vitest, which is slower in hot loops than the browser.
+
+| | found | ms median | p95 | max | places looked at, median / max |
+| --- | --- | --- | --- | --- | --- |
+| Spawn, mossback (steps 1, drops 3) | 97 % | 0.07 | 0.51 | 13.9 | 22 / 2000 |
+| Spawn, mossback, 500 places | 97 % | 0.06 | 0.30 | 3.3 | 20 / 500 |
+| Spawn, crag goat (steps 2, drops 5) | 96 % | 0.08 | 0.78 | 12.2 | 20 / 2000 |
+| Mountains, mossback | 83 % | 0.25 | 6.5 | 9.3 | 76 / 2000 |
+| Mountains, mossback, 500 places | 68 % | 0.22 | 2.0 | 3.8 | 57 / 500 |
+| Mountains, crag goat | 96 % | 0.23 | 4.1 | 15.3 | 43 / 2000 |
+
+- **A found path is cheap** (tenths of a millisecond). **Failing ones cost the most:** they
+  look at every place they may before giving up, about 5 µs each here.
+- **For step 2:**
+  - Each kind gets its own limit: 500 places for the lowland kinds (nothing lost at the spawn,
+    the worst at 3.3 ms), more for the goat in its mountains.
+  - Searches take turns, at most one long one a frame.
+  - The first version, with Maps and `World.getBlock`, took up to 21 ms. A bench mistake was
+    fixed on the way: "surface" went down through the sea, so most spawn searches began on the
+    seabed.
+
+**Tests (11 new, 232 in all):**
+- **Physics:** a half-block mob goes into a one-block tunnel the player stops at, and one
+  wider than the tunnel stops at its mouth. Short bodies stand, fall and land, and bump a low
+  ceiling, by their own height.
+- **Paths:**
+  - straight and diagonal on flat ground;
+  - round a wall, with no corner cut;
+  - a two-block step only for the goat, a one-block one for anyone, and no step without head
+    room;
+  - a drop within the limit but not off a cliff;
+  - round a pond rather than through it, and across a river only when allowed;
+  - giving up within the node limit and the range, and arriving next to a goal when asked;
+  - a tall mob kept out of a tunnel a short one takes;
+  - the same path every time.

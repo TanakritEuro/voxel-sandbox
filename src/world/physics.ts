@@ -1,6 +1,6 @@
-// Player physics: a 0.6 × 1.8 × 0.6 box moved through the block grid. Pure (no Three.js, no
-// DOM), stepped at a fixed rate (`TUNING.player.step`), so it is tested headless and gives
-// the same path at any frame rate.
+// Player physics: a 0.6 × 1.8 × 0.6 box moved through the block grid; mobs use the same with
+// boxes of their own size. Pure (no Three.js, no DOM), stepped at a fixed rate
+// (`TUNING.player.step`), so it is tested headless and gives the same path at any frame rate.
 //
 // Collision moves one axis at a time, y then x then z. Each move checks every layer of
 // blocks the box passes through on the way, not only where it ends up, so it can't tunnel
@@ -13,6 +13,7 @@
 import { TUNING } from '../config';
 import { type Block, BLOCKS } from './blocks';
 
+/** The player's box: half its width (x and z), and its height. */
 export const HALF_WIDTH = 0.3;
 export const HEIGHT = 1.8;
 /** A box touching a block's face doesn't overlap it: coordinates within this of a face count as outside. */
@@ -34,6 +35,9 @@ export interface Body {
   onGround: boolean;
   /** The box overlaps a liquid block (as of the last step). */
   inWater: boolean;
+  /** The box: half its width on x and z, and its height (the player's, or a mob's). */
+  halfWidth: number;
+  height: number;
 }
 
 /** What the player asks for this step. */
@@ -53,7 +57,18 @@ export interface MoveInput {
   up: number;
 }
 
-export const createBody = (x: number, y: number, z: number): Body => ({ x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, inWater: false });
+export const createBody = (x: number, y: number, z: number, halfWidth = HALF_WIDTH, height = HEIGHT): Body => ({
+  x,
+  y,
+  z,
+  vx: 0,
+  vy: 0,
+  vz: 0,
+  onGround: false,
+  inWater: false,
+  halfWidth,
+  height,
+});
 
 export const NO_INPUT: MoveInput = { forward: 0, strafe: 0, yaw: 0, jump: false, sprint: false, crouch: false, flying: false, up: 0 };
 
@@ -76,10 +91,11 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource): bool
   if (d === 0) return false;
   const pos = [body.x, body.y, body.z];
   // Distance from the body's position to the box's low and high side, per axis.
-  const below = axis === 1 ? 0 : HALF_WIDTH;
-  const above = axis === 1 ? HEIGHT : HALF_WIDTH;
-  const min = [body.x - HALF_WIDTH, body.y, body.z - HALF_WIDTH];
-  const max = [body.x + HALF_WIDTH, body.y + HEIGHT, body.z + HALF_WIDTH];
+  const w = body.halfWidth;
+  const below = axis === 1 ? 0 : w;
+  const above = axis === 1 ? body.height : w;
+  const min = [body.x - w, body.y, body.z - w];
+  const max = [body.x + w, body.y + body.height, body.z + w];
   // The blocks the box covers across the move, on the other two axes.
   const a1 = (axis + 1) % 3;
   const a2 = (axis + 2) % 3;
@@ -123,23 +139,24 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource): bool
   return stop !== null;
 }
 
-/** Calls `test` for the blocks the box at feet (x, y, z) overlaps, until it returns true. */
-function anyOverlapped(x: number, y: number, z: number, test: (bx: number, by: number, bz: number) => boolean): boolean {
-  for (let by = Math.floor(y + EPS); by <= Math.floor(y + HEIGHT - EPS); by++)
-    for (let bz = Math.floor(z - HALF_WIDTH + EPS); bz <= Math.floor(z + HALF_WIDTH - EPS); bz++)
-      for (let bx = Math.floor(x - HALF_WIDTH + EPS); bx <= Math.floor(x + HALF_WIDTH - EPS); bx++) if (test(bx, by, bz)) return true;
+/** Calls `test` for the blocks the body's box overlaps, until it returns true. */
+function anyOverlapped(body: Body, test: (bx: number, by: number, bz: number) => boolean): boolean {
+  const { x, y, z, halfWidth: w } = body;
+  for (let by = Math.floor(y + EPS); by <= Math.floor(y + body.height - EPS); by++)
+    for (let bz = Math.floor(z - w + EPS); bz <= Math.floor(z + w - EPS); bz++)
+      for (let bx = Math.floor(x - w + EPS); bx <= Math.floor(x + w - EPS); bx++) if (test(bx, by, bz)) return true;
   return false;
 }
 
 /** Does the box overlap any liquid? */
-export const touchesLiquid = (body: Body, world: BlockSource): boolean =>
-  anyOverlapped(body.x, body.y, body.z, (x, y, z) => BLOCKS[world.getBlock(x, y, z)].liquid);
+export const touchesLiquid = (body: Body, world: BlockSource): boolean => anyOverlapped(body, (x, y, z) => BLOCKS[world.getBlock(x, y, z)].liquid);
 
 /** Is there a solid block under some part of the box, with the feet at (x, body.y, z)? */
 function supported(body: Body, x: number, z: number, world: BlockSource): boolean {
   const below = Math.floor(body.y - EPS);
-  for (let bz = Math.floor(z - HALF_WIDTH + EPS); bz <= Math.floor(z + HALF_WIDTH - EPS); bz++)
-    for (let bx = Math.floor(x - HALF_WIDTH + EPS); bx <= Math.floor(x + HALF_WIDTH - EPS); bx++) if (solid(world, bx, below, bz)) return true;
+  const w = body.halfWidth;
+  for (let bz = Math.floor(z - w + EPS); bz <= Math.floor(z + w - EPS); bz++)
+    for (let bx = Math.floor(x - w + EPS); bx <= Math.floor(x + w - EPS); bx++) if (solid(world, bx, below, bz)) return true;
   return false;
 }
 
@@ -157,12 +174,12 @@ function stayOnEdge(body: Body, dx: number, dz: number, world: BlockSource): [nu
 /** Would a block at (x, y, z) overlap the body's box? Touching isn't overlapping. For placing blocks. */
 export function overlapsBlock(body: Body, x: number, y: number, z: number): boolean {
   return (
-    x < body.x + HALF_WIDTH - EPS &&
-    x + 1 > body.x - HALF_WIDTH + EPS &&
-    y < body.y + HEIGHT - EPS &&
+    x < body.x + body.halfWidth - EPS &&
+    x + 1 > body.x - body.halfWidth + EPS &&
+    y < body.y + body.height - EPS &&
     y + 1 > body.y + EPS &&
-    z < body.z + HALF_WIDTH - EPS &&
-    z + 1 > body.z - HALF_WIDTH + EPS
+    z < body.z + body.halfWidth - EPS &&
+    z + 1 > body.z - body.halfWidth + EPS
   );
 }
 

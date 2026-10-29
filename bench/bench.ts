@@ -8,6 +8,9 @@
 import { it } from 'vitest';
 import { wallsFor } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
+import { createRng } from '../src/math';
+import { BlockCache } from '../src/mobs/blockCache';
+import { findPath } from '../src/mobs/pathfind';
 import { meshCulled } from '../src/mesh/culled';
 import { type Lod, prepareLod } from '../src/mesh/lod';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
@@ -296,4 +299,51 @@ it('saving', () => {
       `mean ${(bytes / chunks.length / 1024).toFixed(1)} KB, largest ${(biggest / 1024).toFixed(1)} KB; ` +
       `encode ${(median(encode) / chunks.length).toFixed(3)} ms, decode ${(median(decode) / chunks.length).toFixed(3)} ms a chunk\n`,
   );
+});
+
+it('mob paths', () => {
+  // Searches between random places on the surface 4–16 blocks apart, over the spawn's plains and
+  // forest and over the mountains (seed 20261022 around (-368, 400)), as a mossback (1 high,
+  // steps of 1, drops of 3) and a crag goat (steps of 2, drops of 5) would ask for them.
+  const world = new World(SEED);
+  const rng = createRng(5);
+  const lines = [''];
+  for (const [label, ox, oz] of [['spawn', 0, 0], ['mountains', -368, 400]] as const) {
+    const ccx = toChunk(ox);
+    const ccz = toChunk(oz);
+    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) world.ensureColumn(ccx + dx, ccz + dz);
+    // Where feet stand on dry ground at (x, z), or null over water.
+    const surface = (x: number, z: number): number | null => {
+      let y = 255;
+      while (y > 0 && BLOCKS[world.getBlock(x, y - 1, z)].passable && !BLOCKS[world.getBlock(x, y - 1, z)].liquid) y--;
+      return BLOCKS[world.getBlock(x, y - 1, z)].liquid ? null : y;
+    };
+    for (const [kind, opts] of [['mossback', { step: 1, drop: 3 }], ['mossback, 500 places', { step: 1, drop: 3, maxNodes: 500 }], ['crag goat', { step: 2, drop: 5 }]] as const) {
+      const times: number[] = [];
+      const nodes: number[] = [];
+      let found = 0;
+      const N = 300;
+      for (let i = 0; i < N; ) {
+        const x = ox + Math.floor((rng() - 0.5) * 40);
+        const z = oz + Math.floor((rng() - 0.5) * 40);
+        const a = 2 * Math.PI * rng();
+        const r = 4 + 12 * rng();
+        const gx = Math.round(x + Math.cos(a) * r);
+        const gz = Math.round(z + Math.sin(a) * r);
+        const sy = surface(x, z);
+        const gy = surface(gx, gz);
+        if (sy === null || gy === null) continue;
+        i++;
+        const t0 = performance.now();
+        const search = findPath(new BlockCache(world), [x, sy, z], [gx, gy, gz], { ...opts, swim: true });
+        times.push(performance.now() - t0);
+        nodes.push(search.expanded);
+        if (search.path) found++;
+      }
+      lines.push(
+        `mob paths (${label}, ${kind}): ${N} searches, ${Math.round((found / N) * 100)}% found; ms median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}; places looked at median ${median(nodes)}, max ${Math.max(...nodes)}`,
+      );
+    }
+  }
+  console.log(lines.join('\n') + '\n');
 });

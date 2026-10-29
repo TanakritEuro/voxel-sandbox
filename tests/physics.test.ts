@@ -282,3 +282,34 @@ describe('swimming', () => {
     expect(body.inWater).toBe(false);
   });
 });
+
+describe('bodies of other sizes', () => {
+  // A tunnel along +x from x = 3: one block high (a roof at FLOOR + 1) and one block wide (walls at z = -1 and 1).
+  const tunnel = floorAnd((x, y, z) => x >= 3 && (y === FLOOR + 1 || z === -1 || z === 1));
+
+  it('fit where they are small enough, and are stopped where they are not', () => {
+    // The player (1.8 high) stops at the tunnel's mouth; a half-block-high mob goes in.
+    const player = createBody(1.5, FLOOR, 0.5);
+    moveBody(player, 5, 0, 0, tunnel);
+    expect(player.x).toBe(3 - HALF_WIDTH);
+    const small = createBody(1.5, FLOOR, 0.5, 0.25, 0.5);
+    moveBody(small, 5, 0, 0, tunnel);
+    expect(small.x).toBe(6.5);
+    // Wider than the tunnel: stopped at its mouth too, against the walls' ends.
+    const wide = createBody(1.5, FLOOR, 0.5, 0.6, 0.5);
+    moveBody(wide, 5, 0, 0, tunnel);
+    expect(wide.x).toBe(3 - 0.6);
+  });
+
+  it('stand, fall and land by their own height', () => {
+    const body = createBody(0.5, 50, 0.5, 0.25, 0.5);
+    run(body, flat, 3, NO_INPUT);
+    expect(body.y).toBe(FLOOR);
+    expect(body.onGround).toBe(true);
+    // A low ceiling stops a short body's jump later than the player's.
+    const roof = floorAnd((_x, y) => y === FLOOR + 1);
+    const short = createBody(0.5, FLOOR, 0.5, 0.25, 0.5);
+    moveBody(short, 0, 0.6, 0, roof);
+    expect(short.y).toBeCloseTo(FLOOR + 0.5);
+  });
+});
