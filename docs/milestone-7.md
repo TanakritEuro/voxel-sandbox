@@ -26,15 +26,15 @@ All are passive: none attacks.
 ## Design
 
 ### 1. Physics for any size (`world/physics.ts`)
-- \`Body\` gets its own \`halfWidth\` and \`height\` (the player's 0.3 and 1.8 by default). Collision,
+- `Body` gets its own `halfWidth` and `height` (the player's 0.3 and 1.8 by default). Collision,
   ground and water checks read them instead of the constants.
-- \`stepMob\` reuses the same sweep and gravity: walking towards a target velocity, jumping when
+- `stepMob` reuses the same sweep and gravity: walking towards a target velocity, jumping when
   asked, falling, sinking slowly in water.
 - **Mobs don't collide with each other or with you as solid boxes** (no physics engine).
   Overlapping mobs are nudged apart a little each step, and you push them aside as you walk
   through.
 
-### 2. Paths: A* on the block grid (new \`mobs/pathfind.ts\`, pure)
+### 2. Paths: A* on the block grid (new `mobs/pathfind.ts`, pure)
 - **Nodes** are block positions a mob can stand at: a solid block under it, and room above it
   for its height (one column wide; the wider ones still fit through one-block gaps, nudged
   back to the middle).
@@ -47,10 +47,10 @@ All are passive: none attacks.
   octile distance. A search stops after a node limit (2,000) and a range (24 blocks), so a
   mob with no way somewhere gives up quickly.
 - **Per-frame budget:** a mob asks for a path and waits its turn. At most a few searches run a
-  frame, within \`TUNING.mobs.pathBudgetMs\`.
-- Reads blocks through \`World.getBlock\`, so unloaded chunks count as air: no paths into them.
+  frame, within `TUNING.mobs.pathBudgetMs`.
+- Reads blocks through `World.getBlock`, so unloaded chunks count as air: no paths into them.
 
-### 3. Behaviour (new \`mobs/brain.ts\`, pure)
+### 3. Behaviour (new `mobs/brain.ts`, pure)
 - **A small state machine per mob:**
   - **idle**: stand, graze, look about;
   - **wander**: pick a random spot 4–12 blocks away that a path reaches, walk there;
@@ -59,10 +59,10 @@ All are passive: none attacks.
 - **Following a path:** steer towards the next waypoint, and jump when the next one is higher.
   If it's stuck for half a second (a block placed in the way), it asks for a new path. If it
   falls somewhere unexpected, it starts again.
-- **Randomness** from a seeded RNG per mob (\`math.ts\`), so tests replay exactly. Mobs aren't
+- **Randomness** from a seeded RNG per mob (`math.ts`), so tests replay exactly. Mobs aren't
   world data, so a run doesn't have to repeat in-game.
 
-### 4. Where they come from (new \`mobs/mobs.ts\`, \`MobManager\`)
+### 4. Where they come from (new `mobs/mobs.ts`, `MobManager`)
 - **Spawning:**
   - a few times a second, try a random column 24–64 blocks from you, in loaded chunks;
   - on its top block, if the column's biome has a kind, the block suits it (grass, sand,
@@ -70,20 +70,20 @@ All are passive: none attacks.
   - never in water or within 24 blocks of you.
   - A kind comes in small groups (2–4 mossbacks, 1–3 of the others).
 - **Despawning:** beyond 96 blocks, or when its chunk unloads.
-- **How many:** at most \`TUNING.mobs.max\` (24) around you; \`?mobs=0\` turns them off and
-  \`?mobs=40\` sets a cap, for measuring.
+- **How many:** at most `TUNING.mobs.max` (24) around you; `?mobs=0` turns them off and
+  `?mobs=40` sets a cap, for measuring.
 - **Not saved** (decision below): they appear again around you when you come back.
 
-### 5. Drawing (new \`render/mobRenderer.ts\`)
+### 5. Drawing (new `render/mobRenderer.ts`)
 - **Models:** each kind is a few boxes (body, head, legs, ears or shell) with pivots.
-- **Instancing:** one \`InstancedMesh\` per box of each kind, every mob of the kind an instance:
+- **Instancing:** one `InstancedMesh` per box of each kind, every mob of the kind an instance:
   about 20 draw calls at most, however many mobs. Matrices are written each frame from the
   mob's position, facing and pose.
 - **Animation** (pure, tested): legs swing with distance walked, the head bobs and dips to
   graze, hoppers squash on landing, resting mobs lie down.
 - **Light:** each mob is lit by the world's light at its position and the day's sunlight, as
   the particles are. Fogged like the world.
-- **Textures:** a few new 16 × 16 layers in the block texture array (\`world/textures.ts\`), so
+- **Textures:** a few new 16 × 16 layers in the block texture array (`world/textures.ts`), so
   the same shader draws them.
 
 ### 6. Hitting them, and their sounds
@@ -91,30 +91,30 @@ All are passive: none attacks.
   block there. It's a ray against the mobs' boxes, within reach.
   - A hit: knockback, a red flash, a hurt sound, then it flees.
   - Three hits and it's gone in a puff of particles. Creative mode: no drops, no health bar.
-- **Sounds,** synthesised as the others are (\`audio/sound.ts\`): an occasional call per kind
+- **Sounds,** synthesised as the others are (`audio/sound.ts`): an occasional call per kind
   (low for the mossback, chirps for the hopper and beetle, a bleat for the goat), a hurt sound,
   and hopper landings. Quieter with distance.
 
-### 7. \`?stats\`
+### 7. `?stats`
 A line for the mobs: how many of each kind, paths asked and found a second, and their main
 thread time (AI, paths, physics, drawing).
 
 ## Files
 - **Changed:**
-  - \`world/physics.ts\`: body size;
-  - \`config.ts\`: \`TUNING.mobs\`;
-  - \`world/textures.ts\`: mob layers;
-  - \`audio/sound.ts\`, \`audio/cues.ts\`: mob sounds;
-  - \`game.ts\`: manager, hits, frame loop;
-  - \`stats.ts\`;
+  - `world/physics.ts`: body size;
+  - `config.ts`: `TUNING.mobs`;
+  - `world/textures.ts`: mob layers;
+  - `audio/sound.ts`, `audio/cues.ts`: mob sounds;
+  - `game.ts`: manager, hits, frame loop;
+  - `stats.ts`;
   - CLAUDE.md.
 - **New:**
-  - \`mobs/kinds.ts\`: the four kinds' sizes, speeds, steps, biomes and models;
-  - \`mobs/pathfind.ts\`;
-  - \`mobs/brain.ts\`;
-  - \`mobs/mobs.ts\`: spawning and the per-frame budget;
-  - \`render/mobRenderer.ts\`;
-  - \`mobs/pose.ts\`: animation, pure.
+  - `mobs/kinds.ts`: the four kinds' sizes, speeds, steps, biomes and models;
+  - `mobs/pathfind.ts`;
+  - `mobs/brain.ts`;
+  - `mobs/mobs.ts`: spawning and the per-frame budget;
+  - `render/mobRenderer.ts`;
+  - `mobs/pose.ts`: animation, pure.
 
 ## Tests (headless)
 - **Physics:**
@@ -145,10 +145,10 @@ thread time (AI, paths, physics, drawing).
 - **Poses:** legs swing with distance and are still when standing; resting lies down.
 
 ## Measuring
-- \`npm run bench\`: path search time (median, worst) on a fixed set of searches over generated
+- `npm run bench`: path search time (median, worst) on a fixed set of searches over generated
   terrain: plains, forest, mountains.
-- **The mountain probe** and \`?autofly\` at radius 8 and 16, with and without mobs
-  (\`?mobs=0\`):
+- **The mountain probe** and `?autofly` at radius 8 and 16, with and without mobs
+  (`?mobs=0`):
   - fps, main thread and GPU;
   - mob time per frame;
   - holes.
@@ -159,7 +159,7 @@ thread time (AI, paths, physics, drawing).
 2. The kinds and their behaviour: wandering, following paths, jumping, getting unstuck. Tested
    in a headless world.
 3. Spawning and despawning in the game; drawing with instanced box models and light;
-   \`?mobs\` and \`?stats\`.
+   `?mobs` and `?stats`.
 4. The four models, their textures and animation.
 5. Hitting, fleeing and the puff; mob sounds.
 6. Measurements, notes and playtest questions.
