@@ -234,3 +234,59 @@ apart, at the spawn (plains, forest, the shore) and over the mountains (seed 202
   - giving up within the node limit and the range, and arriving next to a goal when asked;
   - a tall mob kept out of a tunnel a short one takes;
   - the same path every time.
+
+## Step 2: the kinds and their behaviour — built (2026-10-30)
+
+Headless only for now: the mobs exist in code and tests, not yet in the game (step 3).
+
+**What changed:**
+- **`mobs/kinds.ts`:** the four kinds as planned.
+
+  | Kind | Size (half-width × height) | Speed: walk / run | Climbs / drops |
+  | --- | --- | --- | --- |
+  | Mossback | 0.45 × 1.0 | 1.6 / 4.2 | 1 / 3, swims |
+  | Hopper | 0.25 × 0.5 | 2.4 / 5.5, hopping | 1 / 3 |
+  | Crag goat | 0.35 × 1.1 | 2.0 / 4.8 | 2 (jumps 2.25) / 5 |
+  | Dune beetle | 0.4 × 0.4 | 1.8 / 4.0 | 1 / 3 |
+
+  Each kind also has its biomes, the blocks it appears on and its group size. Path limits
+  follow step 1's bench: 500 places for the lowland kinds, 1,200 for the goat.
+- **`TUNING.mobs`:** step, cap, accelerations, water, turning, idle and wander ranges,
+  fleeing, getting stuck, arriving, and when to rest and wake.
+- **`stepMob` in `world/physics.ts`:** the player's collision and gravity with a mob's own
+  acceleration. It jumps when asked, rises to the surface in water and bobs there with its head
+  out, and climbs out of water against a bank.
+- **`mobs/brain.ts`:** a mob is a small state machine, stepped with its body.
+  - **idle**: grazes for 2–7 s, then picks a place 4–12 blocks off. It wanders there if a path
+    reaches it, or tries another place soon.
+  - **wander**: walks the path. It steers at each waypoint's middle, jumps when the next one is
+    higher, and hoppers hop all the way.
+  - **flee**: after a hit it's knocked back and up, then runs from where the hit came from for
+    4 s. It runs straight if no path is found.
+  - **rest**: when daylight drops below 0.3 it stays put until it's back above 0.4.
+  - **Stuck** (no closer to its waypoint for 0.6 s): it asks for a new way to the same place,
+    or gives up and idles.
+- **Randomness and paths:** each mob has its own seeded RNG, and asks for paths through a
+  `MobContext`, which may answer "not this frame". `directContext` searches at once, for tests.
+
+**Bench** (`npm run bench`, `mobs`): 24 mobs (mossbacks and hoppers) on the land round the
+spawn for 60 s.
+- **Each frame** they think, find paths and move: two steps of 1/120 s, blocks read through a
+  fresh `BlockCache`, as the game will.
+- **Main thread for all 24:** median **0.026 ms** a frame, p95 0.067 ms, worst **1.15 ms**
+  (a long path search in that frame).
+- **Over the minute:** 168 path searches, and 1,320 blocks walked between them.
+- Well inside the plan's 1 ms. The worst frames are searches, which step 3 spreads out with a
+  per-frame budget.
+
+**Tests (9 new, 241 in all):**
+- A mob wanders to a place it found a way to and idles again, 3–13 blocks off, never in the
+  floor.
+- It jumps up a step on the way.
+- When a wall too tall to climb goes up across its path, it finds another way and arrives.
+- A hit sends it fleeing, over 5 blocks further from where it came from before it calms down.
+- At night it rests and doesn't move, and wakes in the morning.
+- A crag goat climbs two blocks and a mossback won't even find the way.
+- Hoppers hop: more than three jumps on an 8-block walk.
+- In a pool three deep, a mossback keeps its head above the water.
+- The same seed gives the same walk, step by step, over 30 s.

@@ -10,6 +10,8 @@ import { wallsFor } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
 import { createRng } from '../src/math';
 import { BlockCache } from '../src/mobs/blockCache';
+import { createMob, type Mob, type MobContext, pathOptions, stepBrain } from '../src/mobs/brain';
+import { MobKind } from '../src/mobs/kinds';
 import { findPath } from '../src/mobs/pathfind';
 import { meshCulled } from '../src/mesh/culled';
 import { type Lod, prepareLod } from '../src/mesh/lod';
@@ -346,4 +348,45 @@ it('mob paths', () => {
     }
   }
   console.log(lines.join('\n') + '\n');
+});
+
+it('mobs', () => {
+  // 24 mobs (mossbacks and hoppers) on the land round the spawn, thinking, finding paths and
+  // moving for 60 s, read through a fresh BlockCache each 60 fps frame as the game does: the
+  // main thread's time a frame for all of them.
+  const world = new World(SEED);
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) world.ensureColumn(dx, dz);
+  const rng = createRng(9);
+  const mobs: Mob[] = [];
+  while (mobs.length < 24) {
+    const x = Math.floor((rng() - 0.5) * 60);
+    const z = Math.floor((rng() - 0.5) * 60);
+    let y = 255;
+    while (y > 0 && BLOCKS[world.getBlock(x, y - 1, z)].passable && !BLOCKS[world.getBlock(x, y - 1, z)].liquid) y--;
+    if (BLOCKS[world.getBlock(x, y - 1, z)].liquid) continue;
+    mobs.push(createMob(mobs.length, mobs.length % 2 ? MobKind.Hopper : MobKind.Mossback, x + 0.5, y, z + 0.5, mobs.length + 1));
+  }
+  const frame = 1 / 60;
+  const steps = Math.round(frame / TUNING.mobs.step);
+  const times: number[] = [];
+  let searches = 0;
+  for (let f = 0; f < 60 * 60; f++) {
+    const t0 = performance.now();
+    const blocks = new BlockCache(world);
+    const ctx: MobContext = {
+      blocks,
+      daylight: 1,
+      findPath: (mob, start, goal, near) => {
+        searches++;
+        return findPath(blocks, start, goal, pathOptions(mob.kind, near)).path;
+      },
+    };
+    for (const mob of mobs) for (let s = 0; s < steps; s++) stepBrain(mob, ctx);
+    times.push(performance.now() - t0);
+  }
+  const walked = mobs.reduce((s, m) => s + m.walked, 0);
+  console.log(
+    `\nmobs: 24 for 60 s (${steps} steps a 60 fps frame): ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}; ` +
+      `${searches} path searches, ${Math.round(walked)} blocks walked\n`,
+  );
 });

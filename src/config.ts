@@ -182,4 +182,32 @@ export const TUNING = {
     /** Fog fades chunks out just before the load radius, hiding the edge of the world. */
     fogStartFraction: 0.55,
   },
+  mobs: {
+    /** Physics and thinking step (seconds), as the player's. */
+    step: 1 / 120,
+    /** Most mobs around the player (`?mobs=40`; `?mobs=0` none). */
+    max: 24,
+    /** How fast a mob's velocity turns towards the one it wants (blocks / s²), on the ground and in the air. */
+    groundAccel: 30,
+    airAccel: 8,
+    /** In water: rising to the surface (blocks / s) and how thick the water is (per second). */
+    floatSpeed: 1.6,
+    waterDrag: 4,
+    /** Turning to face where it goes (radians a second). */
+    turnSpeed: 6,
+    /** Idle (grazing, looking about) between wanders, seconds. */
+    idle: [2, 7] as [number, number],
+    /** A wander goes this many blocks away, a random direction. */
+    wander: [4, 12] as [number, number],
+    /** Fleeing: how long, and how far away it looks for a place to run to. */
+    fleeSeconds: 4,
+    fleeDistance: 10,
+    /** No closer to the waypoint for this long (seconds): stuck, find a way again. */
+    stuckSeconds: 0.6,
+    /** At a waypoint when this close across (blocks). */
+    arrive: 0.25,
+    /** Daylight below this sends mobs to rest, above `wake` wakes them. */
+    rest: 0.3,
+    wake: 0.4,
+  },
 };

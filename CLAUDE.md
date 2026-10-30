@@ -110,7 +110,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, light, day length, sky.
+  reach, light, day length, sky, mobs.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties, textures and sound per face, the default
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport`),
@@ -127,9 +127,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
-  crouching at edges, swimming, flying; `overlapsBlock` for placing), `mining.ts` (break
+  crouching at edges, swimming, flying; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
   timing and crack stage).
-- `src/mobs/` — `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
+- `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,
+  groups), `brain.ts` (a mob: idle, wander, flee, rest; following paths, jumping, getting
+  unstuck; pure, a seeded RNG each, paths through a `MobContext`), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
   cutting, swimming at the surface, node and range limits; typed arrays reused between
   searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
   `World.getBlock`).

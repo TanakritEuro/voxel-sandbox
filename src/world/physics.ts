@@ -259,3 +259,52 @@ export function stepPlayer(body: Body, input: MoveInput, world: BlockSource, dt 
   // Swimming into a wall with Space held climbs it, to get out onto a bank.
   if (swimming && input.jump && (hits.x || hits.z)) body.vy = swim.exitBoost;
 }
+
+/** What a mob wants this step: a horizontal velocity, and whether to jump (and how high). */
+export interface MobMove {
+  vx: number;
+  vz: number;
+  jump: boolean;
+  jumpHeight: number;
+}
+
+/**
+ * Advance a mob's body one step: its velocity turns towards the one it wants (`TUNING.mobs`
+ * acceleration, less in the air), it jumps when asked on the ground, gravity as for the player.
+ * In water it rises to the surface and keeps its head out, and jumping against a bank climbs
+ * out, as the player does.
+ */
+export function stepMob(body: Body, move: MobMove, world: BlockSource, dt = TUNING.mobs.step): void {
+  const M = TUNING.mobs;
+  const P = TUNING.player;
+  body.inWater = touchesLiquid(body, world);
+  let vx: number;
+  let vz: number;
+  let vy0: number;
+  let vy: number;
+  if (body.inWater) {
+    const k = 1 - Math.exp(-M.waterDrag * dt);
+    vx = body.vx + (move.vx - body.vx) * k;
+    vz = body.vz + (move.vz - body.vz) * k;
+    vy0 = body.vy;
+    // Up while the head is under, otherwise sink back gently: it bobs at the surface.
+    const headUnder = BLOCKS[world.getBlock(Math.floor(body.x), Math.floor(body.y + body.height * 0.6), Math.floor(body.z))].liquid;
+    vy = vy0 + ((headUnder ? M.floatSpeed : -0.5) - vy0) * k;
+  } else {
+    const maxChange = (body.onGround ? M.groundAccel : M.airAccel) * dt;
+    const dvx = move.vx - body.vx;
+    const dvz = move.vz - body.vz;
+    const change = Math.hypot(dvx, dvz);
+    const k = change > maxChange ? maxChange / change : 1;
+    vx = body.vx + dvx * k;
+    vz = body.vz + dvz * k;
+    vy0 = move.jump && body.onGround ? Math.sqrt(2 * P.gravity * move.jumpHeight) : body.vy;
+    vy = Math.max(vy0 - P.gravity * dt, -P.terminalVelocity);
+  }
+  const hits = moveBody(body, ((body.vx + vx) / 2) * dt, ((vy0 + vy) / 2) * dt, ((body.vz + vz) / 2) * dt, world);
+  body.vx = hits.x ? 0 : vx;
+  body.vy = hits.y ? 0 : vy;
+  body.vz = hits.z ? 0 : vz;
+  body.onGround = hits.y && vy0 + vy < 0;
+  if (body.inWater && move.jump && (hits.x || hits.z)) body.vy = P.swim.exitBoost;
+}
