@@ -290,3 +290,56 @@ spawn for 60 s.
 - Hoppers hop: more than three jumps on an 8-block walk.
 - In a pool three deep, a mossback keeps its head above the water.
 - The same seed gives the same walk, step by step, over 30 s.
+
+## Step 3: mobs in the game — built (2026-10-30)
+
+**What changed:**
+- **`mobs/mobs.ts`, `MobManager`:** as planned.
+  - Every 0.25 s it tries one random column 24–64 blocks away, in a loaded chunk. If the
+    column's topmost block is the ground of a kind at home in its biome, a group of that kind
+    appears around it.
+  - That top-block rule means open to the sky, not water, and not under a tree's leaves.
+  - Up to the cap (24), each with its own seed.
+  - **Gone** beyond 96 blocks, when its column unloads, or below the world.
+  - **Stepping:** at 1/120 s, blocks read through one `BlockCache` a frame. Path searches stop
+    for the frame once 1 ms is used (`TUNING.mobs.pathBudgetMs`), and the mobs that must
+    wait try again a moment later. Nothing moves while paused.
+- **`render/mobRenderer.ts`:**
+  - For now each kind is a body and a head in its own colours; step 4 brings the real models.
+  - One InstancedMesh per box of each kind: 8 meshes, at most 8 draw calls.
+  - Faces carry the chunks' directional shading. Lit by the world's light where the mob
+    stands and the day's light, as the particles are, and fogged.
+  - Drawn between the last two physics steps (position and facing, the short way round), with
+    a red flash after a hit.
+- **The shader is compiled at startup** (`renderer.compile`). Compiled on the first mob in
+  view instead, it made 2–3 frames of 40–66 ms in every flight at radius 8 (Chrome on
+  Direct3D); compiled at the start, none.
+- **`?mobs=0`** turns them off and **`?mobs=40`** sets the cap.
+- **`?stats`** has a mobs line: how many of each kind, path searches a second (and put off),
+  and their time this frame.
+
+**Looked at in Chrome:**
+- 24 mobs within seconds of loading at the spawn, mossbacks (body and head boxes, shaded, lit)
+  standing about on the grass. No console errors.
+- Mossbacks outnumber the rest here: the spawn is mostly forest, where only they live. Over a
+  flight it was 14 mossbacks, 8 hoppers and 2 crag goats.
+
+**Measured** in Chrome on your laptop, radius 8, 2560 × 1201:
+
+| | fps | GPU ms | draw calls |
+| --- | --- | --- | --- |
+| Spin at the spawn, with mobs (2 runs) | 106, 108 | 4.9, 4.7 | 57, 60 |
+| Without (`?mobs=0`) | 109, 108 | 4.5, 4.6 | 54, 55 |
+
+- `?autofly=20` with mobs, after compiling at startup: 15 and 3 frames over 20 ms, none over
+  33, slowest 25.2 ms, no holes. Without them: 12–14 over 20, none over 33.
+- **Mob time in `?stats`:** 0.00–0.10 ms a frame, 4–8 path searches a second, none put off.
+
+**Tests (5 new, 246 in all), on the generated land round the spawn:**
+- A kind stands only on its own ground at a column's top: a mossback on grass, a beetle not;
+  nothing on water, under leaves, or in unloaded land.
+- 400 tries put exactly the cap (12) on the land: each in a biome of its kind, on its ground,
+  at the top of its column, at least 24 blocks from the player, each with its own id.
+- Mobs go when the player is beyond 96 blocks, or their column isn't loaded.
+- With the budget used up, searches are put off; with room, they run.
+- A mob is drawn halfway between its steps at half a step, turning the short way through π.

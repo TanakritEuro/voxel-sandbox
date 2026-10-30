@@ -28,6 +28,9 @@ import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
+import { KINDS } from './mobs/kinds';
+import { MobManager } from './mobs/mobs';
+import { MobRenderer } from './render/mobRenderer';
 import { Block, BLOCKS, hotbarFrom, isTorch, torchFor } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { CHUNK_SIZE, toChunk } from './world/coords';
@@ -116,6 +119,30 @@ const particleMesh = new ParticleMesh(particles);
 scene.add(particleMesh.mesh);
 /** Daylight this frame, for lighting new particles. */
 let daylightNow = 1;
+// Mobs (`mobs/`): animals round the player, not saved. `?mobs=0` none, `?mobs=40` a cap of 40.
+const mobsParam = Number(params.get('mobs') ?? Number.NaN);
+const mobCap = Number.isFinite(mobsParam) ? Math.max(0, Math.floor(mobsParam)) : TUNING.mobs.max;
+const mobs = mobCap > 0 ? new MobManager(world, record.seed ^ 0x6d6f62, mobCap) : null;
+const mobView = mobs ? new MobRenderer(mobCap) : null;
+if (mobView) {
+  scene.add(mobView.group);
+  // Its shader compiled now, not when the first mob comes into view: compiling then made frames
+  // of 40–65 ms flying (Chrome on Direct3D).
+  renderer.compile(mobView.group, camera);
+}
+let mobsRead = performance.now();
+/** The mobs line of `?stats`: how many of each kind, path searches a second since last read (and put off), time this frame. */
+function mobLine(): string {
+  if (!mobs) return 'off (?mobs=0)';
+  const now = performance.now();
+  const seconds = Math.max((now - mobsRead) / 1000, 1e-3);
+  const line =
+    `${mobs.mobs.length} of ${mobs.max} (${mobs.counts().map((n, k) => `${KINDS[k].name.toLowerCase()} ${n}`).join(', ')}), ` +
+    `${(mobs.searches / seconds).toFixed(1)} paths a second (${(mobs.deferred / seconds).toFixed(1)} put off), ${mobs.ms.toFixed(2)} ms`;
+  mobs.searches = mobs.deferred = 0;
+  mobsRead = now;
+  return line;
+}
 /** The fog where the player is (`fog.ts`), eased towards the biomes there each frame. */
 let fog: ReturnType<typeof blendFog> | null = null;
 // `?light` shows light as grey instead of textures.
@@ -164,6 +191,7 @@ const stats = new Stats(
     meshed: chunks.count,
     pages: chunks.pages,
     levels: loader.levels,
+    mobs: mobLine(),
     mouse: { now: input.takeBiggestMove(), ever: input.biggestMoveEver, raw: input.raw, dropped: input.spikes.dropped },
     queued: loader.queued,
     inFlight: loader.inFlight,
@@ -311,7 +339,6 @@ showPause();
 // --- Loop ----------------------------------------------------------------------------------
 
 let last = performance.now();
-/** Seconds the loader has had nothing to do. */
 /** Where the feet were last frame, for footsteps. */
 let lastFeet = { x: player.body.x, z: player.body.z };
 let fps = 60;
@@ -368,6 +395,11 @@ function frame(now: number): void {
 
   target = raycast(world, camera.position, dir, TUNING.edit.reach);
   editing(dt);
+  // The mobs think and move (not while paused), then are drawn where they are.
+  if (mobs && mobView) {
+    mobs.update(paused() ? 0 : dt, player.body.x, player.body.z, daylightNow);
+    mobView.update(mobs, world, daylightNow);
+  }
   outline.visible = target !== null;
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 

@@ -131,7 +131,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   timing and crack stage).
 - `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,
   groups), `brain.ts` (a mob: idle, wander, flee, rest; following paths, jumping, getting
-  unstuck; pure, a seeded RNG each, paths through a `MobContext`), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
+  unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
+  spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
+  or with the column, a cap, stepping at the fixed rate with a per-frame path search budget;
+  not saved), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
   cutting, swimming at the surface, node and range limits; typed arrays reused between
   searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
   `World.getBlock`).
@@ -157,7 +160,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   and the water texture's drift.
   `crack.ts` — the crack pattern and overlay. `particles.ts` — breaking and digging particles
   (simulation, pure; one InstancedMesh). `heldBlock.ts` — the held block (a lone block meshed,
-  drawn in its own pass; bob, swing and switch motion, pure).
+  drawn in its own pass; bob, swing and switch motion, pure). `mobRenderer.ts` — the mobs: a box
+  model per kind, one InstancedMesh per box, lit by the world's light and fogged, drawn
+  between physics steps; its shader compiled at startup.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
   (near first, in front before behind) up to the pool's capacity, meshes only chunks the
   visibility walk reaches and hides the rest, drops stale or out-of-range results, remeshes
@@ -192,7 +197,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
   an unsaved world), `?light` shows light as grey,
-  `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

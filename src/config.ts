@@ -209,5 +209,12 @@ export const TUNING = {
     /** Daylight below this sends mobs to rest, above `wake` wakes them. */
     rest: 0.3,
     wake: 0.4,
+    /** A try at spawning a group this often (seconds), this far from the player (blocks, across). */
+    spawnInterval: 0.25,
+    spawnDistance: [24, 64] as [number, number],
+    /** Gone beyond this (blocks, across) or when its column unloads. */
+    despawnDistance: 96,
+    /** Path searches stop for the frame once mobs have used this much of it (ms); the rest wait. */
+    pathBudgetMs: 1,
   },
 };
