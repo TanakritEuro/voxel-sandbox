@@ -137,7 +137,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   not saved), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
   cutting, swimming at the surface, node and range limits; typed arrays reused between
   searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
-  `World.getBlock`).
+  `World.getBlock`), `models.ts` (each kind's boxes, pivots, textures and how each part moves; pure
+  data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
+  and ears; pure).
 - `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
   typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
@@ -160,9 +162,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   and the water texture's drift.
   `crack.ts` — the crack pattern and overlay. `particles.ts` — breaking and digging particles
   (simulation, pure; one InstancedMesh). `heldBlock.ts` — the held block (a lone block meshed,
-  drawn in its own pass; bob, swing and switch motion, pure). `mobRenderer.ts` — the mobs: a box
-  model per kind, one InstancedMesh per box, lit by the world's light and fogged, drawn
-  between physics steps; its shader compiled at startup.
+  drawn in its own pass; bob, swing and switch motion, pure). `mobRenderer.ts` — the mobs: each
+  kind's model posed, one InstancedMesh per box (an instance per copy per mob, so at most 19 draw
+  calls), lit by the world's light and fogged, drawn between physics steps; its shader compiled
+  at startup. `mobTextures.ts` — their 16 × 16 textures painted at startup, a face and its box's
+  sides side by side in one so a head is one draw call.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
   (near first, in front before behind) up to the pool's capacity, meshes only chunks the
   visibility walk reaches and hides the rest, drops stale or out-of-range results, remeshes
@@ -197,7 +201,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
   an unsaved world), `?light` shows light as grey,
-  `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

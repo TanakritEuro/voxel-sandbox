@@ -131,6 +131,8 @@ if (mobView) {
   renderer.compile(mobView.group, camera);
 }
 let mobsRead = performance.now();
+/** `?showcase`: one of each kind in front of the player once the ground is there. */
+let showcase = params.has('showcase');
 /** The mobs line of `?stats`: how many of each kind, path searches a second since last read (and put off), time this frame. */
 function mobLine(): string {
   if (!mobs) return 'off (?mobs=0)';
@@ -398,7 +400,11 @@ function frame(now: number): void {
   // The mobs think and move (not while paused), then are drawn where they are.
   if (mobs && mobView) {
     mobs.update(paused() ? 0 : dt, player.body.x, player.body.z, daylightNow);
-    mobView.update(mobs, world, daylightNow);
+    if (showcase && !player.waiting) {
+      mobs.showcase(player.body.x, player.body.y, player.body.z, input.yaw);
+      showcase = false;
+    }
+    mobView.update(mobs, world, daylightNow, now / 1000);
   }
   outline.visible = target !== null;
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);

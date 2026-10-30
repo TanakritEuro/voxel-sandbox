@@ -93,6 +93,32 @@ export class MobManager {
     this.ms = performance.now() - t0;
   }
 
+  /**
+   * One of each kind in a row four blocks in front of (x, y, z), looking along `yaw`, standing
+   * where they can and grazing there for good, turned three-quarters to the viewer (`?showcase`,
+   * for looking at the models).
+   */
+  showcase(x: number, y: number, z: number, yaw: number): void {
+    const fx = -Math.sin(yaw);
+    const fz = -Math.cos(yaw);
+    KINDS.forEach((info, kind) => {
+      const side = (kind - (KINDS.length - 1) / 2) * 1.8;
+      const bx = Math.floor(x + fx * 4 + fz * side);
+      const bz = Math.floor(z + fz * 4 - fx * side);
+      for (let ny = Math.floor(y) + 3; ny >= Math.floor(y) - 6; ny--) {
+        const ground = !BLOCKS[this.world.getBlock(bx, ny - 1, bz)].passable;
+        let room = true;
+        for (let i = 0; i < headroom(info); i++) room &&= BLOCKS[this.world.getBlock(bx, ny + i, bz)].passable;
+        if (!ground || !room) continue;
+        const mob = createMob(this.nextId++, kind as MobKind, bx + 0.5, ny, bz + 0.5, kind + 1);
+        mob.timer = Number.POSITIVE_INFINITY;
+        mob.yaw = yaw + Math.PI * 0.75;
+        this.mobs.push(mob);
+        return;
+      }
+    });
+  }
+
   /** Remove a mob (despawned, or gone in a puff). */
   remove(mob: Mob): void {
     const i = this.mobs.indexOf(mob);

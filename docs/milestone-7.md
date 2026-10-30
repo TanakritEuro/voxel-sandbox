@@ -343,3 +343,68 @@ spawn for 60 s.
 - Mobs go when the player is beyond 96 blocks, or their column isn't loaded.
 - With the budget used up, searches are put off; with room, they run.
 - A mob is drawn halfway between its steps at half a step, turning the short way through π.
+
+## Step 4: the models, their textures and animation — built (2026-10-30)
+
+**What changed:**
+- **`mobs/models.ts`** (pure data): each kind's boxes, their pivots (legs at the hip, the head at
+  the neck), textures and how each moves. Model space has the feet at y = 0 and faces -z.
+  - **Mossback:** a wide furry body with a mossy saddle on its back, a head with a face, four
+    stubby legs.
+  - **Hopper:** a small body, a head with a face, two long ears, big hind feet that push together,
+    small front paws, a tail.
+  - **Crag goat:** a woolly body on four long dark legs, a head with a face, two horns swept back,
+    a beard.
+  - **Dune beetle:** a flat blue shell with a sheen, a black head with eyes, six legs reaching out
+    sideways in two tripods, two antennae.
+- **`mobs/pose.ts`** (pure): a mob's pose from what it is doing.
+  - Legs swing with the ground covered (3.2 radians a block), harder the faster it goes, still
+    when it stands; diagonal pairs together. The beetle's swing sideways.
+  - Idle and standing, the head dips to graze now and then (every 4 s, each mob in its own time).
+    Walking, it nods a little.
+  - At rest it sinks by 0.3 of its height, legs folded under, head low.
+  - A hopper leans nose up rising and nose down falling, its ears laid back with speed.
+- **`render/mobTextures.ts`:** 13 textures painted in code at startup, 16 × 16, speckled like the
+  block textures: fur, moss, wool, horn, hoof, shell, ears, and faces with eyes.
+  - Not layers in the block texture array as planned: the mobs have their own simple material
+    (`MeshBasicMaterial` with a map), so the chunk shader stays as it is.
+- **`render/mobRenderer.ts`:** one InstancedMesh per box of each kind, an instance per copy per
+  mob (every mossback's four legs in one): 19 meshes, at most 19 draw calls. Each copy's matrix:
+  the mob's place and facing, sunk when lying, the head's pitch for what rides on the head, then
+  the part's pivot, a fixed tilt (horns) and its swing.
+- **A face costs no draw calls.** First a head had a material per face (its front another), and
+  three.js drew each face on its own: 6 draw calls a head, 76 in all at the spawn against 54
+  without mobs. Now a face and its box's sides sit side by side in one 32 × 16 texture, and the
+  front face's coordinates point at the face half: one material a box, 66 draw calls.
+- **`?showcase`** stands one of each kind four blocks in front of you, grazing for good, turned
+  three-quarters to you, for looking at the models.
+
+**Looked at in Chrome** (`?showcase`, midday): the beetle's shell and sheen, its legs and
+antennae; the goat's wool, horns, beard and face; the mossback's mossy back and face, grazing;
+the hopper's ears and feet. Faces on the front, fur on the sides. No console errors. Lying down was
+checked by the tests only, not seen.
+
+**Measured** in Chrome on your laptop, radius 8, 2560 × 1201, spinning at the spawn (24 mobs, 23
+of them mossbacks, the rest hoppers), alternating runs:
+
+| | fps | GPU ms | draw calls | mob time |
+| --- | --- | --- | --- | --- |
+| A material per face (before the fix) | 103.6 | 5.0 | 76 | 0.40 ms |
+| One material per box, with mobs (2 runs) | 106.3, 104.8 | 4.6, 4.7 | 66, 67 | 0.20 ms |
+| Without (`?mobs=0`, 2 runs) | 109.3, 100.8 | 4.5, 5.1 | 54, 56 | — |
+
+- The models cost about 12 draw calls and no measurable GPU time: the two runs without mobs
+  differ by more than with and without do.
+- `?autofly=20` with mobs: 6 frames over 20 ms, none over 33, no holes.
+
+**Tests (9 new, 255 in all):**
+- Legs are still standing, swing forward and back with the ground covered, half as far at half
+  speed.
+- Lying down: sunk by 0.3 of the height, legs folded, still.
+- Idle mobs graze: the head goes down past 0.6 radians and comes back up to 0.
+- A hopper leans nose up rising, nose down falling, level on the ground; ears back in the air.
+- Every model stands on its feet: each leg reaches the ground hanging straight, none below it.
+- Every model fits its body, give or take a leg or an ear.
+- Every texture a model names exists.
+- A face and its sides share one texture, the face in the right half; every box is one material.
+- An instance per part copy per mob, and draw calls only for the kinds there are.
