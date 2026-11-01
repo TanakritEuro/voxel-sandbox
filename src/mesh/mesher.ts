@@ -21,6 +21,12 @@
 // brightness.
 //
 // Torches aren't cubes: each is a small box of its own, never merged.
+//
+// Water: a full block of it (a source, falling water, anything with water above) is meshed like
+// glass, merged, but never against other water. Flowing water short of a full block is meshed on
+// its own (`water`): its top at its depth, its sides where the neighbour isn't solid and isn't
+// water as deep. Where a full block of water meets shallower water, its side shows above the
+// other's surface (`steps`). So water of different depths meets with no hole and no doubled face.
 
 import { TUNING } from '../config';
 import { Block, BLOCKS } from '../world/blocks';
@@ -60,6 +66,9 @@ const SHAPED = new Uint8Array(256);
 const WALL_X = new Int8Array(256);
 const WALL_Z = new Int8Array(256);
 const GLOW = new Uint8Array(256);
+/** Liquids, and how deep each is when nothing liquid is above it (`liquidHeight`). */
+const LIQUID = new Uint8Array(256);
+const DEPTH = new Float64Array(256);
 /** Texture array layer by block and direction: LAYER[block * 6 + dir]. */
 const LAYER = new Uint8Array(256 * 6);
 BLOCKS.forEach((info, b) => {
@@ -72,6 +81,8 @@ BLOCKS.forEach((info, b) => {
     WALL_Z[b] = info.wall.z;
   }
   GLOW[b] = info.light * 17;
+  LIQUID[b] = info.liquid ? 1 : 0;
+  DEPTH[b] = info.liquidHeight;
   for (let dir = 0; dir < 6; dir++) LAYER[b * 6 + dir] = textureLayer(dir === 2 ? info.textures.top : dir === 3 ? info.textures.bottom : info.textures.side);
 });
 /** Vertex brightness 0–255 by direction and AO level: SHADED[dir * 4 + ao]. */
@@ -125,6 +136,15 @@ const glowMask = new Int32Array(S * S);
 const pos = new Float64Array(3);
 /** Padded indices of the chunk's torches (and any other shaped blocks). */
 const shaped: number[] = [];
+/** Padded indices of the chunk's flowing water short of a full block. */
+const liquids: number[] = [];
+/** Full water against shallower water: padded index and face direction, after one another. */
+const steps: number[] = [];
+/** Padded-index step to the neighbour each face direction looks at (+x, -x, +y, -y, +z, -z). */
+const TOWARDS = [1, -1, P * P, -P * P, P, -P];
+
+/** How deep the water at padded index `i` is: a full block with water above it, else its own depth. */
+const depthAt = (padded: Uint8Array, i: number): number => (LIQUID[padded[i + P * P]] ? 1 : DEPTH[padded[i]]);
 
 /** Four equal bytes in an int, as the masks hold a face's light when all its corners match. */
 const flat = (l: number): number => (l * 0x01010101) | 0;
@@ -142,6 +162,8 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   cutout.reset();
   transparent.reset();
   shaped.length = 0;
+  liquids.length = 0;
+  steps.length = 0;
   const origin = [cx * S, cy * S, cz * S];
   let quads = 0;
 
@@ -176,10 +198,16 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
           if (b !== AIR) {
             if (SHAPED[b]) {
               if (dir === 0) shaped.push(i);
+            } else if (LIQUID[b] && depthAt(padded, i) < 1) {
+              // Flowing water short of a full block: meshed on its own, after.
+              if (dir === 0) liquids.push(i);
             } else {
               const f = i + towards;
               const nb = padded[f];
-              if (nb === AIR || (!OPAQUE[nb] && (nb !== b || CUTOUT[b]))) {
+              if (LIQUID[b] && LIQUID[nb]) {
+                // Water against water: no face, but a side against shallower water shows above it.
+                if (d !== 1 && depthAt(padded, f) < 1) steps.push(i, dir);
+              } else if (nb === AIR || (!OPAQUE[nb] && (nb !== b || CUTOUT[b]))) {
                 const lf = light[f];
                 if (TRANSPARENT[b] || flatFaces) {
                   key = b | (NO_AO << 8);
@@ -283,6 +311,13 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   cutout.mark();
   transparent.mark();
   for (const i of shaped) quads += torch(padded, light, i, origin);
+  for (const i of liquids) quads += water(padded, light, i, origin);
+  for (let n = 0; n < steps.length; n += 2) {
+    const i = steps[n];
+    const f = i + TOWARDS[steps[n + 1]];
+    liquidFace(i, steps[n + 1], depthAt(padded, f), 1, light[f], padded[i], origin);
+    quads++;
+  }
   return { opaque: opaque.build(), cutout: cutout.build(), transparent: transparent.build(), quads };
 }
 
@@ -304,6 +339,69 @@ function corner(
   p[ua] = u;
   p[va] = v;
   out.vertex(p[0], p[1], p[2], shade, sun, glow, p[tu] - origin[tu], p[tv] - origin[tv], layer);
+}
+
+/**
+ * Flowing water at padded index i, short of a full block (nothing liquid above it): its top at its
+ * depth, always (it's below the block's top, so seen from the side even under a solid block); its
+ * bottom over anything but solid blocks and water; each side from the neighbour's water surface
+ * (0 if it isn't water) up to its own, where the neighbour isn't solid and is lower. Returns the
+ * quads made.
+ */
+function water(padded: Uint8Array, light: Uint8Array, i: number, origin: number[]): number {
+  const b = padded[i];
+  const h = DEPTH[b];
+  let quads = 0;
+  for (let dir = 0; dir < 6; dir++) {
+    const f = i + TOWARDS[dir];
+    const nb = padded[f];
+    if (dir !== 2 && OPAQUE[nb]) continue;
+    let from = 0;
+    if (dir === 3) {
+      if (LIQUID[nb]) continue;
+    } else if (dir !== 2 && LIQUID[nb]) {
+      from = depthAt(padded, f);
+      if (from >= h) continue;
+    }
+    liquidFace(i, dir, from, h, light[f], b, origin);
+    quads++;
+  }
+  return quads;
+}
+
+/**
+ * One face of the water block at padded index i, in the transparent pass: a side spanning the
+ * block across and from `y0` to `y1` up it, or the top at `y1`, or the bottom; lit flat by `lf`,
+ * the light of the block it looks at. Texture coordinates in blocks, as the greedy faces have them,
+ * so the texture lines up with theirs and doesn't stretch.
+ */
+function liquidFace(i: number, dir: number, y0: number, y1: number, lf: number, b: number, origin: number[]): void {
+  const base = [origin[0] + (i % P) - 1, origin[1] + Math.floor(i / (P * P)) - 1, origin[2] + (Math.floor(i / P) % P) - 1];
+  const d = dir >> 1;
+  const s = dir & 1 ? -1 : 1;
+  const ua = s > 0 ? (d + 1) % 3 : (d + 2) % 3;
+  const va = s > 0 ? (d + 2) % 3 : (d + 1) % 3;
+  const tu = d === 0 ? 2 : 0;
+  const tv = d === 1 ? 2 : 1;
+  const lo = (a: number) => base[a] + (a === 1 ? y0 : 0);
+  const hi = (a: number) => base[a] + (a === 1 ? y1 : 1);
+  const p = pos;
+  p[d] = d === 1 ? base[1] + (s > 0 ? y1 : 0) : base[d] + (s > 0 ? 1 : 0);
+  const layer = LAYER[b * 6 + dir];
+  const shade = SHADED[dir * 4 + 3];
+  const sun = (lf >> 4) * 17;
+  const glow = Math.max((lf & 15) * 17, GLOW[b]);
+  transparent.reserve(1);
+  for (let k = 0; k < 4; k++) {
+    // Corners (lo, lo), (hi, lo), (hi, hi), (lo, hi) on (u, v): counter-clockwise from outside.
+    p[ua] = k === 1 || k === 2 ? hi(ua) : lo(ua);
+    p[va] = k >= 2 ? hi(va) : lo(va);
+    // On a side v runs up, and may end part way up a block: whole blocks, then eighths.
+    const tex = p[tv] - origin[tv];
+    const whole = Math.floor(tex);
+    transparent.vertex(p[0], p[1], p[2], shade, sun, glow, p[tu] - origin[tu], whole, layer, Math.round((tex - whole) * 8));
+  }
+  transparent.quad();
 }
 
 /** A torch's box within its block: 2 × 10 × 2 sixteenths, standing in the middle of the floor. */

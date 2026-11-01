@@ -147,10 +147,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
   and ears; pure).
 - `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
-  typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer),
+  typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer, eighths added to v),
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
   `faceStarts`: quads by face direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then torches),
-  `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes; opaque, cutout (leaves) and transparent passes;
+  `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes,
+  flowing water block by block at its depth, sides between waters only above the shallower; opaque, cutout (leaves) and transparent passes;
   `flatFaces` for far chunks), `lod.ts` (far chunks: the padded input coarsened in place into
   cells of 2³ or 4³ blocks, water kept exact, trunks kept, walls on seams between levels), `culled.ts` (the
   scaffold's one-quad-per-face mesher, kept as the test oracle and bench comparison).

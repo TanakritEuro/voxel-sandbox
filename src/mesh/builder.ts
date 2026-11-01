@@ -15,7 +15,7 @@ export interface MeshData {
   /**
    * Texture coordinates per vertex, 4 bytes: u and v in blocks (0..32, the corner's place on
    * the face within the chunk: the shader repeats the texture every block), the texture
-   * array layer, and a spare byte for alignment.
+   * array layer, and eighths of a block added to v (water sides end at a depth in eighths).
    */
   uvl: Uint8Array;
   /** Uint16 when the mesh has at most 65 536 vertices (almost always). */
@@ -66,11 +66,12 @@ export class MeshBuilder {
     }
   }
 
-  vertex(x: number, y: number, z: number, r: number, g: number, b: number, u = 0, tv = 0, layer = 0): void {
+  vertex(x: number, y: number, z: number, r: number, g: number, b: number, u = 0, tv = 0, layer = 0, eighths = 0): void {
     const v = this.vertexCount++;
     this.uvl[v * 4] = u;
     this.uvl[v * 4 + 1] = tv;
     this.uvl[v * 4 + 2] = layer;
+    this.uvl[v * 4 + 3] = eighths;
     this.positions[v * 3] = x;
     this.positions[v * 3 + 1] = y;
     this.positions[v * 3 + 2] = z;

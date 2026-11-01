@@ -309,3 +309,56 @@ Vitest):
 - The chunks reported stale are exactly those with a changed block or light within their padded
   area, each once.
 - The existing light tests pass unchanged through the new path.
+
+## Step 4: meshing flowing water — built (2026-11-01)
+
+**What changed** (`mesh/mesher.ts`):
+- **Depth:** water is a full block when there is water above it, otherwise its own depth
+  (`liquidHeight`).
+- **Full water** (sources, falling water, anything with water above) is meshed by the greedy
+  mesher as before, but never against other water. Before, a source and falling water side by
+  side would have drawn a face between them, being different ids.
+- **Flowing water short of a full block** is meshed block by block, after the greedy pass, in the
+  transparent pass:
+  - **its top** at its depth, always: it's below the block's top, so it shows from the side even
+    under a solid block;
+  - **its bottom** over anything but solid blocks and water;
+  - **each side** from the neighbour's water surface (0 if the neighbour isn't water) up to its
+    own, where the neighbour isn't solid and is shallower.
+- **Where full water meets shallower water,** its side shows just above the other's surface.
+  - Each face between two waters is drawn once, from the deeper side, and only above the
+    shallower. So there's no hole and no doubled face.
+- **Texture coordinates follow the real height.** `uvl`'s spare fourth byte now carries eighths
+  of a block added to v, read by the chunk shader. A side 3/8 deep shows 3/8 of the texture,
+  not a squashed whole.
+  - The builder writes that byte for every vertex (0 for everything else), since its arrays are
+    reused.
+- **Far chunks** (`mesh/lod.ts`) keep flowing water as it is, like other blocks that aren't solid.
+  A cell whose solid blocks are taken out is filled with water if it has a source or falling water
+  in it. Flowing water doesn't fill, so a stream doesn't turn the ground under it into a ditch of
+  water far off.
+- **The greedy-against-culled test's random soup** leaves out moving water: the culled oracle draws
+  one whole quad per face and can't draw a side ending part way up. Moving water has its own tests.
+
+**Looked at in Chrome:** the world draws as before (grass, sand, sea, trees, the shader's new v
+term), with no console errors. There's no flowing water in the game to see until step 5.
+
+**Bench:** greedy meshing of the 724 spawn chunks, the new mesher against the old, alternating:
+1.91 and 1.44 ms a chunk against 1.69 and 1.81. No difference beyond noise, and the same 1,932k
+triangles. Generated land has no flowing water, so only the extra liquid checks cost anything.
+(The machine was slower than this morning for everything, generation included: 3.2–3.4 ms a
+column against 2.1.)
+
+**Tests (7 new, 280 in all):**
+- Flowing water at half depth on stone: a top at half a block, four sides half a block tall
+  showing half the texture, nothing towards the stone.
+- Six eighths beside three: one strip on the deeper side from 3/8 to 6/8, nothing from the
+  shallower side, 9 faces in all.
+- A source beside two eighths: a strip from 2/8 to the top, from the source only.
+- Flowing water under falling water is a full block: full-height sides, no face between them.
+- Nothing between a source and falling water side by side.
+- **A stream of every depth** from a source:
+  - every face points out of the water it belongs to;
+  - an eighth-high step between each pair of flowing blocks.
+- **Far chunks** keep flowing and falling water through coarsening, and mesh the flowing top at its
+  depth.

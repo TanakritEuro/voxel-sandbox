@@ -167,10 +167,15 @@ function worldOf(fill: (x: number, y: number, z: number) => Block): World {
   return world;
 }
 
-/** Random blocks of every kind; `density` of cells non-air. */
+/**
+ * Random blocks of every kind but moving water (whose faces end part way up a block, which the
+ * one-quad-per-face culled mesher can't draw: `waterMesh.test.ts` has its tests); `density` of
+ * cells non-air.
+ */
 function soup(seed: number, density: number): World {
   const rng = createRng(seed);
-  return worldOf(() => (rng() < density ? 1 + Math.floor(rng() * (BLOCKS.length - 1)) : Block.Air));
+  const kinds = Block.WaterFlow1 - 1;
+  return worldOf(() => (rng() < density ? 1 + Math.floor(rng() * kinds) : Block.Air));
 }
 
 describe('greedy mesher', () => {

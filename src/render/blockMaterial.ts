@@ -24,7 +24,8 @@ const vertexShader = /* glsl */ `
     vShade = vec3(pow(color.r, 2.2));
     // Sunlight and block light, 0–1 for levels 0–15.
     vLight = color.gb;
-    vUv = uvl.xy;
+    // v in whole blocks, and eighths of one (water's sides end at its depth).
+    vUv = vec2(uvl.x, uvl.y + uvl.w * 0.125);
     vLayer = uvl.z;
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mvPosition;
