@@ -20,7 +20,9 @@
 // sunlight in green and block light in blue (0–15 as 0–255); the shader turns them into
 // brightness.
 //
-// Torches aren't cubes: each is a small box of its own, never merged.
+// Torches aren't cubes: each is a small box of its own, never merged. Nor are the thin logic
+// blocks (`box`): wire a 1/16 sheet, a switch a base and a handle to one side or the other, a
+// button a small square (flatter pressed), a gate a 1/8 plate whose top turns with its facing.
 //
 // Water: a full block of it (a source, falling water, anything with water above) is meshed like
 // glass, merged, but never against other water. Flowing water short of a full block is meshed on
@@ -29,7 +31,7 @@
 // other's surface (`steps`). So water of different depths meets with no hole and no doubled face.
 
 import { TUNING } from '../config';
-import { Block, BLOCKS } from '../world/blocks';
+import { Block, BLOCKS, FACINGS, gateOf } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
 import { textureLayer } from '../world/textures';
 import { FACE_ORDER, MeshBuilder, type MeshData } from './builder';
@@ -65,6 +67,11 @@ const SHAPED = new Uint8Array(256);
 /** A wall torch's wall, the step from it to the block it hangs on (0, 0 for everything else). */
 const WALL_X = new Int8Array(256);
 const WALL_Z = new Int8Array(256);
+/** Which shape (0 cube, 1 torch, 2 wire, 3 switch, 4 button, 5 plate); a switch or button on; a gate's facing. */
+const SHAPE = new Uint8Array(256);
+const ON = new Uint8Array(256);
+const FACE_X = new Int8Array(256);
+const FACE_Z = new Int8Array(256);
 const GLOW = new Uint8Array(256);
 /** Liquids, and how deep each is when nothing liquid is above it (`liquidHeight`). */
 const LIQUID = new Uint8Array(256);
@@ -76,6 +83,10 @@ BLOCKS.forEach((info, b) => {
   TRANSPARENT[b] = info.transparent ? 1 : 0;
   CUTOUT[b] = info.cutout ? 1 : 0;
   SHAPED[b] = info.shape !== 'cube' ? 1 : 0;
+  SHAPE[b] = ['cube', 'torch', 'wire', 'switch', 'button', 'plate'].indexOf(info.shape);
+  ON[b] = b === Block.SwitchOn || b === Block.ButtonOn ? 1 : 0;
+  const gate = gateOf(b);
+  if (gate) [FACE_X[b], FACE_Z[b]] = FACINGS[gate.facing];
   if (info.wall) {
     WALL_X[b] = info.wall.x;
     WALL_Z[b] = info.wall.z;
@@ -310,7 +321,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   opaque.mark();
   cutout.mark();
   transparent.mark();
-  for (const i of shaped) quads += torch(padded, light, i, origin);
+  for (const i of shaped) quads += SHAPE[padded[i]] === 1 ? torch(padded, light, i, origin) : logicShape(padded, light, i, origin);
   for (const i of liquids) quads += water(padded, light, i, origin);
   for (let n = 0; n < steps.length; n += 2) {
     const i = steps[n];
@@ -402,6 +413,84 @@ function liquidFace(i: number, dir: number, y0: number, y1: number, lf: number, 
     transparent.vertex(p[0], p[1], p[2], shade, sun, glow, p[tu] - origin[tu], whole, layer, Math.round((tex - whole) * 8));
   }
   transparent.quad();
+}
+
+/** Sixteenths of a block. */
+const px = (n: number) => n / 16;
+
+/**
+ * A thin logic block at padded index i: its boxes (see the top of the file), lit flat by its own
+ * block's light as torches are. Returns the quads made.
+ */
+function logicShape(padded: Uint8Array, light: Uint8Array, i: number, origin: number[]): number {
+  const b = padded[i];
+  const base = [origin[0] + (i % P) - 1, origin[1] + Math.floor(i / (P * P)) - 1, origin[2] + (Math.floor(i / P) % P) - 1];
+  const l = light[i];
+  const sun = (l >> 4) * 17;
+  const glow = Math.max((l & 15) * 17, GLOW[b]);
+  const top = LAYER[b * 6 + 2];
+  const side = LAYER[b * 6];
+  switch (SHAPE[b]) {
+    case 2: // wire
+      return box(base, [0, 0, 0], [1, px(1), 1], top, top, sun, glow, null);
+    case 3: {
+      // switch: the base, and the handle to one side (on) or the other (off)
+      const h = ON[b] ? 9 : 5;
+      return (
+        box(base, [px(4), 0, px(5)], [px(12), px(2), px(11)], top, top, sun, glow, null) +
+        box(base, [px(h), px(2), px(7)], [px(h + 2), px(9), px(9)], side, side, sun, glow, null)
+      );
+    }
+    case 4: // button: flatter while pressed
+      return box(base, [px(5), 0, px(5)], [px(11), px(ON[b] ? 1 : 2), px(11)], top, top, sun, glow, null);
+    default: // a gate's plate, its top turned to its facing
+      return box(base, [0, 0, 0], [1, px(2), 1], top, side, sun, glow, [FACE_X[b], FACE_Z[b]]);
+  }
+}
+
+/**
+ * A box from `lo` to `hi` within the block at `base` (no bottom: it stands on a block), in the
+ * opaque pass: its top with layer `topLayer`, its sides `sideLayer`, each with the whole texture
+ * across it (the textures are made for that), lit flat. With `turn` (a facing), the top's
+ * texture is turned so its up (row 0) points that way. Returns the quads made.
+ */
+function box(base: number[], lo: number[], hi: number[], topLayer: number, sideLayer: number, sun: number, glow: number, turn: readonly [number, number] | null): number {
+  let quads = 0;
+  for (let dir = 0; dir < 6; dir++) {
+    if (dir === 3) continue;
+    const d = dir >> 1;
+    const s = dir & 1 ? -1 : 1;
+    const ua = s > 0 ? (d + 1) % 3 : (d + 2) % 3;
+    const va = s > 0 ? (d + 2) % 3 : (d + 1) % 3;
+    const tu = d === 0 ? 2 : 0;
+    const tv = d === 1 ? 2 : 1;
+    const layer = dir === 2 ? topLayer : sideLayer;
+    const shade = SHADED[dir * 4 + 3];
+    opaque.reserve(1);
+    for (let k = 0; k < 4; k++) {
+      const cu = k === 1 || k === 2;
+      const cv = k >= 2;
+      const p = pos;
+      p[d] = base[d] + (s > 0 ? hi[d] : lo[d]);
+      p[ua] = base[ua] + (cu ? hi[ua] : lo[ua]);
+      p[va] = base[va] + (cv ? hi[va] : lo[va]);
+      let tx = p[tu] === base[tu] + hi[tu] ? 1 : 0;
+      let ty = p[tv] === base[tv] + hi[tv] ? 1 : 0;
+      if (turn && dir === 2) {
+        // The corner from the middle (±½ on x and z), onto the texture's right and up: up (v,
+        // row 0 of the painted image) along the facing, right a quarter turn from it.
+        const cx = tx - 0.5;
+        const cz = ty - 0.5;
+        const [fx, fz] = turn;
+        tx = Math.round(0.5 + cx * fz - cz * fx);
+        ty = Math.round(0.5 + cx * fx + cz * fz);
+      }
+      opaque.vertex(p[0], p[1], p[2], shade, sun, glow, tx, ty, layer);
+    }
+    opaque.quad();
+    quads++;
+  }
+  return quads;
 }
 
 /** A torch's box within its block: 2 × 10 × 2 sixteenths, standing in the middle of the floor. */

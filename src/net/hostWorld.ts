@@ -44,8 +44,16 @@ export function editAllowed(who: PlayerState | undefined, everyone: Iterable<Pla
   return true;
 }
 
-/** A block a player can set: air (breaking), one from the picker, or a torch (on a floor or a wall). */
-export const settable = (block: number): boolean => block === Block.Air || BLOCKS[block]?.pickable === true || (BLOCKS[block] !== undefined && isTorch(block as Block));
+/**
+ * A block a player can set: air (breaking), one from the picker, a torch (on a floor or a wall), or
+ * a logic block as placed or used (a gate's facing, a switch flipped), but not wire with power in it
+ * (that is the signals' to set).
+ */
+export const settable = (block: number): boolean =>
+  block === Block.Air ||
+  BLOCKS[block]?.pickable === true ||
+  (BLOCKS[block] !== undefined && isTorch(block as Block)) ||
+  (block > Block.Wire + 15 && block < BLOCKS.length);
 
 export function hostWorld(world: World, saver: WorldSaver, game: HostGame): HostWorld {
   return {

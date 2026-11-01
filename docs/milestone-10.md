@@ -1,6 +1,8 @@
 # Milestone 10: logic blocks
 
-**Plan, to check with you.**
+**Plan approved (2026-11-01)** as proposed: the seven blocks and their names, 10 ticks a second and
+signals 15 blocks long, wires flat on one level, only lamps giving light, delays set by clicking
+(1–4 ticks), and a right click to use (Shift and right click to place against).
 
 **Goal.** Blocks that carry a signal, so players can build machines:
 - a switch that lights a lamp across the room;
@@ -148,3 +150,69 @@ All the moving parts are copper, to go with the copper ore already in the ground
 - **Wires don't give light;** only lamps do (light changes cost the most)?
 - **Delays set by clicking,** 1–4 ticks?
 - **Using with a right click,** Shift and right click to place against a usable block?
+
+## Step 1: the blocks — built (2026-11-01)
+
+**What changed:**
+- **63 block ids, 35–97** (`world/blocks.ts`):
+  - copper wire by power 0–15;
+  - switch and button, off and on;
+  - signal lamp, dark and lit (light 15);
+  - charged block;
+  - inverters by facing, off and on;
+  - delays by facing, setting 1–4, off and on.
+
+  Helpers turn them into ids and back: `wire`, `wirePower`, `inverter`, `delay`, `gateOf`.
+- **The picker offers the seven blocks,** each at its first state.
+- **Thin blocks** (wire, switch, button, gates) can be walked through, break in a click (0.05 s),
+  and stand on the block below. Breaking that block takes them with it, as it does torches
+  (`torchSupport`).
+- **21 textures painted at startup** (`world/textures.ts`):
+  - copper plate;
+  - wire off and on, a copper cross on a dark board;
+  - the switch's handle with a red knob, lit when on;
+  - the lamp's dark panes and lit panes in a copper frame;
+  - the charged block's bright core;
+  - the gates' plates with an arrow, the inverter's with a bar, the delays' with 1–4 dots, all lit
+    when on;
+  - flat icons for the wire, switch and button.
+- **Meshing** (`mesh/mesher.ts`, `logicShape` and `box`): boxes with the whole texture across each
+  face, as the torch has, lit flat by the block's own light.
+  - Wire is a 1/16 sheet.
+  - A switch is a base, with its handle on the left when off and the right when on.
+  - A button is a small square, flatter while pressed.
+  - A gate is a 1/8 plate. Its top's texture coordinates are turned so the painted arrow points the
+    way the gate faces.
+- **Placing** (`game.ts`, `place`, and `logicPlacement`): thin logic blocks only on the top of a
+  solid block, into air. A gate faces the way the player looks (`facingFromYaw`).
+- **Using:** a right click on a switch flips it, on a button presses it, and on a delay sets it to
+  the next delay round (1, 2, 3, 4, 1); Shift and right click places against them instead
+  (`useBlock`). With no signals yet, nothing else happens.
+- **A guest may set** any logic block as placed or used, but not powered wire, which is for the
+  signals to set (`settable`). Step 4 replaces clicks by guests with a `use` message.
+
+**Looked at in Chrome:**
+- The seven blocks were picked into the hotbar by script (their icons: the wire's cross, the switch,
+  the button, the lamp, the charged block, the gates' arrows) and placed on the grass by the spawn.
+- **Wire:** a dark sheet with a copper cross. **Button:** a small copper square. **Switch:** a
+  copper base with a dark handle and red knob.
+- **Lamp:** dark panes in copper. **Charged block:** orange with a bright core.
+- **Gates:** their arrows point the way they were placed.
+- Right-clicking a switch moved its handle across.
+- The first try placed only four of the seven: the script's small turns aimed at blocks already
+  placed, and a thin block can't stand on a thin one (by design). Stepping sideways between
+  placements put all seven down.
+
+**Tests (10 new, 334 in all):**
+- The ids and their helpers both ways.
+- The picker offers exactly the seven, by name.
+- Thin blocks can be walked through and stand on the block below; the lit lamp gives light 15.
+- Placing faces the way the player looks, and only on tops.
+- Using flips, presses, and cycles the delay keeping its facing and state; nothing else is used.
+- Breaking a block takes the wire and the gate on it.
+- What a guest may set.
+- **Drawing:**
+  - wire 1/16 high, in its texture by power;
+  - the switch's handle on either side;
+  - a pressed button lower;
+  - each of the four facings' arrow pointing its way.

@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 10 (logic blocks) in progress, plan approved (`docs/milestone-10.md`).
 Milestones 1–9 built (`docs/milestone-1.md` to `docs/milestone-9.md`), waiting for playtests
 (Milestone 9, multiplayer over PeerJS: a world opened to up to three friends from the pause menu
 with a four-letter code, joined from the world list; the host's browser owns the world, guests
@@ -119,8 +120,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
-  water levels 1–7 and falling water are ids 27–34, never picked), textures and sound per face, the default
-  hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport`),
+  water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id:
+  `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
+  `useBlock`, `isThinLogic`), textures and sound per face, the default
+  hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches and
+  thin logic blocks)),
   `torches.ts` (`torchesHeldBy`: the torches a block holds up), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
@@ -158,6 +162,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
   `faceStarts`: quads by face direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then torches),
   `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes,
+  thin logic blocks as boxes (a gate's top turned to its facing),
   flowing water block by block at its depth, sides between waters only above the shallower; opaque, cutout (leaves) and transparent passes;
   `flatFaces` for far chunks), `lod.ts` (far chunks: the padded input coarsened in place into
   cells of 2³ or 4³ blocks, water kept exact, trunks kept, walls on seams between levels), `culled.ts` (the

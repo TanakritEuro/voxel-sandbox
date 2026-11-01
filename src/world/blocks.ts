@@ -44,6 +44,23 @@ export enum Block {
   WaterFlow6 = 32,
   WaterFlow7 = 33,
   WaterFalling = 34,
+  /**
+   * Logic (Milestone 10). Copper wire by its power, 0–15 (35–50); the picker offers it at 0
+   * (`wire`, `wirePower`).
+   */
+  Wire = 35,
+  /** Switches and buttons, off and on; signal lamps, dark and lit; the charged block (always on). */
+  Switch = 51,
+  SwitchOn = 52,
+  Button = 53,
+  ButtonOn = 54,
+  SignalLamp = 55,
+  SignalLampOn = 56,
+  ChargedBlock = 57,
+  /** Inverters by facing (`FACINGS`), off and on (58–65): `inverter`, `gateOf`. */
+  Inverter = 58,
+  /** Delays by facing and setting (1–4 ticks), off and on (66–97): `delay`, `gateOf`. */
+  Delay = 66,
 }
 
 type RGB = [number, number, number];
@@ -61,9 +78,10 @@ export interface BlockInfo {
   targetable: boolean;
   /**
    * A full cube, or a torch: a small stick standing on the block below, or leaning out from the
-   * wall beside it (`wall`), never merged.
+   * wall beside it (`wall`), never merged. Or a thin logic block standing on the block below:
+   * wire (a 1/16 sheet), a switch, a button, or a gate's plate (1/8).
    */
-  shape: 'cube' | 'torch';
+  shape: 'cube' | 'torch' | 'wire' | 'switch' | 'button' | 'plate';
   /** A wall torch's wall: the horizontal step from it to the block it hangs on. */
   wall?: { x: number; z: number };
   /** Offered by the block picker (wall torches aren't: they are the torch, placed on a wall). */
@@ -119,6 +137,23 @@ const solid = (name: string, hardness: number, textures: BlockInfo['textures'], 
   side: hex(side),
   bottom: hex(bottom),
 });
+
+/** A thin logic block (wire, switch, button, gate): walked through, broken in a click, standing on the block below. */
+const thin = (name: string, shape: BlockInfo['shape'], textures: BlockInfo['textures'], colour: number, pickable: boolean): Omit<BlockInfo, 'sound'> => ({
+  ...solid(name, 0.05, textures, colour),
+  opaque: false,
+  passable: true,
+  shape,
+  pickable,
+});
+
+/** Gates' facings: the way a gate passes its signal on (+x, -x, +z, -z). */
+export const FACINGS: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
 
 /** Water: a source (the sea, lakes, water placed), and what flowing and falling water copy. */
 const WATER: Omit<BlockInfo, 'sound'> = {
@@ -182,6 +217,31 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   })),
   ...[1, 2, 3, 4, 5, 6, 7].map((level) => ({ ...WATER, pickable: false, liquidHeight: level / 8 })),
   { ...WATER, pickable: false },
+  // Logic. Wire by power (its sides and top the same sheet).
+  ...Array.from({ length: 16 }, (_, power) => ({
+    ...thin('Copper wire', 'wire', faces(power ? 'wire_on' : 'wire_off'), power ? 0xe8893a : 0x8a5a32, power === 0),
+    icon: 'wire_item' as const,
+  })),
+  // A switch: its base (top) and handle (side) textures.
+  { ...thin('Switch', 'switch', faces('copper_plate', 'switch_handle'), 0xb87333, true), icon: 'switch_item' as const },
+  { ...thin('Switch', 'switch', faces('copper_plate', 'switch_handle_on'), 0xb87333, false), icon: 'switch_item' as const },
+  { ...thin('Button', 'button', faces('copper_plate'), 0xb87333, true), icon: 'button_item' as const },
+  { ...thin('Button', 'button', faces('copper_plate'), 0xb87333, false), icon: 'button_item' as const },
+  { ...solid('Signal lamp', 0.6, faces('signal_lamp'), 0x6a5a48), pickable: true },
+  { ...solid('Signal lamp', 0.6, faces('signal_lamp_on'), 0xffc070), pickable: false, light: 15 },
+  solid('Charged block', 1.5, faces('charged'), 0xd0703a),
+  // Gates: their tops by state (the plate's edges copper), each facing off and on.
+  ...FACINGS.flatMap((_, facing) =>
+    [false, true].map((on) => ({ ...thin('Inverter', 'plate', faces(on ? 'inverter_on' : 'inverter', 'copper_plate'), 0xb87333, facing === 0 && !on), icon: 'inverter' as const })),
+  ),
+  ...FACINGS.flatMap((_, facing) =>
+    ([1, 2, 3, 4] as const).flatMap((setting) =>
+      [false, true].map((on) => ({
+        ...thin('Delay', 'plate', faces(`delay_${setting}${on ? '_on' : ''}` as TextureName, 'copper_plate'), 0xb87333, facing === 0 && setting === 1 && !on),
+        icon: 'delay_1' as const,
+      })),
+    ),
+  ),
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
@@ -214,6 +274,12 @@ const SOUNDS: Partial<Record<Block, BlockSound>> = {
   [Block.WaterFlow6]: 'water',
   [Block.WaterFlow7]: 'water',
   [Block.WaterFalling]: 'water',
+  [Block.Switch]: 'wood',
+  [Block.SwitchOn]: 'wood',
+  [Block.Button]: 'wood',
+  [Block.ButtonOn]: 'wood',
+  [Block.SignalLamp]: 'glass',
+  [Block.SignalLampOn]: 'glass',
 };
 
 export const BLOCKS: readonly BlockInfo[] = TABLE.map((info, b) => ({ ...info, sound: SOUNDS[b as Block] ?? 'stone' }));
@@ -231,15 +297,93 @@ export function torchFor(nx: number, ny: number, nz: number): Block | null {
   return nx < 0 ? Block.WallTorchPosX : nx > 0 ? Block.WallTorchNegX : nz < 0 ? Block.WallTorchPosZ : Block.WallTorchNegZ;
 }
 
-/** For a torch, the step to the block holding it up (below, or its wall); null for other blocks. */
+/**
+ * For a torch, the step to the block holding it up (below, or its wall); for a thin logic block,
+ * the block below; null for other blocks.
+ */
 export function torchSupport(block: Block): [number, number, number] | null {
   const info = BLOCKS[block];
-  if (info.shape !== 'torch') return null;
+  if (info.shape === 'cube') return null;
   return info.wall ? [info.wall.x, 0, info.wall.z] : [0, -1, 0];
 }
 
 /** Is `block` a torch, on a floor or a wall? */
 export const isTorch = (block: Block): boolean => BLOCKS[block].shape === 'torch';
+
+// --- Logic blocks ----------------------------------------------------------------------------
+
+/** Copper wire at `power` (0–15). */
+export const wire = (power: number): Block => (Block.Wire + power) as Block;
+
+/** A wire's power (0–15), or -1 if `block` isn't wire. */
+export const wirePower = (block: Block): number => (block >= Block.Wire && block <= Block.Wire + 15 ? block - Block.Wire : -1);
+
+/** An inverter facing `facing` (an index into `FACINGS`), off or on. */
+export const inverter = (facing: number, on: boolean): Block => (Block.Inverter + facing * 2 + (on ? 1 : 0)) as Block;
+
+/** A delay facing `facing`, set to `setting` ticks (1–4), off or on. */
+export const delay = (facing: number, setting: number, on: boolean): Block => (Block.Delay + (facing * 4 + setting - 1) * 2 + (on ? 1 : 0)) as Block;
+
+/** A gate: which, the way it faces (an index into `FACINGS`), on or off, and a delay's setting (1 for an inverter). */
+export interface Gate {
+  kind: 'inverter' | 'delay';
+  facing: number;
+  on: boolean;
+  setting: number;
+}
+
+/** What gate `block` is, or null if it isn't one. */
+export function gateOf(block: Block): Gate | null {
+  if (block >= Block.Inverter && block < Block.Delay) {
+    const n = block - Block.Inverter;
+    return { kind: 'inverter', facing: n >> 1, on: (n & 1) === 1, setting: 1 };
+  }
+  if (block >= Block.Delay && block < Block.Delay + 32) {
+    const n = block - Block.Delay;
+    return { kind: 'delay', facing: n >> 3, on: (n & 1) === 1, setting: ((n >> 1) & 3) + 1 };
+  }
+  return null;
+}
+
+/** The facing (an index into `FACINGS`) nearest the way a player looking along `yaw` faces. */
+export function facingFromYaw(yaw: number): number {
+  const fx = -Math.sin(yaw);
+  const fz = -Math.cos(yaw);
+  return Math.abs(fx) >= Math.abs(fz) ? (fx > 0 ? 0 : 1) : fz > 0 ? 2 : 3;
+}
+
+/** Is `block` a thin logic block, standing on the block below it? */
+export const isThinLogic = (block: Block): boolean => {
+  const s = BLOCKS[block].shape;
+  return s === 'wire' || s === 'switch' || s === 'button' || s === 'plate';
+};
+
+/**
+ * The block to place for `block` from the hotbar against a face whose normal is (nx, ny, nz), by a
+ * player looking along `yaw`: thin logic blocks only on a top, a gate facing the way the player
+ * looks; null where it can't go. Anything else as it is.
+ */
+export function logicPlacement(block: Block, ny: number, yaw: number): Block | null {
+  if (!isThinLogic(block)) return block;
+  if (ny <= 0) return null;
+  const gate = gateOf(block);
+  if (!gate) return block;
+  const facing = facingFromYaw(yaw);
+  return gate.kind === 'inverter' ? inverter(facing, false) : delay(facing, 1, false);
+}
+
+/**
+ * What a right click on `block` makes of it: a switch flipped, a button pressed (a pressed one
+ * stays as it is), a delay's setting the next one round; null if it isn't something to use.
+ */
+export function useBlock(block: Block): Block | null {
+  if (block === Block.Switch) return Block.SwitchOn;
+  if (block === Block.SwitchOn) return Block.Switch;
+  if (block === Block.Button || block === Block.ButtonOn) return Block.ButtonOn;
+  const gate = gateOf(block);
+  if (gate?.kind === 'delay') return delay(gate.facing, (gate.setting % 4) + 1, gate.on);
+  return null;
+}
 
 /** The hotbar a new world starts with (keys 1–9); the picker changes it, per world. */
 export const HOTBAR: readonly Block[] = [

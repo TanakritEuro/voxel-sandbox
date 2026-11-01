@@ -45,7 +45,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { Block, BLOCKS, hotbarFrom, isTorch, torchFor } from './world/blocks';
+import { Block, BLOCKS, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
@@ -633,22 +633,40 @@ function editing(dt: number): void {
     for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) edit(x, y, z, Block.Air);
   }
   if (input.take('Mouse2') && target) {
-    const x = target.x + target.nx;
-    const y = target.y + target.ny;
-    const z = target.z + target.nz;
-    // A torch on the face clicked: on top of a solid block, or on its side, in air (not under it).
-    const torch = isTorch(hotbar[selected]) ? torchFor(target.nx, target.ny, target.nz) : null;
-    const block = torch ?? hotbar[selected];
-    const torchFits = torch !== null && BLOCKS[world.getBlock(target.x, target.y, target.z)].opaque && world.getBlock(x, y, z) === Block.Air;
-    // Not inside the player (water and other passable blocks can go there).
-    if (isTorch(hotbar[selected]) ? torchFits : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) {
-      edit(x, y, z, block);
-      sound.play({ name: 'place', material: BLOCKS[block].sound, gain: 1 });
+    // A switch, button or delay clicked is used (flipped, pressed, set to the next delay), not
+    // built against; with Shift held it's built against as usual.
+    const used = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight') ? null : useBlock(target.block);
+    if (used !== null) {
+      if (used !== target.block) edit(target.x, target.y, target.z, used);
+      sound.play({ name: 'place', material: BLOCKS[target.block].sound, gain: 0.6 });
       swing();
-    }
+    } else place(target);
   }
   cracks.show(mining.target, mining.stage);
 }
+
+/**
+ * The selected block put against the face looked at: a torch on a top or a side, a thin logic block
+ * on a top (a gate facing the way the player looks), both in air on a solid block; anything else
+ * not inside the player (water and other passable blocks can go there).
+ */
+function place(target: RayHit): void {
+  const x = target.x + target.nx;
+  const y = target.y + target.ny;
+  const z = target.z + target.nz;
+  const selectedBlock = hotbar[selected];
+  const block = isTorch(selectedBlock) ? torchFor(target.nx, target.ny, target.nz) : logicPlacement(selectedBlock, target.ny, input.yaw);
+  if (block === null) return;
+  const standing = isTorch(selectedBlock) || isThinLogic(selectedBlock);
+  const fits = standing
+    ? BLOCKS[world.getBlock(target.x, target.y, target.z)].opaque && world.getBlock(x, y, z) === Block.Air
+    : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z);
+  if (!fits) return;
+  edit(x, y, z, block);
+  sound.play({ name: 'place', material: BLOCKS[block].sound, gain: 1 });
+  swing();
+}
+
 window.addEventListener('keydown', (e) => {
   // M mutes and unmutes (a setting, so it's remembered).
   if (e.code === 'KeyM' && input.locked) {

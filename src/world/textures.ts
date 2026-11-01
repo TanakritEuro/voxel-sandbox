@@ -39,6 +39,28 @@ export const TEXTURE_NAMES = [
   'torch_top',
   'torch_item',
   'lamp',
+  // Logic (Milestone 10).
+  'copper_plate',
+  'wire_off',
+  'wire_on',
+  'wire_item',
+  'switch_handle',
+  'switch_handle_on',
+  'switch_item',
+  'button_item',
+  'signal_lamp',
+  'signal_lamp_on',
+  'charged',
+  'inverter',
+  'inverter_on',
+  'delay_1',
+  'delay_2',
+  'delay_3',
+  'delay_4',
+  'delay_1_on',
+  'delay_2_on',
+  'delay_3_on',
+  'delay_4_on',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -95,6 +117,41 @@ const SANDSTONE = hex(0xd3bf86);
 const FLAME = hex(0xffc24a);
 const FLAME_CORE = hex(0xfff2b0);
 const STICK = hex(0x7a5532);
+const COPPER = hex(0xb87333);
+const COPPER_DARK = hex(0x6e3f1c);
+const BOARD = hex(0x3a2c24);
+const LIT = hex(0xffa848);
+const LIT_CORE = hex(0xfff0c0);
+
+/** A gate's plate: copper with a darker rim, an arrow up the middle (towards row 0: the way the gate faces), lit when on. */
+function gatePlate(c: Canvas, on: boolean): void {
+  for (let y = 0; y < TEXTURE_SIZE; y++)
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      const rim = x === 0 || y === 0 || x === TEXTURE_SIZE - 1 || y === TEXTURE_SIZE - 1;
+      c.set(x, y, rim ? COPPER_DARK : COPPER, 1 + (c.rng() - 0.5) * 0.12);
+    }
+  const ink = on ? LIT : BOARD;
+  for (let y = 3; y < 13; y++) for (const x of [7, 8]) c.set(x, y, ink);
+  for (let k = 1; k <= 3; k++) for (const x of [7 - k, 8 + k]) c.set(x, 2 + k, ink);
+}
+
+/** A delay: the gate's arrow and `setting` dots beside it. */
+function delayPlate(c: Canvas, setting: number, on: boolean): void {
+  gatePlate(c, on);
+  for (let n = 0; n < setting; n++) for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) c.set(11 + dx, 11 - n * 3 + dy, on ? LIT_CORE : COPPER_DARK);
+}
+
+/** A copper trace board: dark, a cross of copper through the middle (wire joins every way). */
+function traces(c: Canvas, on: boolean): void {
+  c.speckle(on ? hex(0x5a3a28) : BOARD, 0.15);
+  const line = on ? LIT : COPPER;
+  for (let i = 0; i < TEXTURE_SIZE; i++)
+    for (const j of [7, 8]) {
+      c.set(i, j, line, 1 + (c.rng() - 0.5) * 0.1);
+      c.set(j, i, line, 1 + (c.rng() - 0.5) * 0.1);
+    }
+  if (on) for (const [x, y] of [[7, 7], [8, 7], [7, 8], [8, 8]]) c.set(x, y, LIT_CORE);
+}
 
 const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   stone(c) {
@@ -296,6 +353,87 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
         }
       }
   },
+  copper_plate(c) {
+    c.speckle(COPPER, 0.14);
+    c.spots(5, COPPER_DARK, 0.1);
+  },
+  wire_off(c) {
+    traces(c, false);
+  },
+  wire_on(c) {
+    traces(c, true);
+  },
+  wire_item(c) {
+    // The picker's icon: a cross of copper on nothing.
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, COPPER, 1, 0);
+    for (let i = 2; i < 14; i++) for (const j of [7, 8]) {
+      c.set(i, j, COPPER);
+      c.set(j, i, COPPER, 0.85);
+    }
+  },
+  switch_handle(c) {
+    // A dark handle with a red knob at the top (off).
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, y < 4 ? hex(0xb03a2e) : hex(0x3a3634), 1 + (c.rng() - 0.5) * 0.1);
+  },
+  switch_handle_on(c) {
+    // The same with a lit knob (on).
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, y < 4 ? LIT : hex(0x3a3634), 1 + (c.rng() - 0.5) * 0.1);
+  },
+  switch_item(c) {
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, COPPER, 1, 0);
+    for (let y = 11; y < 15; y++) for (let x = 3; x < 13; x++) c.set(x, y, COPPER, y === 11 ? 1.1 : 0.9);
+    for (let k = 0; k < 8; k++) for (const w of [0, 1]) c.set(6 + Math.floor(k / 2) + w, 10 - k, hex(0x3a3634));
+    for (const [x, y] of [[10, 2], [11, 2], [10, 3], [11, 3]]) c.set(x, y, hex(0xb03a2e));
+  },
+  button_item(c) {
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, COPPER, 1, 0);
+    for (let y = 6; y < 11; y++) for (let x = 4; x < 12; x++) c.set(x, y, COPPER, y === 6 ? 1.15 : 0.95);
+  },
+  signal_lamp(c) {
+    // Dark glass panes in a copper frame.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const frame = x === 0 || y === 0 || x === TEXTURE_SIZE - 1 || y === TEXTURE_SIZE - 1 || x === 7 || x === 8 || y === 7 || y === 8;
+        c.set(x, y, frame ? COPPER_DARK : hex(0x4a3a30), 1 + (c.rng() - 0.5) * 0.12);
+      }
+  },
+  signal_lamp_on(c) {
+    // Lit: the panes glowing, brightest in their middles.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const frame = x === 0 || y === 0 || x === TEXTURE_SIZE - 1 || y === TEXTURE_SIZE - 1 || x === 7 || x === 8 || y === 7 || y === 8;
+        if (frame) c.set(x, y, COPPER, 1 + (c.rng() - 0.5) * 0.1);
+        else {
+          const px = x < 7 ? x - 3.5 : x - 11.5;
+          const py = y < 7 ? y - 3.5 : y - 11.5;
+          c.set(x, y, Math.hypot(px, py) < 1.6 ? LIT_CORE : LIT, 1.05 - Math.hypot(px, py) * 0.05);
+        }
+      }
+  },
+  charged(c) {
+    // Copper round a bright core.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+        c.set(x, y, d < 3 ? LIT_CORE : d < 5 ? LIT : COPPER, 1 + (c.rng() - 0.5) * 0.12);
+      }
+  },
+  inverter(c) {
+    gatePlate(c, false);
+    for (let x = 4; x < 12; x++) c.set(x, 9, BOARD);
+  },
+  inverter_on(c) {
+    gatePlate(c, true);
+    for (let x = 4; x < 12; x++) c.set(x, 9, LIT);
+  },
+  delay_1: (c) => delayPlate(c, 1, false),
+  delay_2: (c) => delayPlate(c, 2, false),
+  delay_3: (c) => delayPlate(c, 3, false),
+  delay_4: (c) => delayPlate(c, 4, false),
+  delay_1_on: (c) => delayPlate(c, 1, true),
+  delay_2_on: (c) => delayPlate(c, 2, true),
+  delay_3_on: (c) => delayPlate(c, 3, true),
+  delay_4_on: (c) => delayPlate(c, 4, true),
   glass(c) {
     // Nearly clear, a light frame and a few highlights.
     const pane = hex(0xcfe8f2);
