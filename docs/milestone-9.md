@@ -1,6 +1,9 @@
 # Milestone 9: multiplayer
 
-**Plan, to check with you.**
+**Plan approved (2026-11-01)** as proposed: PeerJS with the host's browser owning the world, up to
+four players, guests' edits saved in the host's world (guests keep nothing and start by the host),
+no one taking over when the host leaves, no chat for now, and the host's game not pausing while
+open to friends.
 
 **Goal.** Play a world together:
 - you open your world to friends from the pause menu and get a four-letter code;
@@ -183,3 +186,44 @@ session code would move into it, and the plan would need redoing.
 - **No host taking over:** when the host leaves, the game ends for everyone?
 - **Chat:** none now (easy to add later), or a short text chat (T)?
 - **The host's game doesn't pause** while open to friends?
+
+## Step 1: the link, the test network and the messages for joining — built (2026-11-01)
+
+**What changed:**
+- **`peerjs` 1.5.5,** the version the earlier games use.
+- **`net/link.ts`,** ported from the racing game.
+  - **A room now takes several guests.** Each guest's two connections (`events`, `frames`) make a
+    link of its own, handed to `room.onGuest`. A guest's link closing doesn't close the room, and
+    `room.close()` hangs up on them all.
+  - At most 8 links: the session will turn away a fourth guest politely, and this stops a flood.
+  - Heartbeats and the 6 s silence limit as before. The prefix is `voxel-sandbox-1-`.
+  - A guest that can't be reached is that guest's error, not the room's.
+- **`net/roomCode.ts`:** the four-character codes, apart from `link.ts` so tests can use them
+  without loading PeerJS.
+- **`net/loopback.ts`, `Network`:** as many linked pairs as wanted on one virtual clock.
+  - Delay with jitter. The reliable channel keeps its order; the unordered one may reorder.
+  - Messages arrive as structured clones.
+  - A cut line closes both its ends after the silence; other lines go on.
+  - `network.room()` gives a room that guests `join()`, as over PeerJS.
+- **`net/protocol.ts`:** the messages for joining, each checked on arrival.
+  - `hello` (version, name), `welcome` (your number, the seed, the time of day, who's in, where the
+    host stands, the edited columns), `reject`, `joined`, `left`, `ping` / `pong`, `bye`.
+  - `PROTOCOL` is 1, bumped with any change to messages or to world generation.
+  - `cleanName`: white space to single spaces, control and invisible characters out, at most 16
+    characters (by character, not code unit).
+- Nothing in the game uses them yet (step 5), so the build doesn't include PeerJS yet, and there was
+  nothing to look at in a browser.
+
+**Tests (9 new, 294 in all):**
+- **The network:**
+  - delivers after the delay, as copies, the reliable channel in order through jitter;
+  - may reorder the unordered channel;
+  - gives each guest of a room its own line, and closing the room hangs up on all of them;
+  - closes a cut line's ends after the silence, and only that line's;
+  - tells the other end when one hangs up.
+- **Room codes:** fresh ones read easily, typed ones are tidied, and wrong ones are turned away.
+- **Messages:**
+  - every message survives the network and checking;
+  - 24 kinds of junk are turned away (wrong types, a guest numbered 0 or 4, players repeated or
+    too many, a time of 1, odd or out-of-range columns, NaN, long reasons);
+  - names are tidied.

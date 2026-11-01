@@ -26,6 +26,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 9 (multiplayer over PeerJS, the host's browser owning the world) in progress, plan
+approved (`docs/milestone-9.md`).
 Milestones 1–8 built (`docs/milestone-1.md` to `docs/milestone-8.md`), waiting for playtests
 (Milestone 8, flowing water: a cellular automaton woken by edits, falling, spreading in eighths
 towards the nearest drop, new sources between two, drying up, ticked 4 times a second with one
@@ -198,6 +200,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   take a level of detail and seam sides),
   `jobs.ts` (what a worker does with a job; pure), `chunkWorker.ts` (worker entry),
   `pool.ts` (`WorkerPool`).
+- `src/net/` — `link.ts` (PeerJS rooms, ported from the racing game: a room takes several guests,
+  a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
+  `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
+  jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
+  arrival; `PROTOCOL`, bumped with any change to messages or world generation; `cleanName`).
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
   until taken, mouse look and pointer lock (raw input where the browser has it, else `SpikeFilter`
   drops Chrome's occasional huge moves).
