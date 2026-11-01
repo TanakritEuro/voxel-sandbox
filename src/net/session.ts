@@ -1,0 +1,385 @@
+// A game open to friends: the host's side (`HostSession`) and a guest's (`GuestSession`). Pure
+// apart from the links they're given (the clock is passed in), so tests run a host and its guests
+// over the test network (`loopback.ts`).
+//
+// The host owns the world. A guest generates the land itself from the seed and asks the host only
+// for edited chunks, as its loader comes to them (`RemoteSaves`: the loader's `ChunkSaves`). A
+// guest's edit shows on its screen at once and goes to the host as a request; the host checks it,
+// makes it, and sends it to every guest (the one who asked included), or tells that guest it was
+// refused and what the block is. Every guest makes the host's edits in the host's order, so all
+// end the same as the host.
+//
+// An edit can arrive for a column a guest hasn't got: it then marks the column as edited (so the
+// guest asks for it when it comes to load it) and keeps the block, the latest for each place, until
+// the column is added. A column being made while the edit arrived (asked for, or generating)
+// would miss it otherwise; for one the host's answer already had, making it again changes nothing.
+
+import type { ChunkSaves } from '../chunkLoader';
+import type { SavedChunk } from '../workers/protocol';
+import { toChunk } from '../world/coords';
+import type { Link, Room } from './link';
+import { type BlockChange, checkChunk, MAX_PLAYERS, type Message, packEdits, parseMessage, type PlayerInfo, PROTOCOL, unpackEdits } from './protocol';
+
+/** What the host's game gives its session. */
+export interface HostWorld {
+  seed: number;
+  /** Time of day now, 0–1. */
+  time(): number;
+  /** Where the host stands. */
+  position(): [number, number, number];
+  /** Columns with edited chunks, as (cx, cz) pairs one after another. */
+  editedColumns(): number[];
+  /** Column (cx, cz)'s edited chunks, run-length encoded. */
+  columnChunks(cx: number, cz: number): Promise<SavedChunk[]>;
+  /** Player `player` asks for a block: make the edit if it's allowed, and say whether it was. */
+  edit(player: number, x: number, y: number, z: number, block: number): boolean;
+  blockAt(x: number, y: number, z: number): number;
+}
+
+/** What a guest's game gives its session, once the world is made. */
+export interface GuestWorld {
+  /** Make blocks the host set (blocks, light, remeshing), in this order. */
+  apply(changes: BlockChange[]): void;
+  hasColumn(cx: number, cz: number): boolean;
+}
+
+export type Welcome = Extract<Message, { type: 'welcome' }>;
+
+/** How often a guest asks the host's time back (s), for the round trip. */
+const PING_EVERY = 2;
+/** Blocks a guest keeps for columns it hasn't got, at most; past that the oldest columns' go. */
+const MOST_KEPT = 200_000;
+
+const columnKey = (cx: number, cz: number) => `${cx},${cz}`;
+/** A whole ArrayBuffer holding just these bytes (a typed array may be a view into a bigger one). */
+const bufferOf = (bytes: Uint8Array): ArrayBuffer => bytes.slice().buffer;
+
+// --- The host ------------------------------------------------------------------------------
+
+export class HostSession {
+  /** Everyone in, the host first. */
+  readonly players: PlayerInfo[];
+  /** Something to tell the host's player (someone joined, left). */
+  onEvent: (text: string) => void = () => {};
+  private readonly guests = new Map<number, Link>();
+  private closed = false;
+
+  constructor(
+    private readonly room: Room,
+    private readonly world: HostWorld,
+    name: string,
+    private readonly now: () => number,
+  ) {
+    this.players = [{ id: 0, name }];
+    room.onGuest = (link) => this.greet(link);
+  }
+
+  get code(): string {
+    return this.room.code;
+  }
+
+  /** The host's own blocks set (its edits, flowing water): to every guest. */
+  shareEdits(changes: readonly BlockChange[], from = 0, seq = 0): void {
+    if (!changes.length || !this.guests.size) return;
+    const data = packEdits(changes);
+    for (const link of this.guests.values()) link.send({ type: 'edits', from, seq, data });
+  }
+
+  /** Close the world to friends: tell them why, and hang up. */
+  close(reason = 'The host closed the world.'): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const link of this.guests.values()) link.send({ type: 'bye', reason });
+    this.guests.clear();
+    this.players.splice(1);
+    this.room.close();
+  }
+
+  /** A guest's link: nothing but a hello until it's in. */
+  private greet(link: Link): void {
+    link.onClose = () => {};
+    link.onMessage = (raw) => {
+      const m = parseMessage(raw);
+      if (m?.type !== 'hello') return;
+      if (m.version !== PROTOCOL) return this.turnAway(link, 'This world is on another version of the game. Reload the page and try again.');
+      let id = 1;
+      while (id < MAX_PLAYERS && this.guests.has(id)) id++;
+      if (id >= MAX_PLAYERS) return this.turnAway(link, `This world is full (${MAX_PLAYERS} players).`);
+      const player = { id, name: m.name };
+      this.guests.set(id, link);
+      this.players.push(player);
+      this.players.sort((a, b) => a.id - b.id);
+      link.onMessage = (raw2) => this.heard(id, raw2);
+      link.onClose = (reason) => this.leave(id, reason);
+      link.send({
+        type: 'welcome',
+        you: id,
+        seed: this.world.seed,
+        time: this.world.time(),
+        players: this.players,
+        at: this.world.position(),
+        edited: this.world.editedColumns(),
+      });
+      for (const [other, l] of this.guests) if (other !== id) l.send({ type: 'joined', player });
+      this.onEvent(`${m.name} joined.`);
+    };
+  }
+
+  private turnAway(link: Link, reason: string): void {
+    link.send({ type: 'reject', reason });
+    link.close();
+  }
+
+  private heard(id: number, raw: unknown): void {
+    const m = parseMessage(raw);
+    const link = this.guests.get(id);
+    if (!m || !link) return;
+    switch (m.type) {
+      case 'ask':
+        void this.world.columnChunks(m.cx, m.cz).then(
+          (chunks) => link.send({ type: 'column', cx: m.cx, cz: m.cz, chunks: chunks.map((c) => ({ cy: c.cy, data: bufferOf(c.data) })) }),
+          // Couldn't be read: an answer all the same, so the guest's loader isn't left waiting.
+          () => link.send({ type: 'column', cx: m.cx, cz: m.cz, chunks: [] }),
+        );
+        break;
+      case 'edit':
+        if (this.world.edit(id, m.x, m.y, m.z, m.block)) this.shareEdits([[m.x, m.y, m.z, m.block]], id, m.seq);
+        else link.send({ type: 'refused', seq: m.seq, x: m.x, y: m.y, z: m.z, block: this.world.blockAt(m.x, m.y, m.z) });
+        break;
+      case 'ping':
+        link.send({ type: 'pong', t: m.t, at: this.now() });
+        break;
+      case 'bye':
+        link.close();
+        this.leave(id, m.reason);
+        break;
+    }
+  }
+
+  private leave(id: number, reason: string): void {
+    if (!this.guests.delete(id)) return;
+    const i = this.players.findIndex((p) => p.id === id);
+    const name = i >= 0 ? this.players[i].name : 'Someone';
+    if (i >= 0) this.players.splice(i, 1);
+    for (const l of this.guests.values()) l.send({ type: 'left', id, reason });
+    this.onEvent(`${name} left.`);
+  }
+}
+
+// --- A guest -------------------------------------------------------------------------------
+
+/** The loader's `ChunkSaves` on a guest: edited chunks come from the host. */
+export class RemoteSaves implements ChunkSaves {
+  /** Columns with edited chunks (from the welcome, and from edits since). */
+  readonly edited = new Set<string>();
+  private readonly waiting = new Map<string, ((chunks: SavedChunk[]) => void)[]>();
+
+  constructor(private readonly ask: (cx: number, cz: number) => void) {}
+
+  has(cx: number, cz: number): boolean {
+    return this.edited.has(columnKey(cx, cz));
+  }
+
+  load(cx: number, cz: number): Promise<SavedChunk[]> {
+    const key = columnKey(cx, cz);
+    return new Promise((resolve) => {
+      const list = this.waiting.get(key);
+      if (list) list.push(resolve);
+      else {
+        this.waiting.set(key, [resolve]);
+        this.ask(cx, cz);
+      }
+    });
+  }
+
+  /** A guest saves nothing: its edits are the host's to keep. */
+  unloading(): void {}
+
+  /** The host's answer for a column: each chunk checked, any that isn't a chunk left out. */
+  answered(cx: number, cz: number, chunks: { cy: number; data: ArrayBuffer }[]): void {
+    const key = columnKey(cx, cz);
+    const list = this.waiting.get(key);
+    if (!list) return;
+    this.waiting.delete(key);
+    const saved = chunks.flatMap((c) => {
+      const data = new Uint8Array(c.data);
+      return checkChunk(data) ? [{ cy: c.cy, data }] : [];
+    });
+    for (const resolve of list) resolve(saved);
+  }
+
+  /** The host is gone: nothing more is coming, so let the loader generate what it was waiting for. */
+  giveUp(): void {
+    for (const list of this.waiting.values()) for (const resolve of list) resolve([]);
+    this.waiting.clear();
+  }
+}
+
+export class GuestSession {
+  readonly saves: RemoteSaves;
+  /** The host's answer: in, with the world's seed and the rest, or why not. */
+  readonly welcome: Promise<Welcome>;
+  /** Everyone in, the host first (from the welcome on). */
+  players: PlayerInfo[] = [];
+  you = -1;
+  /** The last round trip to the host (s), and the host's clock less this one's (s). */
+  rtt = 0;
+  offset = 0;
+  /** Something to tell the player (someone joined, left). */
+  onEvent: (text: string) => void = () => {};
+  /** The game is over for this guest: the host left, refused, or the link was lost. */
+  onClose: (reason: string) => void = () => {};
+  private world: GuestWorld | null = null;
+  private seq = 0;
+  /** Edits sent and not yet answered: number → where. */
+  private readonly pending = new Map<number, [number, number, number]>();
+  /** Blocks for columns not here yet, the latest for each place: column → place → block. */
+  private readonly kept = new Map<string, Map<string, BlockChange>>();
+  private keptCount = 0;
+  private lastPing = Number.NEGATIVE_INFINITY;
+  private closed = false;
+
+  constructor(
+    private readonly link: Link,
+    name: string,
+    private readonly now: () => number,
+  ) {
+    this.saves = new RemoteSaves((cx, cz) => link.send({ type: 'ask', cx, cz }));
+    let answer: { resolve: (w: Welcome) => void; reject: (e: Error) => void } | null = null;
+    this.welcome = new Promise<Welcome>((resolve, reject) => (answer = { resolve, reject }));
+    link.onMessage = (raw) => {
+      const m = parseMessage(raw);
+      if (!m) return;
+      if (m.type === 'welcome' && this.you < 0) {
+        this.you = m.you;
+        this.players = m.players;
+        for (let i = 0; i < m.edited.length; i += 2) this.saves.edited.add(columnKey(m.edited[i], m.edited[i + 1]));
+        answer?.resolve(m);
+      } else if (m.type === 'reject') {
+        this.end(m.reason);
+        answer?.reject(new Error(m.reason));
+      } else this.heard(m);
+    };
+    link.onClose = (reason) => {
+      answer?.reject(new Error(reason));
+      this.end(reason);
+    };
+    link.send({ type: 'hello', version: PROTOCOL, name });
+  }
+
+  /** The world is made (from the welcome's seed): host edits are made in it from now on. */
+  attach(world: GuestWorld): void {
+    this.world = world;
+  }
+
+  /** Once a frame: the round trip now and then. */
+  update(): void {
+    const t = this.now();
+    if (this.closed || t - this.lastPing < PING_EVERY) return;
+    this.lastPing = t;
+    this.link.send({ type: 'ping', t });
+  }
+
+  /** This player set a block (it shows already): ask the host to make it. */
+  edit(x: number, y: number, z: number, block: number): void {
+    if (this.closed) return;
+    const seq = ++this.seq;
+    this.pending.set(seq, [x, y, z]);
+    this.link.send({ type: 'edit', seq, x, y, z, block });
+  }
+
+  /** Edits sent that the host hasn't answered yet. */
+  get unanswered(): number {
+    return this.pending.size;
+  }
+
+  /** Column (cx, cz) has been added to the world: make the host's edits that came for it meanwhile. */
+  columnAdded(cx: number, cz: number): void {
+    const key = columnKey(cx, cz);
+    const kept = this.kept.get(key);
+    if (!kept) return;
+    this.kept.delete(key);
+    this.keptCount -= kept.size;
+    this.world?.apply([...kept.values()]);
+  }
+
+  /** Leave the game. */
+  leave(reason = 'Left the game.'): void {
+    if (this.closed) return;
+    this.link.send({ type: 'bye', reason });
+    this.closed = true;
+    this.link.close();
+    this.saves.giveUp();
+  }
+
+  private heard(m: Message): void {
+    switch (m.type) {
+      case 'column':
+        this.saves.answered(m.cx, m.cz, m.chunks);
+        break;
+      case 'edits':
+        if (m.from === this.you && m.seq) this.pending.delete(m.seq);
+        this.made(unpackEdits(m.data) ?? []);
+        break;
+      case 'refused':
+        this.pending.delete(m.seq);
+        this.made([[m.x, m.y, m.z, m.block]]);
+        break;
+      case 'joined':
+        this.players = [...this.players.filter((p) => p.id !== m.player.id), m.player].sort((a, b) => a.id - b.id);
+        this.onEvent(`${m.player.name} joined.`);
+        break;
+      case 'left': {
+        const who = this.players.find((p) => p.id === m.id);
+        this.players = this.players.filter((p) => p.id !== m.id);
+        this.onEvent(`${who?.name ?? 'Someone'} left.`);
+        break;
+      }
+      case 'pong': {
+        const t = this.now();
+        this.rtt = t - m.t;
+        this.offset = m.at - (m.t + t) / 2;
+        break;
+      }
+      case 'bye':
+        this.end(m.reason);
+        break;
+    }
+  }
+
+  /** Blocks the host set: made now where the column is here, kept for later where it isn't. */
+  private made(changes: BlockChange[]): void {
+    const now: BlockChange[] = [];
+    for (const c of changes) {
+      const cx = toChunk(c[0]);
+      const cz = toChunk(c[2]);
+      const key = columnKey(cx, cz);
+      this.saves.edited.add(key);
+      if (this.world?.hasColumn(cx, cz)) {
+        now.push(c);
+        continue;
+      }
+      let kept = this.kept.get(key);
+      if (!kept) this.kept.set(key, (kept = new Map()));
+      const place = `${c[0]},${c[1]},${c[2]}`;
+      if (!kept.has(place)) this.keptCount++;
+      kept.delete(place); // to the end, as the newest
+      kept.set(place, c);
+    }
+    // Too many kept: the oldest columns' go (the host has them, should they be loaded later).
+    while (this.keptCount > MOST_KEPT) {
+      const [oldest, blocks] = this.kept.entries().next().value!;
+      this.kept.delete(oldest);
+      this.keptCount -= blocks.size;
+    }
+    if (now.length) this.world?.apply(now);
+  }
+
+  private end(reason: string): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.link.close();
+    this.saves.giveUp();
+    this.onClose(reason);
+  }
+}

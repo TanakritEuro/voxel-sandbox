@@ -6,6 +6,9 @@
 // generates the land itself from the seed, so both must make exactly the same land.
 // Mismatched versions are turned away.
 
+import { BLOCKS } from '../world/blocks';
+import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/coords';
+
 export const PROTOCOL = 1;
 
 /** Players in a game at most: the host and three guests. */
@@ -37,7 +40,73 @@ export type Message =
   | { type: 'ping'; t: number }
   | { type: 'pong'; t: number; at: number }
   /** Leaving, and why (shown to the others). */
-  | { type: 'bye'; reason: string };
+  | { type: 'bye'; reason: string }
+  /** Guest → host: the edited chunks of column (cx, cz), please (its loader is about to make it). */
+  | { type: 'ask'; cx: number; cz: number }
+  /** Host → guest: column (cx, cz)'s edited chunks, run-length encoded as saved (`save/rle.ts`). */
+  | { type: 'column'; cx: number; cz: number; chunks: { cy: number; data: ArrayBuffer }[] }
+  /** Guest → host: please set this block (numbered by the guest, so the answer can be matched). */
+  | { type: 'edit'; seq: number; x: number; y: number; z: number; block: number }
+  /**
+   * Host → guests: blocks set, packed by `packEdits`. `from` is the player whose edit it was (0 the
+   * host, also for flowing water) and `seq` their number for it (0 if none).
+   */
+  | { type: 'edits'; from: number; seq: number; data: ArrayBuffer }
+  /** Host → guest: your edit `seq` wasn't made; the block there is `block`. */
+  | { type: 'refused'; seq: number; x: number; y: number; z: number; block: number };
+
+/** A block set: where, and what. */
+export type BlockChange = [number, number, number, number];
+
+/** Blocks set, packed for the wire: x, y, z, block as 32-bit integers, 16 bytes a block. */
+export function packEdits(changes: readonly (readonly [number, number, number, number])[]): ArrayBuffer {
+  const out = new Int32Array(changes.length * 4);
+  changes.forEach((c, i) => out.set(c, i * 4));
+  return out.buffer;
+}
+
+/** What `packEdits` packed; null if it isn't blocks in the world. */
+export function unpackEdits(data: ArrayBuffer): BlockChange[] | null {
+  if (data.byteLength % 16 !== 0) return null;
+  const v = new Int32Array(data);
+  const out: BlockChange[] = [];
+  for (let i = 0; i < v.length; i += 4) {
+    if (!isBlockPlace(v[i], v[i + 1], v[i + 2]) || !isBlockId(v[i + 3])) return null;
+    out.push([v[i], v[i + 1], v[i + 2], v[i + 3]]);
+  }
+  return out;
+}
+
+/** A block's place: within ±2^20 blocks across, inside the world's height. */
+const isBlockPlace = (x: unknown, y: unknown, z: unknown) => isCount(x, -0x100000, 0x100000) && isCount(y, 0, WORLD_HEIGHT - 1) && isCount(z, -0x100000, 0x100000);
+const isBlockId = (b: unknown): b is number => isCount(b, 0, BLOCKS.length - 1);
+
+/**
+ * A chunk's run-length encoding, checked before it goes near a worker: it must decode to exactly a
+ * chunk of block ids that exist. Returns the decoded blocks, or null.
+ */
+export function checkChunk(data: Uint8Array): Uint8Array | null {
+  const blocks = new Uint8Array(CHUNK_VOLUME);
+  let i = 0;
+  let at = 0;
+  while (at < data.length) {
+    let run = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      if (at >= data.length || shift > 28) return null;
+      byte = data[at++];
+      run |= (byte & 0x7f) << shift;
+      shift += 7;
+    } while (byte & 0x80);
+    if (at >= data.length || run === 0 || i + run > CHUNK_VOLUME) return null;
+    const b = data[at++];
+    if (b >= BLOCKS.length) return null;
+    blocks.fill(b, i, i + run);
+    i += run;
+  }
+  return i === CHUNK_VOLUME ? blocks : null;
+}
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -100,6 +169,31 @@ export function parseMessage(raw: unknown): Message | null {
       return isNumber(raw.t) && isNumber(raw.at) ? { type: 'pong', t: raw.t, at: raw.at } : null;
     case 'bye':
       return isString(raw.reason) ? { type: 'bye', reason: raw.reason } : null;
+    case 'ask':
+      return isChunkCoord(raw.cx) && isChunkCoord(raw.cz) ? { type: 'ask', cx: raw.cx, cz: raw.cz } : null;
+    case 'column': {
+      if (!isChunkCoord(raw.cx) || !isChunkCoord(raw.cz) || !Array.isArray(raw.chunks) || raw.chunks.length > MAX_CHUNK_Y - MIN_CHUNK_Y + 1) return null;
+      const chunks: { cy: number; data: ArrayBuffer }[] = [];
+      for (const c of raw.chunks as unknown[]) {
+        // At worst a block a run, 2 bytes each (a few more for long runs' lengths).
+        if (!isObject(c) || !isCount(c.cy, MIN_CHUNK_Y, MAX_CHUNK_Y) || !(c.data instanceof ArrayBuffer) || c.data.byteLength > CHUNK_VOLUME * 2 + 16) return null;
+        if (chunks.some((d) => d.cy === c.cy)) return null;
+        chunks.push({ cy: c.cy, data: c.data });
+      }
+      return { type: 'column', cx: raw.cx, cz: raw.cz, chunks };
+    }
+    case 'edit':
+      return isCount(raw.seq, 1, 0x7fffffff) && isBlockPlace(raw.x, raw.y, raw.z) && isBlockId(raw.block)
+        ? { type: 'edit', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number, block: raw.block }
+        : null;
+    case 'edits':
+      return isCount(raw.from, 0, MAX_PLAYERS - 1) && isCount(raw.seq, 0, 0x7fffffff) && raw.data instanceof ArrayBuffer && raw.data.byteLength <= 16 * 65536 && unpackEdits(raw.data) !== null
+        ? { type: 'edits', from: raw.from, seq: raw.seq, data: raw.data }
+        : null;
+    case 'refused':
+      return isCount(raw.seq, 1, 0x7fffffff) && isBlockPlace(raw.x, raw.y, raw.z) && isBlockId(raw.block)
+        ? { type: 'refused', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number, block: raw.block }
+        : null;
     default:
       return null;
   }

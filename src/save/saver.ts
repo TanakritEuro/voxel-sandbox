@@ -46,6 +46,20 @@ export class WorldSaver {
     return this.columns.has(columnKey(cx, cz));
   }
 
+  /** The heights of column (cx, cz)'s chunks that are saved or edited and waiting to be. */
+  heights(cx: number, cz: number): number[] {
+    const out = new Set(this.columns.get(columnKey(cx, cz)) ?? []);
+    for (const c of this.dirty) if (c.cx === cx && c.cz === cz) out.add(c.cy);
+    return [...out].sort((a, b) => a - b);
+  }
+
+  /** Every column with chunks saved or edited and waiting to be, as (cx, cz) pairs one after another. */
+  editedColumns(): number[] {
+    const keys = new Set(this.columns.keys());
+    for (const c of this.dirty) keys.add(columnKey(c.cx, c.cz));
+    return [...keys].flatMap((k) => k.split(',').map(Number));
+  }
+
   /** The saved chunks of column (cx, cz), as stored (RLE), once every write before now is done. */
   async load(cx: number, cz: number): Promise<SavedChunk[]> {
     const heights = [...(this.columns.get(columnKey(cx, cz)) ?? [])];

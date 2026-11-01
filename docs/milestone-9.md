@@ -227,3 +227,68 @@ session code would move into it, and the plan would need redoing.
   - 24 kinds of junk are turned away (wrong types, a guest numbered 0 or 4, players repeated or
     too many, a time of 1, odd or out-of-range columns, NaN, long reasons);
   - names are tidied.
+
+## Step 2: joining, chunks and edits — built (2026-11-01)
+
+**What changed:**
+- **`net/session.ts`, `HostSession`:**
+  - **Greeting:** a guest's link hears nothing but a `hello` until it's in. Another version or a
+    full world (four players) is turned away with a reason.
+  - **The welcome:** the lowest free player number, the seed, the time of day, who's in, where the
+    host stands, and every column with edited chunks.
+  - **Joining and leaving:** the others are told. A guest leaving, or going quiet for 6 s, frees
+    its number.
+  - **Columns:** answers each `ask` with the column's edited chunks.
+  - **Edits:** checks each guest's edit through the game. Made, it goes to every guest; refused, the
+    asker hears what the block is.
+  - **`shareEdits`** sends the host's own blocks set (step 4 sends the water's the same way).
+  - **`close`** sends everyone home.
+- **`GuestSession`:**
+  - says hello, and `welcome` resolves with the host's answer (or rejects with why not);
+  - `edit` sends the player's edit, already shown, with a number;
+  - makes every block the host sets in the host's order, its own confirmed ones included;
+  - a refused edit is put back to the host's block;
+  - pings every 2 s for the round trip and the host's clock;
+  - `onClose` when the host leaves, refuses, or the line goes quiet.
+- **`RemoteSaves`:** the loader's `ChunkSaves` on a guest, so the loader needs no change.
+  - `has` answers from the edited columns (the welcome's, and every column a host edit has touched
+    since).
+  - `load` asks the host. Each chunk that comes back is checked (`checkChunk`: it must decode to
+    exactly a chunk of blocks that exist) before it goes near a worker.
+- **Edits for columns a guest hasn't got:** the guest keeps the latest block for each place, and
+  makes them when the column is added. That covers a column being made when they arrive (asked
+  for, or generating). For one whose chunks already had them, making them again changes nothing.
+  At most 200,000 kept; past that the oldest columns' go (the host has them).
+- **`net/hostWorld.ts`:** the host's world as its session sees it.
+  - A column's edited chunks come from memory when it's loaded (unwritten edits included), from
+    the save when not.
+  - A guest may set air, a block from the picker, or a torch, in a column the host has loaded, if
+    the game allows it (reach, not inside anyone: step 3, once the host knows where guests are).
+- **`WorldSaver.heights` and `editedColumns`:** saved chunks and those waiting to be.
+- **Messages:** `ask`, `column` (chunks RLE, about 2 KB each on average), `edit`, `edits` (packed
+  16 bytes a block), `refused`.
+
+**A gap, for step 3:** the host refuses edits in columns it hasn't loaded, and the host loads land
+only round itself. A guest far from the host couldn't build. Step 3 sends where everyone is, and the
+host will then keep the land round each guest loaded (generated, not drawn). Mobs and water round
+guests (step 4) need it too.
+
+**Tests (10 new, 304 in all), a real host world and saver, guests generating their own land, over
+the test network with 40 ms ± 20 ms:**
+- **Joining:**
+  - the welcome carries the seed, time, players, the host's place and the edited columns;
+  - a fourth guest and another version are turned away;
+  - the others hear who joins and leaves, and numbers are freed;
+  - a guest going quiet is dropped after the silence;
+  - closing the world sends guests home.
+- **The world:**
+  - a guest's world matches the host's, blocks and light, after loading the same nine columns,
+    with edits both written and not yet written;
+  - a guest's edits show at once, reach the host and the other guest;
+  - a refused edit is put back, and moving water is refused whatever the game says;
+  - two guests and the host setting the same blocks at once end the same everywhere;
+  - an edit arriving while its column is being made lands. Breaking the replay on purpose made
+    this test fail, as it should.
+  - the round trip is timed, 0.1 s on a 0.05 s line.
+- **Messages:** the new ones survive the network, 11 more kinds of junk are turned away, packed edits
+  round-trip, and `checkChunk` refuses short, long, empty-run and unknown-block chunks.

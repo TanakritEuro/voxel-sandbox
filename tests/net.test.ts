@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Link } from '../src/net/link';
 import { Network } from '../src/net/loopback';
-import { cleanName, type Message, NAME_LENGTH, parseMessage, PROTOCOL } from '../src/net/protocol';
+import { checkChunk, cleanName, type Message, NAME_LENGTH, packEdits, parseMessage, PROTOCOL, unpackEdits } from '../src/net/protocol';
+import { encodeRle } from '../src/save/rle';
+import { Block, BLOCKS } from '../src/world/blocks';
+import { CHUNK_VOLUME } from '../src/world/coords';
 import { cleanRoomCode, newRoomCode } from '../src/net/roomCode';
 
 /** Everything a link receives, and why it closed. */
@@ -98,6 +101,31 @@ describe('the test network', () => {
   });
 });
 
+describe('what comes packed', () => {
+  it('unpacks edits as they were packed', () => {
+    const edits: [number, number, number, number][] = [
+      [-1_000_000, 0, 1_000_000, Block.Air],
+      [5, 255, -7, BLOCKS.length - 1],
+    ];
+    expect(unpackEdits(packEdits(edits))).toEqual(edits);
+  });
+
+  it('takes a chunk only if it decodes to exactly a chunk of blocks that exist', () => {
+    const blocks = new Uint8Array(CHUNK_VOLUME);
+    blocks.fill(Block.Stone, 0, 9000);
+    blocks[20000] = Block.Torch;
+    const rle = encodeRle(blocks);
+    expect(checkChunk(rle)).toEqual(blocks);
+    expect(checkChunk(rle.slice(0, rle.length - 2))).toBe(null); // short
+    expect(checkChunk(new Uint8Array([...rle, 1, Block.Stone]))).toBe(null); // too long
+    const unknown = rle.slice();
+    unknown[1] = BLOCKS.length; // a block that doesn't exist
+    expect(checkChunk(unknown)).toBe(null);
+    expect(checkChunk(new Uint8Array([0x80]))).toBe(null);
+    expect(checkChunk(new Uint8Array([0, 1]))).toBe(null); // a run of nothing
+  });
+});
+
 describe('room codes', () => {
   it('are four letters and digits that are easy to read, tidied from what was typed', () => {
     for (let i = 0; i < 50; i++) expect(cleanRoomCode(newRoomCode())).toMatch(/^[A-HJ-NP-Z2-9]{4}$/);
@@ -122,6 +150,11 @@ describe('messages', () => {
     { type: 'ping', t: 1.5 },
     { type: 'pong', t: 1.5, at: 7.25 },
     { type: 'bye', reason: 'The host closed the world.' },
+    { type: 'ask', cx: -3, cz: 12 },
+    { type: 'column', cx: -3, cz: 12, chunks: [{ cy: 2, data: new Uint8Array([0x80, 0x80, 0x02, 1]).buffer }] },
+    { type: 'edit', seq: 7, x: -40, y: 64, z: 1000, block: Block.Torch },
+    { type: 'edits', from: 2, seq: 7, data: packEdits([[-40, 64, 1000, Block.Torch], [1, 2, 3, Block.Air]]) },
+    { type: 'refused', seq: 7, x: -40, y: 64, z: 1000, block: Block.Stone },
   ];
 
   it('come through the network as they were sent', () => {
@@ -155,6 +188,17 @@ describe('messages', () => {
       { type: 'ping', t: Number.POSITIVE_INFINITY },
       { type: 'pong', t: 1 },
       { type: 'bye', reason: 'x'.repeat(201) },
+      { type: 'ask', cx: 0.5, cz: 0 },
+      { type: 'column', cx: 0, cz: 0, chunks: [{ cy: 9, data: new ArrayBuffer(4) }] }, // above the world
+      { type: 'column', cx: 0, cz: 0, chunks: [{ cy: 1, data: new ArrayBuffer(4) }, { cy: 1, data: new ArrayBuffer(4) }] },
+      { type: 'column', cx: 0, cz: 0, chunks: [{ cy: 1, data: [1, 2] }] },
+      { type: 'edit', seq: 0, x: 0, y: 64, z: 0, block: 1 },
+      { type: 'edit', seq: 1, x: 0, y: 256, z: 0, block: 1 },
+      { type: 'edit', seq: 1, x: 0, y: 64, z: 0, block: BLOCKS.length },
+      { type: 'edits', from: 0, seq: 0, data: new ArrayBuffer(12) },
+      { type: 'edits', from: 0, seq: 0, data: packEdits([[0, -1, 0, 1]]) },
+      { type: 'edits', from: 5, seq: 0, data: packEdits([[0, 1, 0, 1]]) },
+      { type: 'refused', seq: 1, x: 0, y: 64, z: 0, block: -1 },
     ];
     for (const m of bad) expect(parseMessage(m), JSON.stringify(m)).toBe(null);
   });

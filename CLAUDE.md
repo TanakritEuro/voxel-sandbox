@@ -194,7 +194,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory), `saver.ts` (`WorldSaver`: which chunks a world
-  has, writing edited ones soon after an edit and before unloading, the player and time),
+  has, writing edited ones soon after an edit and before unloading, the player and time;
+  `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
 - `src/workers/` — `protocol.ts` (job and result messages, transfer lists, `JobRunner`; mesh jobs
   take a level of detail and seam sides),
@@ -204,7 +205,13 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL`, bumped with any change to messages or world generation; `cleanName`).
+  arrival; `PROTOCOL`, bumped with any change to messages or world generation; `cleanName`;
+  edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
+  (`HostSession`: greeting guests, answering for columns, checking and sharing edits;
+  `GuestSession`: the welcome, `RemoteSaves` (the loader's `ChunkSaves`: edited chunks from the
+  host), edits asked of the host and the host's made in its order, blocks kept for columns not here
+  yet; pure, the clock passed in), `hostWorld.ts` (the host's world and saver as its session sees
+  them; `settable`).
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
   until taken, mouse look and pointer lock (raw input where the browser has it, else `SpikeFilter`
   drops Chrome's occasional huge moves).
