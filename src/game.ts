@@ -342,7 +342,7 @@ if (record.player) {
 // network, walking circles round the start and building (`net/bot.ts`).
 let host: HostSession | null = null;
 const network = params.has('bot') ? new Network() : null;
-let bot: Bot | null = null;
+const bots: Bot[] = [];
 const playerView = new PlayerRenderer();
 scene.add(playerView.group);
 renderer.compile(playerView.group, camera);
@@ -440,7 +440,7 @@ function guestHit(id: number, mobId: number): void {
 function playTogether(now: number): void {
   const net = host ?? guest;
   network?.advance(now / 1000);
-  bot?.update();
+  for (const b of bots) b.update();
   guest?.update();
   if (!net) return;
   if (now / 1000 - lastStateSent >= 1 / TUNING.net.stateRate) {
@@ -797,7 +797,8 @@ function frame(now: number): void {
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 
   if (!guest && worldRuns()) flowWater(dt);
-  flood?.update(now, interval, player.body.x, player.body.z, player.waiting);
+  // `?flood=guest` waits for a guest to be in, to measure what the water sends.
+  flood?.update(now, interval, player.body.x, player.body.z, player.waiting || (params.get('flood') === 'guest' && (host?.players.length ?? 0) < 2));
   target = raycast(world, camera.position, dir, TUNING.edit.reach);
   // A mob nearer than the block looked at takes the left button instead: hit, not dug (and no
   // outline on the block behind it).
@@ -931,10 +932,12 @@ async function openStore(): Promise<WorldStore> {
 }
 
 renderHotbar();
-// `?bot`: open to the test guest now that everything is made.
+// `?bot` (`?bot=3`: up to three): open to the test guests now that everything is made.
 if (network) {
   const room = network.room('BOT1');
   openToFriends(room);
-  bot = new Bot(room, world, [player.body.x, player.body.z], () => performance.now() / 1000);
+  const count = Math.min(3, Math.max(1, Number(params.get('bot')) || 1));
+  for (let i = 0; i < count; i++)
+    bots.push(new Bot(room, world, [player.body.x, player.body.z], () => performance.now() / 1000, count > 1 ? `Bot ${i + 1}` : 'Bot', 6 + i * 4));
 }
 requestAnimationFrame(frame);

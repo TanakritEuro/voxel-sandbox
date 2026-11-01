@@ -491,3 +491,83 @@ errors. A guest's view of mobs and water needs the guest's game, step 5.
 **Tests (2 new, 324 in all):** `bytesOf` sizes messages; a room's guests' traffic is counted both
 ways per second, and messages still reach their handlers. The settings test now covers names
 (tidied; the default when there's none or nothing left).
+
+## Step 6: measurements, and the end of the milestone (2026-11-01)
+
+**For measuring:** `?bot=3` opens the world to three test guests in the page, each on a circle of
+its own size. `?flood=guest` waits until a guest has joined before letting the sea in.
+
+**The host with three guests** (`?bot=3`), Chrome on your laptop, radius 8, a slow spin at the
+spawn, 1919 × 793 (the window beside another today), alternating. The screen was at 60 Hz, so fps
+held at 60 and the cost shows in time:
+
+| | main thread ms | GPU ms | draw calls | mobs |
+| --- | --- | --- | --- | --- |
+| Alone (2 runs) | 2.2, 2.3 | 8.8, 8.9 | 66, 64 | 24 |
+| Three guests (2 runs) | 2.6, 2.5 | 9.3, 9.4 | 80, 80 | 48 |
+
+- Three guests cost the host about 0.3 ms of main thread (sessions, relaying states, mobs out) and
+  0.5 ms of GPU (twice the mobs, three figures).
+- The host sent 71–76 KB/s in all and heard 5 KB/s.
+
+**What goes over the wire,** per guest, from `?stats`:
+
+| | to the guest | from the guest |
+| --- | --- | --- |
+| Standing near the host, 48 mobs about | 20–31 KB/s | 1.6–2.0 KB/s |
+| Flying high, no mobs near | 2.0 KB/s | 1.6 KB/s |
+| During a flood (10,000 blocks of water in 10 s) | 20–23 KB/s | 1.7 KB/s |
+
+- **Under the plan's 50 KB/s each way throughout.**
+- Most of it is the mobs: 48 at 52 bytes, 10 times a second, is 25 KB/s. Everyone's states are
+  80 bytes 20 times a second, 1.6 KB/s each.
+- Chunks while flying cost nothing here: a fresh world has no edited chunks to send. An edited one
+  is about 2 KB.
+
+**Side by side** (the host in your Chrome window, the guest in the app's built-in browser, both on
+screen):
+- **A guest flying** (`?join=…&autofly=20`): 1,201 frames, none over 20 ms, slowest 17.0 ms, no
+  holes, 700 blocks from the host. The host loaded the land round its path as it went and had no
+  frame over 20 ms meanwhile.
+  - Before the pane was on screen it was throttled to 1 fps, and its states came a second apart.
+    The host had 28 frames over 20 ms then, keeping the land round a guest that jumped about.
+- **A flood** under the sea with a guest in: the host had no frame over 20 ms in the 10 s; the
+  guest none.
+- **Water on a guest's screen:** the host placed water. The guest saw it flow towards it in its
+  steps, with the host behind the source, and was carried by the current (its own physics, in its
+  copy of the world).
+- **Round trip:** 2–4 ms (on this machine, through the PeerJS server's introduction and then
+  directly). Over the internet it will be what the line is.
+
+**Against the targets:**
+- **60 fps for host and guests at radius 8:** yes (60 Hz screen today).
+- **No frame over 20 ms flying, on the guest:** yes, none in 1,201.
+- **Bandwidth under 50 KB/s each way:** yes.
+
+**Known limits:**
+- **A hidden guest stops sending.** A browser stops drawing a hidden tab, and the game sends its
+  state from the frame loop. A guest in a background tab looks frozen to the others, and if it
+  moves the host keeps up its land in jumps. Heartbeats keep it in the game.
+- **Some networks can't connect directly,** as in the earlier games: PeerJS uses no relay server.
+- **The world is online only while the host plays,** and no one takes over when the host leaves.
+- **Others' footsteps and digging aren't heard;** their breaks and places are.
+- **Mobs are most of the traffic.** They could go less often when far away, or packed smaller, if
+  it ever matters.
+
+## Playtest questions
+
+1. **Hosting:** open a world to friends from the pause menu. Is the code easy to find and read
+   out? Does "Close to friends" do what you expect?
+2. **Joining:** from another browser or computer, "Join a friend". Does it connect, and how long
+   does it take? On a network where it fails, what does it say?
+3. **Building together:** do your friend's edits show quickly, and yours on their screen? Anything
+   put back that shouldn't be (refused for reach)?
+4. **Seeing each other:** do the figures move smoothly, face the right way, swing their arms when
+   digging? Can you find each other by the names?
+5. **Far apart:** go a long way from each other. Can the guest still build? Do mobs live round them,
+   and does water flow there?
+6. **Animals and water:** do they look the same on both screens? Can a guest hit a mob and see it
+   go in a puff?
+7. **Leaving:** leave as a guest, and close or quit as the host. Does everyone end up where they
+   should, with the right message?
+8. **Feel:** anything laggy or jumpy over your real network (not the same machine)?

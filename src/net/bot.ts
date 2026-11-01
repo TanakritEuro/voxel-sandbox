@@ -1,8 +1,9 @@
-// `?bot`: a test guest in the same page, joined over the test network (`loopback.ts`), to see other
-// players and their edits without a second browser. It walks a circle round where the host
-// started, on the ground (read from the host's world: it has no world of its own), swinging its
-// arm as it builds a plank block beside its path every few seconds and breaks the last one again.
-// Only for looking and measuring.
+// `?bot` (`?bot=3` for three): a test guest in the same page, joined over the test network
+// (`loopback.ts`), to see other players and their edits without a second browser, and to measure
+// a host with guests. It walks a circle round where the host started (each bot its own size), on
+// the ground (read from the host's world: it has no world of its own), swinging its arm as it
+// builds a plank block beside its path every few seconds and breaks the last one again. Only for
+// looking and measuring.
 
 import { TUNING } from '../config';
 import { Block, BLOCKS } from '../world/blocks';
@@ -10,8 +11,7 @@ import type { World } from '../world/world';
 import type { LoopRoom } from './loopback';
 import { GuestSession } from './session';
 
-/** The circle (blocks), and how long a step of building takes (s). */
-const RADIUS = 6;
+/** How long a step of building takes (s). */
 const BUILD_EVERY = 3;
 
 export class Bot {
@@ -27,8 +27,11 @@ export class Bot {
     private readonly world: World,
     private readonly centre: [number, number],
     private readonly now: () => number,
+    name = 'Bot',
+    /** The circle's radius (blocks). */
+    private readonly radius = 6,
   ) {
-    this.session = new GuestSession(room.join().guest, 'Bot', now);
+    this.session = new GuestSession(room.join().guest, name, now);
     this.session.attach({ apply: () => {}, hasColumn: () => false });
     this.started = now();
     this.lastBuild = this.started;
@@ -39,9 +42,9 @@ export class Bot {
     const t = this.now();
     this.session.update();
     const speed = TUNING.player.walkSpeed * 0.6;
-    const angle = ((t - this.started) * speed) / RADIUS;
-    const x = this.centre[0] + Math.cos(angle) * RADIUS;
-    const z = this.centre[1] + Math.sin(angle) * RADIUS;
+    const angle = ((t - this.started) * speed) / this.radius;
+    const x = this.centre[0] + Math.cos(angle) * this.radius;
+    const z = this.centre[1] + Math.sin(angle) * this.radius;
     const y = this.ground(Math.floor(x), Math.floor(z));
     // Facing along the circle: moving (-sin, cos), and yaw 0 faces -z.
     const yaw = Math.atan2(Math.sin(angle), -Math.cos(angle));
@@ -53,8 +56,8 @@ export class Bot {
         this.built = null;
       } else {
         // On the ground just outside the circle.
-        const bx = Math.floor(this.centre[0] + Math.cos(angle) * (RADIUS + 2));
-        const bz = Math.floor(this.centre[1] + Math.sin(angle) * (RADIUS + 2));
+        const bx = Math.floor(this.centre[0] + Math.cos(angle) * (this.radius + 2));
+        const bz = Math.floor(this.centre[1] + Math.sin(angle) * (this.radius + 2));
         this.built = [bx, this.ground(bx, bz), bz];
         this.session.edit(...this.built, Block.Planks);
       }

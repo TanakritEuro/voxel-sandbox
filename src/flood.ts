@@ -4,6 +4,7 @@
 // columns pour in together. For the next 10 s it counts frames and the water's ticks, then
 // reports to the console and the `?stats` overlay. Taking the ceiling away (thousands of blocks
 // in one frame, which no player can do) is timed on its own, and its frame isn't counted.
+// `?flood=guest` waits until the world is open to friends and someone has joined.
 
 import { LONG_FRAME_MS } from './stats';
 import { Block } from './world/blocks';

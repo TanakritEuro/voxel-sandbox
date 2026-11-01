@@ -26,10 +26,11 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 9 (multiplayer over PeerJS, the host's browser owning the world) in progress, plan
-approved (`docs/milestone-9.md`).
-Milestones 1–8 built (`docs/milestone-1.md` to `docs/milestone-8.md`), waiting for playtests
-(Milestone 8, flowing water: a cellular automaton woken by edits, falling, spreading in eighths
+Milestones 1–9 built (`docs/milestone-1.md` to `docs/milestone-9.md`), waiting for playtests
+(Milestone 9, multiplayer over PeerJS: a world opened to up to three friends from the pause menu
+with a four-letter code, joined from the world list; the host's browser owns the world, guests
+generate the land from the seed and get edited chunks, edits checked and shared by the host,
+players drawn as blocky figures with names, the host's water, mobs and time shared; Milestone 8, flowing water: a cellular automaton woken by edits, falling, spreading in eighths
 towards the nearest drop, new sources between two, drying up, ticked 4 times a second with one
 light update a tick and remeshing in the workers, saved and carrying on after loading, a
 current that carries the player and mobs; Milestone 7, mobs: four invented passive animals, each in its own biome, wandering by A*
@@ -242,7 +243,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   32 × 32 room under it at once, reporting frame and water tick times. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
   an unsaved world), `?light` shows light as grey,
-  `?bot` opens the world to a test guest in the page, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.
