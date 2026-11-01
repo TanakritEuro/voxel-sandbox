@@ -216,3 +216,59 @@ All the moving parts are copper, to go with the copper ore already in the ground
   - the switch's handle on either side;
   - a pressed button lower;
   - each of the four facings' arrow pointing its way.
+
+## Step 2: the signals, headless — built (2026-11-01)
+
+**What changed:**
+- **`world/logic.ts`, `LogicFlow`:** each tick (`TUNING.logic`: 0.1 s, 4,096 woken blocks at most, a
+  button on for 10 ticks):
+  1. **Due changes:** gates' queued outputs and buttons' releases that fall due are made.
+  2. **Wire networks:** every network at or beside a woken block is worked out at once.
+     - The wires joined sideways on one level, each fed with 15 if a source that is on is beside it
+       or under it (a charged block, a switch or button on), or a gate that is on faces into it.
+     - Then outwards a step less a block, by a breadth-first search, as light spreads.
+     - So a signal crosses a network in the tick it changes, and switching off empties it at once.
+  3. **Lamps** round anything woken or changed are lit if a powered wire, a source on, or a gate on
+     facing into them is beside them (six sides).
+  4. **Gates** round anything woken or changed read the block behind them and queue their output:
+     an inverter the opposite a tick on, a delay the same its setting's ticks on.
+     - Each change is queued, so a pulse keeps its length through a delay.
+     - A gate never changes in the tick its input does, so a loop is a clock, not a hang.
+  5. **Buttons** seen pressed are let go 10 ticks later.
+- **A tick's changes go into an overlay** that the rest of the tick reads, and are returned for the
+  caller to make, each waking its neighbours. `pending` counts woken blocks, queued outputs and
+  buttons waiting, so a still circuit costs nothing.
+- Unloaded land is nothing, as for the water.
+
+**Bench** (`npm run bench`, `logic`, Node under Vitest, 600 ticks = a minute):
+
+| | changes | most a tick | wires worked out at most | ms a tick, median / p95 / worst after the first | the first |
+| --- | --- | --- | --- | --- | --- |
+| A 32 × 32 wire grid, a switch flipped every 10 ticks | 7,200 | 120 | 1,024 | 0.001 / 1.17 / 3.5 | 13.9 |
+| A 50-stage chaser on a 10-tick clock | 18,221 | 34 | 56 | 0.33 / 0.55 / 1.4 | 2.2 |
+
+- **The first tick** has everything just placed woken at once (1,024 wires each with six
+  neighbours), on code not yet warmed up.
+- **The grid is over the plan's 2 ms at worst** (3.5 ms) when a switch flips the whole network. That
+  is in Node under Vitest, usually slower than Chrome. Step 3 measures it in Chrome; if it's still
+  over, the network's search moves from Maps to typed arrays.
+
+**Tests (9 new, 343 in all), on a stone board:**
+- **Wire:**
+  - a switch powers a line 15, 14, … 1, then nothing past 15 blocks;
+  - off empties it in one tick, and then nothing is pending;
+  - two charged blocks: each wire takes the stronger, meeting in the middle;
+  - a wire on a charged block is fed by it.
+- **Lamps:** lit beside powered wire, and beside the switch itself; dark again when it's off.
+- **Inverter:** on with nothing behind; its front wire powered; still on in the tick its input comes
+  on, and off the next.
+- **Delay of 3:** a 4-tick pulse comes out 3 ticks later and 4 ticks long.
+- **Facing:** a charged block at a delay's front doesn't turn it on.
+- **A clock:** an inverter feeding itself round a loop of wire flips over 250 times in a minute, still
+  blinking at the end, with never more than 40 things pending.
+- **Buttons:** let go 10 ticks after being pressed; the lamp beside goes dark with them.
+- **Splitting the work:** a circuit with a long wire, a branch, lamps lit and dark, and a delay ends
+  the same at 3 woken blocks a tick as with no limit.
+  - My first expectation here was wrong (a lamp I thought lit sits where the signal has faded out).
+    The two runs agreed; the expectation was corrected, and a lit lamp and a delay that turns on
+    were added.

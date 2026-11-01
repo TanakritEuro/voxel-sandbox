@@ -117,7 +117,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), net.
+  reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), logic, net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id:
@@ -139,7 +139,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `water.ts` (flowing water, a cellular automaton: `WaterFlow` wakes blocks round edits and ticks them,
   falling, spreading towards the nearest drop, new sources between two, drying up; changes
-  returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
+  returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
+  at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
+  buttons let go; changes returned for the caller to make; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
   `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break

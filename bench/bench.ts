@@ -18,12 +18,13 @@ import { type Lod, prepareLod } from '../src/mesh/lod';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { decodeRle, encodeRle } from '../src/save/rle';
-import { Block, BLOCKS } from '../src/world/blocks';
+import { Block, BLOCKS, delay, inverter } from '../src/world/blocks';
 import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, reachableChunks } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { wakeColumn, WaterFlow } from '../src/world/water';
+import { LogicFlow } from '../src/world/logic';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -519,5 +520,70 @@ it('water', () => {
       });
     } else lines.push('water: no open sea 32 × 32 near the spawn');
   }
+  console.log(lines.join('\n') + '\n');
+});
+
+it('logic', () => {
+  // Logic blocks' ticks (world/logic.ts) on a board in memory, the changes made each tick: a
+  // 32 x 32 grid of wire fed by a switch flipped every 10 ticks, and a chaser of 50 stages (a delay
+  // passing the pulse on to a wire with a lamp beside it, then the next delay) driven by a clock
+  // (an inverter feeding itself through a delay of 4), each for 600 ticks (a minute).
+  const run = (label: string, build: (put: (x: number, z: number, b: Block) => void) => void, each?: (t: number, put: (x: number, z: number, b: Block) => void) => void) => {
+    const blocks = new Map<string, Block>();
+    const board = {
+      getBlock: (x: number, y: number, z: number) => (y === 0 ? Block.Stone : (blocks.get(`${x},${y},${z}`) ?? Block.Air)),
+      hasColumn: () => true,
+    };
+    const flow = new LogicFlow();
+    const put = (x: number, z: number, b: Block) => {
+      blocks.set(`${x},1,${z}`, b);
+      flow.wake(x, 1, z);
+    };
+    build(put);
+    const times: number[] = [];
+    let changes = 0;
+    let most = 0;
+    let wires = 0;
+    for (let t = 0; t < 600; t++) {
+      each?.(t, put);
+      const t0 = performance.now();
+      const out = flow.tick(board);
+      times.push(performance.now() - t0);
+      for (const [x, y, z, b] of out) blocks.set(`${x},${y},${z}`, b);
+      changes += out.length;
+      most = Math.max(most, out.length);
+      wires = Math.max(wires, flow.wires);
+    }
+    return `logic (${label}): 600 ticks, ${changes} changes, at most ${most} a tick and ${wires} wires worked out; ms a tick median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)} (the first, everything just placed, ${times[0].toFixed(3)}; after it ${Math.max(...times.slice(1)).toFixed(3)})`;
+  };
+  const lines = [''];
+  lines.push(
+    run(
+      'a 32 x 32 wire grid, switched every 10 ticks',
+      (put) => {
+        put(-1, 0, Block.Switch);
+        for (let z = 0; z < 32; z++) for (let x = 0; x < 32; x++) put(x, z, Block.Wire);
+      },
+      (t, put) => {
+        if (t % 10 === 0) put(-1, 0, (t / 10) % 2 ? Block.Switch : Block.SwitchOn);
+      },
+    ),
+  );
+  lines.push(
+    run('a 50-stage chaser on a clock', (put) => {
+      // The clock (10 ticks round): an inverter facing +x at (0, 0) feeds the wire (1, 0), (1, -1),
+      // (0, -1); a delay of 4 at (-1, -1) facing -x reads that and feeds the wire (-2, -1), (-2, 0),
+      // (-1, 0), which is behind the inverter.
+      put(0, 0, inverter(0, false));
+      for (const [x, z] of [[1, 0], [1, -1], [0, -1], [-2, -1], [-2, 0], [-1, 0]]) put(x, z, Block.Wire);
+      put(-1, -1, delay(1, 4, false));
+      // The chaser: from the clock's wire, delay, wire (a lamp beside it), delay, ... along +x.
+      for (let i = 0; i < 50; i++) {
+        put(2 + i * 2, 0, delay(0, 1, false));
+        put(3 + i * 2, 0, Block.Wire);
+        put(3 + i * 2, 1, Block.SignalLamp);
+      }
+    }),
+  );
   console.log(lines.join('\n') + '\n');
 });

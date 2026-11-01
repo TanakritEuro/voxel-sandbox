@@ -98,6 +98,12 @@ export const TUNING = {
     /** Seconds after breaking a block before the next one starts, while the button stays held. */
     breakPause: 0.2,
   },
+  /** Logic blocks (`world/logic.ts`): a tick this often (s), at most this many woken blocks a tick, a button on this many ticks. */
+  logic: {
+    tickSeconds: 0.1,
+    maxPerTick: 4096,
+    buttonTicks: 10,
+  },
   /** Playing together (`net/`). */
   net: {
     /** Each player's state is sent this often (a second). */
