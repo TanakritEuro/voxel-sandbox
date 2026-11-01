@@ -98,6 +98,21 @@ export const TUNING = {
     /** Seconds after breaking a block before the next one starts, while the button stays held. */
     breakPause: 0.2,
   },
+  /** Playing together (`net/`). */
+  net: {
+    /** Each player's state is sent this often (a second). */
+    stateRate: 20,
+    /** Others are drawn this far behind their newest state (s), so there's usually one either side to draw between. */
+    behind: 0.1,
+    /** Past their newest state they're guessed on for at most this long (s), then held. */
+    extrapolate: 0.25,
+    /** A state this far (blocks) from where a player was drawn is a jump (a teleport): shown at once. */
+    snap: 8,
+    /** The host keeps the land this many chunks round each guest loaded (generated, not drawn): for their edits, mobs and water. */
+    landRadius: 3,
+    /** A guest's edit may be this much further than the reach (blocks), for the delay between where it was and where the host last heard. */
+    reachSlack: 1.5,
+  },
   particles: {
     /** Cubes in a break's burst, and chips each digging hit. */
     breakCount: 20,

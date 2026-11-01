@@ -31,7 +31,7 @@ const YAW_SWING = 1.5;
  * With `front`, its texture is a side-and-front pair (`sideAndFront`): the front face (-z) takes
  * the right half, the others the left.
  */
-function shadedBox(w: number, h: number, d: number, front = false): THREE.BoxGeometry {
+export function shadedBox(w: number, h: number, d: number, front = false): THREE.BoxGeometry {
   const geo = new THREE.BoxGeometry(w, h, d);
   if (front) {
     const uv = geo.attributes.uv;

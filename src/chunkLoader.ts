@@ -56,6 +56,8 @@ interface Column {
   lod: Lod;
   seams: number;
   priority: number;
+  /** For land kept round another player (`setOthers`): their column, which orders its work. */
+  anchor?: { cx: number; cz: number };
   /** Its chunks, from MIN_CHUNK_Y up, once all are loaded (they stay while it's in the order). */
   chunks: Chunk[] | null;
   /** Its 3 × 3 columns are loaded, so it can be meshed (stays so while it's in the order). */
@@ -140,6 +142,8 @@ export class ChunkLoader {
   private centre = { cx: Number.NaN, cy: Number.NaN, cz: Number.NaN };
   /** Horizontal look direction the columns were sorted for (unit length, or zero). */
   private look = { x: 0, z: 0 };
+  /** Other players' columns (a host's guests): the land round them is kept loaded too. */
+  private others: { cx: number; cz: number }[] = [];
   /** Columns around the player, in the order to work on them, and by key. */
   private order: Column[] = [];
   private readonly columns = new Map<string, Column>();
@@ -283,6 +287,21 @@ export class ChunkLoader {
    */
   radiusChanged(): void {
     this.centre = { cx: Number.NaN, cy: Number.NaN, cz: Number.NaN };
+  }
+
+  /**
+   * Other players are at these places (x, z): keep the land within `TUNING.net.landRadius` chunks
+   * of each loaded (generated, not drawn), for their edits, mobs and water on the host. Cheap to call
+   * every frame: only a change of column does anything.
+   */
+  setOthers(places: readonly (readonly [number, number])[]): void {
+    const others = places.map(([x, z]) => ({ cx: toChunk(Math.floor(x)), cz: toChunk(Math.floor(z)) }));
+    if (others.length === this.others.length && others.every((o, i) => o.cx === this.others[i].cx && o.cz === this.others[i].cz)) return;
+    this.others = others;
+    if (Number.isNaN(this.centre.cx)) return; // the first update builds the order
+    this.rebuildOrder();
+    this.unloadFar();
+    this.dirty = true;
   }
 
   /** Called when a column's chunks have been added to the world (generated, or read from the save if `saved`). */
@@ -518,6 +537,20 @@ export class ChunkLoader {
         this.columns.set(col.key, col);
       }
     }
+    // The land round other players, where it isn't in this player's range already.
+    const R = TUNING.net.landRadius;
+    for (const anchor of this.others) {
+      for (let dz = -R; dz <= R; dz++) {
+        for (let dx = -R; dx <= R; dx++) {
+          if (dx * dx + dz * dz > R * R) continue;
+          const key = columnKey(anchor.cx + dx, anchor.cz + dz);
+          if (this.columns.has(key)) continue;
+          const col: Column = { cx: anchor.cx + dx, cz: anchor.cz + dz, key, mesh: false, lod: 0, seams: 0, anchor, priority: 0, chunks: null, ready: false, settled: false };
+          this.order.push(col);
+          this.columns.set(key, col);
+        }
+      }
+    }
     this.resort();
     this.sortHeights();
   }
@@ -525,7 +558,9 @@ export class ChunkLoader {
   /** The same columns, in order for the current look direction. */
   private resort(): void {
     const { cx, cz } = this.centre;
-    for (const col of this.order) col.priority = columnPriority(col.cx - cx, col.cz - cz, this.look.x, this.look.z);
+    // Another player's land by its distance from them: theirs and this player's nearest first alike.
+    for (const col of this.order)
+      col.priority = col.anchor ? columnPriority(col.cx - col.anchor.cx, col.cz - col.anchor.cz, 0, 0) : columnPriority(col.cx - cx, col.cz - cz, this.look.x, this.look.z);
     this.order.sort((a, b) => a.priority - b.priority);
   }
 
@@ -537,10 +572,12 @@ export class ChunkLoader {
     this.heights.sort((a, b) => Math.abs(a - cy) - Math.abs(b - cy));
   }
 
-  /** Columns this close (in chunks, either axis) stay loaded; beyond, they're unloaded. */
+  /** Columns this close (in chunks, either axis) to this player, or to another's land, stay loaded; beyond, they're unloaded. */
   private inKeepRange(cx: number, cz: number): boolean {
-    const limit = TUNING.view.radius + TUNING.view.unloadMargin;
-    return Math.max(Math.abs(cx - this.centre.cx), Math.abs(cz - this.centre.cz)) <= limit;
+    const margin = TUNING.view.unloadMargin;
+    if (Math.max(Math.abs(cx - this.centre.cx), Math.abs(cz - this.centre.cz)) <= TUNING.view.radius + margin) return true;
+    const near = TUNING.net.landRadius + margin;
+    return this.others.some((o) => Math.max(Math.abs(cx - o.cx), Math.abs(cz - o.cz)) <= near);
   }
 
   private unloadFar(): void {

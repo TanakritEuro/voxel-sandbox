@@ -8,6 +8,7 @@
 
 import { BLOCKS } from '../world/blocks';
 import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/coords';
+import { unpackState } from './playerState';
 
 export const PROTOCOL = 1;
 
@@ -53,7 +54,12 @@ export type Message =
    */
   | { type: 'edits'; from: number; seq: number; data: ArrayBuffer }
   /** Host → guest: your edit `seq` wasn't made; the block there is `block`. */
-  | { type: 'refused'; seq: number; x: number; y: number; z: number; block: number };
+  | { type: 'refused'; seq: number; x: number; y: number; z: number; block: number }
+  /**
+   * A player's state (`playerState.ts`), on the unordered channel: a guest's own to the host (`id`
+   * is ignored there: the link says who), and the host's and every guest's to the others.
+   */
+  | { type: 'state'; id: number; data: ArrayBuffer };
 
 /** A block set: where, and what. */
 export type BlockChange = [number, number, number, number];
@@ -190,6 +196,8 @@ export function parseMessage(raw: unknown): Message | null {
       return isCount(raw.from, 0, MAX_PLAYERS - 1) && isCount(raw.seq, 0, 0x7fffffff) && raw.data instanceof ArrayBuffer && raw.data.byteLength <= 16 * 65536 && unpackEdits(raw.data) !== null
         ? { type: 'edits', from: raw.from, seq: raw.seq, data: raw.data }
         : null;
+    case 'state':
+      return isCount(raw.id, 0, MAX_PLAYERS - 1) && raw.data instanceof ArrayBuffer && unpackState(raw.data) !== null ? { type: 'state', id: raw.id, data: raw.data } : null;
     case 'refused':
       return isCount(raw.seq, 1, 0x7fffffff) && isBlockPlace(raw.x, raw.y, raw.z) && isBlockId(raw.block)
         ? { type: 'refused', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number, block: raw.block }

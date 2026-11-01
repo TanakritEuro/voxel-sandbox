@@ -34,6 +34,11 @@ import { mobOnRay } from './mobs/hit';
 import { KINDS } from './mobs/kinds';
 import { MobManager } from './mobs/mobs';
 import { BlockCache } from './mobs/blockCache';
+import { Bot } from './net/bot';
+import { editAllowed, hostWorld } from './net/hostWorld';
+import { Network } from './net/loopback';
+import { HostSession } from './net/session';
+import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
 import { Block, BLOCKS, hotbarFrom, isTorch, torchFor } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
@@ -260,6 +265,64 @@ if (record.player) {
   player.flying = record.player.flying;
 }
 
+// Playing together (`net/`). For now `?bot` only: the world opened to a test guest in this page,
+// over the test network, walking circles round the start and building (`net/bot.ts`).
+const network = params.has('bot') ? new Network() : null;
+const room = network?.room('BOT1') ?? null;
+const host: HostSession | null = room
+  ? new HostSession(
+      room,
+      hostWorld(world, saver, {
+        time: () => time,
+        position: () => [player.body.x, player.body.y, player.body.z],
+        allowed: (id, x, y, z, block): boolean => editAllowed(host?.states().get(id), host?.states().values() ?? [], x, y, z, block),
+        edit: (x, y, z, block) => guestEdit(x, y, z, block),
+      }),
+      'Host',
+      () => performance.now() / 1000,
+    )
+  : null;
+const bot = room ? new Bot(room, world, [player.body.x, player.body.z], () => performance.now() / 1000) : null;
+const playerView = host ? new PlayerRenderer() : null;
+if (playerView) {
+  scene.add(playerView.group);
+  renderer.compile(playerView.group, camera);
+}
+/** Arm swings so far (digging hits, breaks, places), for the others to see. */
+let swings = 0;
+let lastStateSent = Number.NEGATIVE_INFINITY;
+
+/** Once a frame, when open to others: this player's state now and then, the others' land kept loaded, and them drawn. */
+function playTogether(now: number): void {
+  if (!host || !playerView) return;
+  network?.advance(now / 1000);
+  bot?.update();
+  if (now / 1000 - lastStateSent >= 1 / TUNING.net.stateRate) {
+    lastStateSent = now / 1000;
+    const b = player.body;
+    host.sendState({
+      x: b.x,
+      y: b.y,
+      z: b.z,
+      yaw: input.yaw,
+      pitch: input.pitch,
+      flying: player.flying,
+      crouching: player.crouching(),
+      swimming: b.inWater,
+      onGround: b.onGround,
+      held: hotbar[selected],
+      swings,
+      digging: mining.target?.block ?? 0,
+    });
+  }
+  const others = [...host.remotes].flatMap(([id, remote]) => {
+    const pose = remote.poseAt(host.clock());
+    return pose ? [{ id, name: host.players.find((p) => p.id === id)?.name ?? '', pose }] : [];
+  });
+  loader.setOthers(others.map((o) => [o.pose.x, o.pose.z]));
+  playerView.update(others, world, daylightNow);
+}
+
 // Measuring: `?stats` overlay (F3), `?autofly` scripted flight.
 const autoflySeconds = Autofly.seconds(params);
 const stats = new Stats(
@@ -349,21 +412,38 @@ function renderHotbar(): void {
   ).join('');
 }
 
-/** Set a block (and its light), and remesh what changed at once. */
-function edit(x: number, y: number, z: number, block: Block): void {
+/**
+ * Set a block (and its light), and remesh what changed at once. Open to others, it goes to them
+ * too (`share`; not when it's a guest's edit, which the session shares as theirs).
+ */
+function edit(x: number, y: number, z: number, block: Block, share = true): void {
   const t0 = performance.now();
   const stale = world.setBlock(x, y, z, block);
   if (stale.length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
   for (const c of stale) loader.remesh(c.cx, c.cy, c.cz);
   // The water round it may flow now (in, out, or on).
   if (stale.length) flow.wake(x, y, z);
+  if (stale.length && share) host?.shareEdits([[x, y, z, block]]);
   lastEdit = { ms: performance.now() - t0, lightMs: world.lightMs, chunks: stale.length };
+}
+
+/** A guest's edit, checked by the session: made as the host's would be, the torches a broken block held going too. */
+function guestEdit(x: number, y: number, z: number, block: Block): void {
+  const held = block === Block.Air ? torchesHeldBy(world, x, y, z) : [];
+  edit(x, y, z, block, false);
+  for (const [tx, ty, tz] of held) edit(tx, ty, tz, Block.Air);
+}
+
+/** The arm swings: the held block here, the avatar's arm for the others. */
+function swing(): void {
+  held.motion.swing();
+  swings++;
 }
 
 /** A click on a mob: a swing, and it's knocked back (or gone in a puff on the last hit). */
 function hitMob(mob: Mob): void {
   if (!mobs) return;
-  held.motion.swing();
+  swing();
   const b = mob.body;
   if (mobs.hit(mob, player.body.x, player.body.z)) {
     const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow);
@@ -378,7 +458,7 @@ function editing(dt: number): void {
     const info = BLOCKS[broken.block];
     edit(broken.x, broken.y, broken.z, Block.Air);
     sound.play({ name: 'break', material: info.sound, gain: 1 });
-    held.motion.swing();
+    swing();
     particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
     // Torches go with the block they stood on or hung from.
     for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) edit(x, y, z, Block.Air);
@@ -395,7 +475,7 @@ function editing(dt: number): void {
     if (isTorch(hotbar[selected]) ? torchFits : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z)) {
       edit(x, y, z, block);
       sound.play({ name: 'place', material: BLOCKS[block].sound, gain: 1 });
-      held.motion.swing();
+      swing();
     }
   }
   cracks.show(mining.target, mining.stage);
@@ -463,7 +543,7 @@ function frame(now: number): void {
     for (const e of cues.frame({ dt, moved, vy: b.vy, onGround: b.onGround, flying: player.flying, inWater: b.inWater, ground, digging })) {
       sound.play(e);
       // Each digging hit knocks a few chips off the face being dug.
-      if (e.name === 'dig') held.motion.swing();
+      if (e.name === 'dig') swing();
       if (e.name === 'dig' && target) {
         const t = target;
         const info = BLOCKS[t.block];
@@ -516,6 +596,7 @@ function frame(now: number): void {
       if (h) sound.play({ name: 'mob', voice: s.voice, kind: s.kind, ...h });
     }
   }
+  playTogether(now);
   outline.visible = target !== null;
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 

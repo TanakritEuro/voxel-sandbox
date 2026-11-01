@@ -432,3 +432,27 @@ describe('levels of detail', () => {
     expect(kept).toBeGreaterThan(0);
   });
 });
+
+describe('land round other players', () => {
+  it("keeps the land round another player loaded, generated but not drawn, and lets it go when they leave", () => {
+    const s = setup();
+    settle(s, 16, 16);
+    // A guest 40 chunks away, at column (40, 0).
+    s.loader.setOthers([[40 * 32 + 5, 12]]);
+    settle(s, 16, 16);
+    const R = TUNING.net.landRadius;
+    for (let dz = -R; dz <= R; dz++)
+      for (let dx = -R; dx <= R; dx++) {
+        if (dx * dx + dz * dz > R * R) continue;
+        expect(s.world.hasColumn(40 + dx, dz), `column ${40 + dx}, ${dz}`).toBe(true);
+        for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) expect(s.sink.meshes.has(chunkKey(40 + dx, cy, dz))).toBe(false);
+      }
+    // Its own range still loaded as before.
+    for (const [cx, cy, cz] of inView(0, 0)) expect(s.world.getChunk(cx, cy, cz)).toBeDefined();
+    // The guest leaves: their land goes.
+    s.loader.setOthers([]);
+    settle(s, 16, 16);
+    expect(s.world.hasColumn(40, 0)).toBe(false);
+    expect([...s.world.chunks.values()].every((c) => Math.abs(c.cx) <= TUNING.view.radius + TUNING.view.unloadMargin)).toBe(true);
+  });
+});

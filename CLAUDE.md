@@ -115,7 +115,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push).
+  reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked), textures and sound per face, the default
@@ -178,7 +178,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   kind's model posed, one InstancedMesh per box (an instance per copy per mob, so at most 19 draw
   calls), lit by the world's light and fogged, drawn between physics steps; its shader compiled
   at startup. `mobTextures.ts` — their 16 × 16 textures painted at startup, a face and its box's
-  sides side by side in one so a head is one draw call.
+  sides side by side in one so a head is one draw call. `playerRenderer.ts` — other players: a
+  blocky figure per player in their colour, legs and arms swinging, head looking, name above.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
   (near first, in front before behind) up to the pool's capacity, meshes only chunks the
   visibility walk reaches and hides the rest, drops stale or out-of-range results, remeshes
@@ -188,7 +189,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   level of detail by distance (`lodLevel`, with hysteresis; far ones walled on every side,
   `wallsFor`); a mesh is known by its stamp (version and form), so a level change remeshes like
   an edit, after the chunks with no mesh at all, the old mesh shown meanwhile. `remeshSoon` remeshes a
-  column's changed chunks that way (flowing water); `onColumnAdded` tells the game a column is in.
+  column's changed chunks that way (flowing water); `onColumnAdded` tells the game a column is in;
+  `setOthers` keeps the land round other players loaded (generated, not drawn).
 - `src/audio/` — `cues.ts` (which sounds movement and digging make, when; `heard`: how loud
   and from which side a mob is: pure), `sound.ts` (Web Audio: a recipe per block material, mob
   voices panned to their side, volume, mute).
@@ -210,8 +212,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits;
   `GuestSession`: the welcome, `RemoteSaves` (the loader's `ChunkSaves`: edited chunks from the
   host), edits asked of the host and the host's made in its order, blocks kept for columns not here
-  yet; pure, the clock passed in), `hostWorld.ts` (the host's world and saver as its session sees
-  them; `settable`).
+  yet; states relayed, the host's clock learned from the quickest pings; pure, the clock passed in),
+  `hostWorld.ts` (the host's world and saver as its session sees them; `settable`, `editAllowed`:
+  reach and not inside anyone), `playerState.ts` (a player's state packed in 80 bytes),
+  `remotePlayer.ts` (states → where to draw someone now: 0.1 s behind, between states, guessed on
+  briefly past the newest), `bot.ts` (`?bot`: a test guest in the page).
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
   until taken, mouse look and pointer lock (raw input where the browser has it, else `SpikeFilter`
   drops Chrome's occasional huge moves).
@@ -229,7 +234,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   32 × 32 room under it at once, reporting frame and water tick times. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
   an unsaved world), `?light` shows light as grey,
-  `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?bot` opens the world to a test guest in the page, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

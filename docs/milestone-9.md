@@ -292,3 +292,82 @@ the test network with 40 ms ± 20 ms:**
   - the round trip is timed, 0.1 s on a 0.05 s line.
 - **Messages:** the new ones survive the network, 11 more kinds of junk are turned away, packed edits
   round-trip, and `checkChunk` refuses short, long, empty-run and unknown-block chunks.
+
+## Step 3: players — built (2026-11-01)
+
+**What changed:**
+- **`net/playerState.ts`:** a player's state in 80 bytes (a `Float64Array` of 10):
+  - the time on the host's clock;
+  - position and look;
+  - flying, crouching, swimming, on the ground;
+  - the block held, arm swings so far, and the block being dug.
+
+  States that don't make sense are refused: wrong size, NaN, beyond the world, no such block.
+- **Sending them:** 20 a second each, on the unordered channel (`TUNING.net.stateRate`).
+  - A guest sends its own once it knows the host's clock. It learns that NTP-style from its pings,
+    taking the offset from the quickest of the last 16.
+  - The host passes each guest's state on to the others, under the number of the link it came on,
+    whatever the state says.
+  - The host sends its own to everyone.
+- **`net/remotePlayer.ts`, `RemotePlayer`:** someone else's states, turned into where to draw them.
+  - Drawn 0.1 s behind, between the states either side, turning the short way.
+  - Past the newest state, guessed on at the speed they were going for at most 0.25 s, then held.
+  - A late or out-of-order state is dropped.
+  - It counts the ground walked (for the legs), but not a jump of more than 8 blocks, and notices
+    new arm swings.
+- **The host checks guests' edits** (`editAllowed`):
+  - within reach of the eye where the guest was last heard, plus 1.5 blocks of slack for the delay
+    and half a block's diagonal;
+  - a block you can't walk through not inside anyone, the host included.
+  - A guest's break also takes away the torches the block held, as the host's own does.
+- **The host keeps the land round each guest loaded** (`ChunkLoader.setOthers`): columns within 3
+  chunks of each guest are generated (not meshed or drawn).
+  - Their work is ordered by the distance from that guest.
+  - They stay while the guest is within 3 + 2 chunks; when the guest leaves or moves on, they go.
+  - So a guest far from the host can build, and step 4's mobs and water have land round them.
+- **`render/playerRenderer.ts`:** others drawn as a blocky figure (invented): head with a face,
+  body, two arms with hands, two legs.
+  - The shirt is in the player's colour: the host red, then blue, green, yellow.
+  - Legs and arms swing with the ground walked, the head tips where they look, the right arm swings
+    when they dig or place, and crouching bends the body.
+  - Drawn like the mobs: an InstancedMesh per part, lit by the world's light and the day's, fogged,
+    the shader compiled at startup.
+  - The name floats over the head, faint, seen through walls.
+- **`?bot`** (`net/bot.ts`): the world opened to a test guest in the same page over the test network.
+  - It walks a circle round where the host started.
+  - Every 3 s it builds a plank beside its path or breaks the last one.
+  - It's how to see other players without a second browser, and it runs the host side for real:
+    states, edits checked and made, land kept, avatars.
+- **Small changes:** `Player.crouching()` is public; every arm swing goes through the game's
+  `swing()`, counted for the others. The mob texture helpers and the shaded box are exported for
+  the avatar.
+
+**Looked at in Chrome** (`?bot`, midday):
+- the bot walks its circle with its name over it, blue shirted, legs and arms swinging mid-stride,
+  facing the way it walks;
+- its plank appears beside it and goes three seconds later, made on the host through the session
+  (`?stats`: the last edit remeshed 2 chunks).
+- 60 fps (the window on a 60 Hz screen today), no console errors.
+
+**Not yet:** others' footsteps and digging sounds, and lines on screen when someone joins or leaves.
+Both come with the game's guest side in step 5. The sessions already report who joins and leaves.
+
+**Tests (10 new, 314 in all):**
+- **States:** 80 bytes and back, and nonsense refused (also as a message).
+- **`RemotePlayer`:**
+  - drawn between states a moment ago, turning the short way through π;
+  - guessed on past the newest for 0.25 s, then held;
+  - late states dropped;
+  - ground walked counted but not a jump across the map;
+  - a new swing noticed when its state is reached.
+- **Over the network:** with the guests' clocks 100 s off the host's, a guest's state reaches the
+  host and the other guest, and the host's reaches both.
+  - Stamped on the host's clock, the guest's clock within 20 ms after one ping.
+  - Not echoed back.
+  - Gone from everyone's lists when the guest leaves.
+  - Numbers go by whose hello the host heard first. The first run of this test assumed otherwise,
+    and jitter put the second guest first.
+- **Edits:** allowed within reach and slack, not beyond, nor before the guest has been heard; a solid
+  block refused inside anyone, a torch allowed.
+- **The loader:** land round a guest 40 chunks away is loaded but not drawn, the host's own range
+  stays, and it all goes when the guest leaves.

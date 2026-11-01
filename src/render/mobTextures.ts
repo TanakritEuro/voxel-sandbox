@@ -14,7 +14,7 @@ const rgb = (h: number): RGB => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
 const shade = ([r, g, b]: RGB, k: number): RGB => [Math.min(255, r * k), Math.min(255, g * k), Math.min(255, b * k)];
 
 /** A texture painted pixel by pixel by `paint(x, y, rng)` (y down), with its own seeded noise. */
-function painted(seed: number, paint: (x: number, y: number, rng: Rng) => RGB): THREE.DataTexture {
+export function painted(seed: number, paint: (x: number, y: number, rng: Rng) => RGB): THREE.DataTexture {
   const rng = createRng(seed);
   const data = new Uint8Array(SIZE * SIZE * 4);
   for (let y = 0; y < SIZE; y++) {
@@ -33,10 +33,10 @@ function painted(seed: number, paint: (x: number, y: number, rng: Rng) => RGB): 
 }
 
 /** Speckled colour: each pixel the base, lighter or darker by up to `variation`. */
-const fur = (seed: number, base: number, variation = 0.25) => painted(seed, (_x, _y, r) => shade(rgb(base), 1 + (r() - 0.5) * variation));
+export const fur = (seed: number, base: number, variation = 0.25) => painted(seed, (_x, _y, r) => shade(rgb(base), 1 + (r() - 0.5) * variation));
 
 /** A face: fur with two eyes (and a nose, if given) on it. */
-function face(seed: number, base: number, eye: number, nose?: number, pupil?: number): THREE.DataTexture {
+export function face(seed: number, base: number, eye: number, nose?: number, pupil?: number): THREE.DataTexture {
   return painted(seed, (x, y, r) => {
     const eyeAt = (y === 6 || y === 7) && (x === 4 || x === 5 || x === 10 || x === 11);
     if (eyeAt) return pupil !== undefined && (x === 5 || x === 10) && y === 7 ? rgb(pupil) : rgb(eye);

@@ -18,6 +18,8 @@ import type { ChunkSaves } from '../chunkLoader';
 import type { SavedChunk } from '../workers/protocol';
 import { toChunk } from '../world/coords';
 import type { Link, Room } from './link';
+import { packState, type PlayerState, unpackState } from './playerState';
+import { RemotePlayer } from './remotePlayer';
 import { type BlockChange, checkChunk, MAX_PLAYERS, type Message, packEdits, parseMessage, type PlayerInfo, PROTOCOL, unpackEdits } from './protocol';
 
 /** What the host's game gives its session. */
@@ -47,6 +49,8 @@ export type Welcome = Extract<Message, { type: 'welcome' }>;
 
 /** How often a guest asks the host's time back (s), for the round trip. */
 const PING_EVERY = 2;
+/** Round trips a guest keeps: the host's clock is reckoned from the quickest of them. */
+const PINGS = 16;
 /** Blocks a guest keeps for columns it hasn't got, at most; past that the oldest columns' go. */
 const MOST_KEPT = 200_000;
 
@@ -61,6 +65,10 @@ export class HostSession {
   readonly players: PlayerInfo[];
   /** Something to tell the host's player (someone joined, left). */
   onEvent: (text: string) => void = () => {};
+  /** The guests as this browser sees them, by player number. */
+  readonly remotes = new Map<number, RemotePlayer>();
+  /** The host's own last state. */
+  own: PlayerState | null = null;
   private readonly guests = new Map<number, Link>();
   private closed = false;
 
@@ -76,6 +84,27 @@ export class HostSession {
 
   get code(): string {
     return this.room.code;
+  }
+
+  /** The host's clock (s): the one every state is timed on. */
+  clock(): number {
+    return this.now();
+  }
+
+  /** The host player's state now: to every guest. */
+  sendState(state: Omit<PlayerState, 'time'>): void {
+    this.own = { ...state, time: this.now() };
+    if (!this.guests.size) return;
+    const data = packState(this.own);
+    for (const link of this.guests.values()) link.send({ type: 'state', id: 0, data }, 'frames');
+  }
+
+  /** Where everyone is, as last heard (the host's own included): for checking edits. */
+  states(): Map<number, PlayerState> {
+    const out = new Map<number, PlayerState>();
+    if (this.own) out.set(0, this.own);
+    for (const [id, r] of this.remotes) if (r.latest) out.set(id, r.latest);
+    return out;
   }
 
   /** The host's own blocks set (its edits, flowing water): to every guest. */
@@ -149,6 +178,14 @@ export class HostSession {
       case 'ping':
         link.send({ type: 'pong', t: m.t, at: this.now() });
         break;
+      case 'state': {
+        // Theirs, whatever number they put on it; on to the others as theirs.
+        let remote = this.remotes.get(id);
+        if (!remote) this.remotes.set(id, (remote = new RemotePlayer()));
+        remote.push(unpackState(m.data)!);
+        for (const [other, l] of this.guests) if (other !== id) l.send({ type: 'state', id, data: m.data }, 'frames');
+        break;
+      }
       case 'bye':
         link.close();
         this.leave(id, m.reason);
@@ -158,6 +195,7 @@ export class HostSession {
 
   private leave(id: number, reason: string): void {
     if (!this.guests.delete(id)) return;
+    this.remotes.delete(id);
     const i = this.players.findIndex((p) => p.id === id);
     const name = i >= 0 ? this.players[i].name : 'Someone';
     if (i >= 0) this.players.splice(i, 1);
@@ -222,9 +260,13 @@ export class GuestSession {
   /** Everyone in, the host first (from the welcome on). */
   players: PlayerInfo[] = [];
   you = -1;
-  /** The last round trip to the host (s), and the host's clock less this one's (s). */
+  /** The last round trip to the host (s), and the host's clock less this one's (s), from the quickest recent one. */
   rtt = 0;
   offset = 0;
+  /** The others (the host and the other guests) as this browser sees them, by player number. */
+  readonly remotes = new Map<number, RemotePlayer>();
+  /** Recent round trips and the offsets they gave. */
+  private readonly samples: { rtt: number; offset: number }[] = [];
   /** Something to tell the player (someone joined, left). */
   onEvent: (text: string) => void = () => {};
   /** The game is over for this guest: the host left, refused, or the link was lost. */
@@ -280,6 +322,22 @@ export class GuestSession {
     this.link.send({ type: 'ping', t });
   }
 
+  /** The host's clock (s), as best this guest knows it. */
+  clock(): number {
+    return this.now() + this.offset;
+  }
+
+  /** Has the host's clock been heard yet (a round trip done)? States aren't sent before. */
+  get synced(): boolean {
+    return this.samples.length > 0;
+  }
+
+  /** This player's state now: to the host, which passes it on. */
+  sendState(state: Omit<PlayerState, 'time'>): void {
+    if (this.closed || !this.synced) return;
+    this.link.send({ type: 'state', id: this.you, data: packState({ ...state, time: this.clock() }) }, 'frames');
+  }
+
   /** This player set a block (it shows already): ask the host to make it. */
   edit(x: number, y: number, z: number, block: number): void {
     if (this.closed) return;
@@ -329,16 +387,28 @@ export class GuestSession {
         this.players = [...this.players.filter((p) => p.id !== m.player.id), m.player].sort((a, b) => a.id - b.id);
         this.onEvent(`${m.player.name} joined.`);
         break;
+      case 'state': {
+        if (m.id === this.you) break;
+        let remote = this.remotes.get(m.id);
+        if (!remote) this.remotes.set(m.id, (remote = new RemotePlayer()));
+        remote.push(unpackState(m.data)!);
+        break;
+      }
       case 'left': {
+        this.remotes.delete(m.id);
         const who = this.players.find((p) => p.id === m.id);
         this.players = this.players.filter((p) => p.id !== m.id);
         this.onEvent(`${who?.name ?? 'Someone'} left.`);
         break;
       }
       case 'pong': {
+        // NTP-style: if the trip was even, the host's clock read `at` halfway through it. The
+        // quickest trips are the most even, so the offset is the quickest recent one's.
         const t = this.now();
         this.rtt = t - m.t;
-        this.offset = m.at - (m.t + t) / 2;
+        this.samples.push({ rtt: this.rtt, offset: m.at - (m.t + t) / 2 });
+        if (this.samples.length > PINGS) this.samples.shift();
+        this.offset = this.samples.reduce((best, s) => (s.rtt < best.rtt ? s : best)).offset;
         break;
       }
       case 'bye':

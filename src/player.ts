@@ -110,7 +110,7 @@ export class Player {
   }
 
   /** Shift while walking crouches; while flying it goes down. */
-  private crouching(): boolean {
+  crouching(): boolean {
     return !this.flying && (this.input.isHeld('ShiftLeft') || this.input.isHeld('ShiftRight'));
   }
 
