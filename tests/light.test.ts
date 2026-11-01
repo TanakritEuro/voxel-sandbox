@@ -325,4 +325,62 @@ describe('light after edits', () => {
       if (n % 20 === 0) matchesReference(world);
     }
   }, 60_000);
+
+  it('sets a batch of blocks at once with the light of setting them one at a time; reports exactly the chunks to remesh', () => {
+    const batched = region();
+    const single = region();
+    const rng = createRng(11);
+    const blocks = [Block.Air, Block.Stone, Block.Torch, Block.Water, Block.WaterFlow3, Block.WaterFalling, Block.Glass, Block.Lamp];
+    const chunks = () => [...batched.chunks.values()];
+    for (let round = 1; round <= 6; round++) {
+      // A batch of 40–200 changes in a clump (as a tick of water makes), at distinct places.
+      const cx = (cx0 + cx1) / 2;
+      const ox = Math.floor(cx * S + (rng() - 0.5) * 60);
+      const oz = Math.floor((cz0 + 1) * S + (rng() - 0.5) * 30);
+      const oy = 40 + Math.floor(rng() * 40);
+      const seen = new Set<string>();
+      const batch: [number, number, number, Block][] = [];
+      const size = 40 + Math.floor(rng() * 160);
+      while (batch.length < size) {
+        const x = ox + Math.floor(rng() * 12);
+        const y = oy + Math.floor(rng() * 12);
+        const z = oz + Math.floor(rng() * 12);
+        if (seen.has(`${x},${y},${z}`)) continue;
+        seen.add(`${x},${y},${z}`);
+        batch.push([x, y, z, blocks[Math.floor(rng() * blocks.length)]]);
+      }
+      const lightBefore = new Map(chunks().map((c) => [c, c.light.slice()]));
+      const blocksBefore = new Map(chunks().map((c) => [c, c.blocks.slice()]));
+      const stale = batched.setBlocks(batch);
+      for (const [x, y, z, b] of batch) single.setBlock(x, y, z, b);
+      // The same blocks and light as one at a time, and as lighting the whole area at once.
+      for (const c of chunks()) {
+        const o = single.getChunk(c.cx, c.cy, c.cz)!;
+        expect(firstDifference(c.blocks, o.blocks), `blocks of ${c.key}, round ${round}`).toBe(-1);
+        expect(firstDifference(c.light, o.light), `light of ${c.key}, round ${round}`).toBe(-1);
+      }
+      matchesReference(batched);
+      // Stale: every chunk with a changed block or light within its padded area, each once.
+      const expected = new Set<string>();
+      const pads = (wx: number, wy: number, wz: number) => {
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dz = -1; dz <= 1; dz++)
+            for (let dx = -1; dx <= 1; dx++) {
+              const c = batched.getChunk(toChunk(wx + dx), toChunk(wy + dy), toChunk(wz + dz));
+              if (c) expected.add(c.key);
+            }
+      };
+      for (const c of chunks()) {
+        const oldLight = lightBefore.get(c)!;
+        const oldBlocks = blocksBefore.get(c)!;
+        for (let i = 0; i < oldLight.length; i++) {
+          if (oldLight[i] === c.light[i] && oldBlocks[i] === c.blocks[i]) continue;
+          pads(c.cx * S + (i & 31), c.cy * S + (i >> 10), c.cz * S + ((i >> 5) & 31));
+        }
+      }
+      const keys = stale.map((c: Chunk) => c.key);
+      expect(new Set(keys).size).toBe(keys.length);
+      expect(new Set(keys), `round ${round}`).toEqual(expected);
+    }
+  }, 60_000);
 });

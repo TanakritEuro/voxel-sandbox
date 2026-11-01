@@ -412,36 +412,57 @@ const NEIGHBOURS = [
  * Returns the chunks whose light changed, with the neighbours that pad the changed blocks.
  */
 export function updateLight(world: World, x: number, y: number, z: number): Set<Chunk> {
-  if (y < 0 || y >= HEIGHT) return new Set();
-  const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
-  if (!chunk) return new Set();
+  return updateLightAt(world, [x, y, z]);
+}
+
+/**
+ * The blocks at `at` (world x, y, z after one another) have just been set, any number of them:
+ * bring the light up to date for all of them at once. Each kind of light is taken away from all
+ * of them in one pass, then let back in in one: a tick of flowing water changing a thousand
+ * blocks costs about what one change does, not a thousand times it. Returns the chunks whose
+ * light changed, with the neighbours that pad the changed blocks.
+ */
+export function updateLightAt(world: World, at: readonly number[]): Set<Chunk> {
   const edits = new Map<Chunk, Map<number, number>>();
   touched = edits;
-  const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
-  const b = chunk.blocks[i];
   for (const shift of [SUN, BLOCK_LIGHT]) {
-    // Take away what the block had, and what came from it.
-    const had = (chunk.light[i] >> shift) & 15;
-    if (had) {
-      setLevel(chunk, i, shift, 0);
-      pushRemove(x, y, z, had);
-      unspreadWorld(world, shift);
-    }
-    // Let light back in: from the neighbours, from the sky above the top of the world, and
-    // from the block itself if it gives light.
-    if (!OPAQUE[b]) {
-      for (const [dx, dy, dz] of NEIGHBOURS) {
-        const ny = y + dy;
-        if (ny >= 0 && ny < HEIGHT && (world.getLight(x + dx, ny, z + dz) >> shift) & 15) pushWorld(x + dx, ny, z + dz);
+    // Take away what the blocks had, and what came from it.
+    for (let n = 0; n < at.length; n += 3) {
+      const [x, y, z] = [at[n], at[n + 1], at[n + 2]];
+      if (y < 0 || y >= HEIGHT) continue;
+      const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
+      if (!chunk) continue;
+      const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
+      const had = (chunk.light[i] >> shift) & 15;
+      if (had) {
+        setLevel(chunk, i, shift, 0);
+        pushRemove(x, y, z, had);
       }
-      if (shift === SUN && y === HEIGHT - 1 && CLEAR[b]) {
-        setLevel(chunk, i, shift, 15);
+    }
+    unspreadWorld(world, shift);
+    // Let light back in: from the neighbours, from the sky above the top of the world, and
+    // from the blocks themselves if they give light.
+    for (let n = 0; n < at.length; n += 3) {
+      const [x, y, z] = [at[n], at[n + 1], at[n + 2]];
+      if (y < 0 || y >= HEIGHT) continue;
+      const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
+      if (!chunk) continue;
+      const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
+      const b = chunk.blocks[i];
+      if (!OPAQUE[b]) {
+        for (const [dx, dy, dz] of NEIGHBOURS) {
+          const ny = y + dy;
+          if (ny >= 0 && ny < HEIGHT && (world.getLight(x + dx, ny, z + dz) >> shift) & 15) pushWorld(x + dx, ny, z + dz);
+        }
+        if (shift === SUN && y === HEIGHT - 1 && CLEAR[b]) {
+          setLevel(chunk, i, shift, 15);
+          pushWorld(x, y, z);
+        }
+      }
+      if (shift === BLOCK_LIGHT && EMIT[b] > ((chunk.light[i] >> shift) & 15)) {
+        setLevel(chunk, i, shift, EMIT[b]);
         pushWorld(x, y, z);
       }
-    }
-    if (shift === BLOCK_LIGHT && EMIT[b] > ((chunk.light[i] >> shift) & 15)) {
-      setLevel(chunk, i, shift, EMIT[b]);
-      pushWorld(x, y, z);
     }
     spreadWorld(world, shift);
   }

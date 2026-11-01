@@ -124,9 +124,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
   `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
-  `updateLight` after an edit, shared `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
+  `updateLight` after an edit, `updateLightAt` for many at once, shared `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
   and the walk from the player's chunk that decides what to mesh and draw),
-  `world.ts` (`Chunk`, `World`: get/set across chunks, columns, light and stale chunks on edit,
+  `world.ts` (`Chunk`, `World`: get/set across chunks (`setBlocks`: many, one light update), columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `water.ts` (flowing water, a cellular automaton: `WaterFlow` wakes blocks round edits and ticks them,
   falling, spreading towards the nearest drop, new sources between two, drying up; changes

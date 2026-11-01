@@ -273,3 +273,39 @@ Nothing shows in the game yet, so there was nothing to look at in a browser.
 - A pool of sources, woken, makes no change.
 - **Splitting the work:** a flow down steps and round pillars ends the same with 5 blocks a tick as
   with no limit.
+
+## Step 3: setting many blocks with one light update — built (2026-11-01)
+
+**What changed:**
+- **`updateLightAt(world, at)`** (`world/light.ts`) takes any number of changed blocks.
+  - For each kind of light, it takes the light away from all of them in one pass of the removal
+    queue, then lets it back in from all of them in one pass of the spreading queue.
+  - It uses the same queues and rules as before. `updateLight` for one block is now
+    `updateLightAt` with one.
+- **`World.setBlocks(changes)`:** sets them all, then one light update. Returns the chunks to
+  remesh, each once, and the light's time in `lightMs` as `setBlock` does.
+
+**Bench** (`npm run bench`, `water`), each case on a fresh world both ways (ms a tick, Node under
+Vitest):
+
+| | most changes a tick | one `setBlock` each: median / max (light max) | `setBlocks`: median / max (light max) |
+| --- | --- | --- | --- |
+| A source on grass | 14 | 0.02 / 0.61 (0.60) | 0.01 / 0.20 (0.20) |
+| The sea into a small cave | 11 | 0.04 / 0.22 (0.20) | 0.02 / 0.07 (0.07) |
+| A 32 × 32 room opened under the sea | 1,037 | 9.5 / 16.3 (16.0) | 2.5 / 6.8 (6.0) |
+
+- **The worst tick drops from 16.3 to 6.8 ms.** Together with its simulation (up to 2.9 ms), that
+  is still about 10 ms for a thousand blocks changing at once, before remeshing.
+- **That's over the plan's 4 ms a tick.** It needs measuring in Chrome (usually faster than Node
+  under Vitest) in step 5. If it's still over, a tick's changes can be made over several frames,
+  or the per-tick limit lowered. Ordinary flows are far inside it: under 0.5 ms a tick for
+  everything.
+
+**Tests (1 new, 273 in all):**
+- Six batches of 40–200 changes in a clump (stone, air, torches, lamps, glass, sources, flowing and
+  falling water) across chunk borders, on the cave-mouth region of the light tests.
+- After each batch, the blocks and light are the same as setting them one at a time, and as
+  lighting the whole area at once.
+- The chunks reported stale are exactly those with a changed block or light within their padded
+  area, each once.
+- The existing light tests pass unchanged through the new path.

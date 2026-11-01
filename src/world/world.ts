@@ -4,7 +4,7 @@
 import { Block } from './blocks';
 import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
 import { Generator, type GeneratorOptions } from './generate';
-import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, SUNLIT, unpackLight, updateLight } from './light';
+import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, SUNLIT, unpackLight, updateLight, updateLightAt } from './light';
 import { ALL_CONNECTED, chunkConnectivity } from './visibility';
 
 /**
@@ -151,7 +151,33 @@ export class World {
     return stale;
   }
 
-  /** Time the light of the last `setBlock` took (ms). */
+  /**
+   * Set many blocks (`[x, y, z, block]` each: a tick of flowing water), then bring the light up
+   * to date for all of them at once. Returns the chunks whose meshes are now stale, each once,
+   * as `setBlock` would for them all. `lightMs` is how long the light took.
+   */
+  setBlocks(changes: readonly (readonly [number, number, number, Block])[]): Chunk[] {
+    const stale = new Set<Chunk>();
+    const at: number[] = [];
+    for (const [x, y, z, block] of changes) {
+      const s = this.setBlockOnly(x, y, z, block);
+      if (!s.length) continue;
+      for (const c of s) stale.add(c);
+      at.push(x, y, z);
+    }
+    if (!at.length) return [];
+    const t0 = performance.now();
+    const lit = updateLightAt(this, at);
+    this.lightMs = performance.now() - t0;
+    for (const c of lit) {
+      if (stale.has(c)) continue;
+      c.version++;
+      stale.add(c);
+    }
+    return [...stale];
+  }
+
+  /** Time the light of the last `setBlock` or `setBlocks` took (ms). */
   lightMs = 0;
 
   private setBlockOnly(x: number, y: number, z: number, block: Block): Chunk[] {
