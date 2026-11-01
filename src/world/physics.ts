@@ -8,7 +8,8 @@
 //
 // Crouching on the ground cuts short any move that would leave nothing under the box, so
 // you can walk up to an edge and along it but not off it. In water, gravity gives way to a
-// slow sink, Space swims up, and swimming into a wall with Space held climbs out.
+// slow sink, Space swims up, and swimming into a wall with Space held climbs out. Flowing water
+// carries bodies down its slope (`currentAt`), walking, wading or swimming.
 
 import { TUNING } from '../config';
 import { type Block, BLOCKS } from './blocks';
@@ -162,6 +163,46 @@ export function touchesLiquid(body: Body, world: BlockSource): boolean {
   });
 }
 
+/** How deep the water in block (x, y, z) is: a full block with water above it, else its `liquidHeight` (0 if it isn't water). */
+function depthAt(world: BlockSource, x: number, y: number, z: number): number {
+  const info = BLOCKS[world.getBlock(x, y, z)];
+  if (!info.liquid) return 0;
+  return BLOCKS[world.getBlock(x, y + 1, z)].liquid ? 1 : info.liquidHeight;
+}
+
+/**
+ * Which way the water the box is in flows, as a horizontal unit vector, or (0, 0) in still water.
+ * Each water block it reaches below the surface of pushes towards each neighbour by how much
+ * shallower that is: other water by the difference in depth, an open block over a drop (where
+ * the water falls) by its whole depth. Sources among sources (the sea, a lake) don't push.
+ */
+export function currentAt(body: Body, world: BlockSource): [number, number] {
+  let cx = 0;
+  let cz = 0;
+  anyOverlapped(body, (x, y, z) => {
+    const h = depthAt(world, x, y, z);
+    if (h === 0 || body.y >= y + h) return false;
+    for (const [dx, dz] of SIDEWAYS) {
+      const n = BLOCKS[world.getBlock(x + dx, y, z + dz)];
+      let fall = 0;
+      if (n.liquid) fall = h - depthAt(world, x + dx, y, z + dz);
+      else if (n.passable && BLOCKS[world.getBlock(x + dx, y - 1, z + dz)].passable) fall = h;
+      cx += dx * fall;
+      cz += dz * fall;
+    }
+    return false;
+  });
+  const n = Math.hypot(cx, cz);
+  return n > 1e-6 ? [cx / n, cz / n] : [0, 0];
+}
+
+const SIDEWAYS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const;
+
 /** Is the point (x, y, z) under a liquid's surface? */
 export function underLiquid(world: BlockSource, x: number, y: number, z: number): boolean {
   const by = Math.floor(y);
@@ -230,6 +271,9 @@ export function stepPlayer(body: Body, input: MoveInput, world: BlockSource, dt 
   const swim = P.swim;
   const swimming = body.inWater;
   const speed = swimming ? swim.speed : input.crouch ? P.crouchSpeed : input.sprint ? P.sprintSpeed : P.walkSpeed;
+  // Flowing water carries the body along: the velocity it heads for has the current added.
+  const [fx, fz] = currentAt(body, world);
+  const push = TUNING.water.push;
   let vx: number;
   let vz: number;
   let vy0: number;
@@ -238,15 +282,15 @@ export function stepPlayer(body: Body, input: MoveInput, world: BlockSource, dt 
     // Water pulls every velocity towards the wanted one: across at swimming speed, up while
     // Space is held, otherwise down to a slow sink.
     const k = 1 - Math.exp(-swim.drag * dt);
-    vx = body.vx + (wx * speed - body.vx) * k;
-    vz = body.vz + (wz * speed - body.vz) * k;
+    vx = body.vx + (wx * speed + fx * push - body.vx) * k;
+    vz = body.vz + (wz * speed + fz * push - body.vz) * k;
     vy0 = body.vy;
     vy = vy0 + ((input.jump ? swim.upSpeed : -swim.maxSink) - vy0) * k;
   } else {
     // Turn the horizontal velocity towards the wanted one, by at most the acceleration.
     const maxChange = (body.onGround ? P.groundAccel : P.airAccel) * dt;
-    const dvx = wx * speed - body.vx;
-    const dvz = wz * speed - body.vz;
+    const dvx = wx * speed + fx * push - body.vx;
+    const dvz = wz * speed + fz * push - body.vz;
     const change = Math.hypot(dvx, dvz);
     const k = change > maxChange ? maxChange / change : 1;
     vx = body.vx + dvx * k;
@@ -296,22 +340,26 @@ export function stepMob(body: Body, move: MobMove, world: BlockSource, dt = TUNI
   const M = TUNING.mobs;
   const P = TUNING.player;
   body.inWater = touchesLiquid(body, world);
+  // Flowing water carries it along, as the player.
+  const [fx, fz] = currentAt(body, world);
+  const wantX = move.vx + fx * TUNING.water.push;
+  const wantZ = move.vz + fz * TUNING.water.push;
   let vx: number;
   let vz: number;
   let vy0: number;
   let vy: number;
   if (body.inWater) {
     const k = 1 - Math.exp(-M.waterDrag * dt);
-    vx = body.vx + (move.vx - body.vx) * k;
-    vz = body.vz + (move.vz - body.vz) * k;
+    vx = body.vx + (wantX - body.vx) * k;
+    vz = body.vz + (wantZ - body.vz) * k;
     vy0 = body.vy;
     // Up while the head is under, otherwise sink back gently: it bobs at the surface.
     const headUnder = underLiquid(world, body.x, body.y + body.height * 0.6, body.z);
     vy = vy0 + ((headUnder ? M.floatSpeed : -0.5) - vy0) * k;
   } else {
     const maxChange = (body.onGround ? M.groundAccel : M.airAccel) * dt;
-    const dvx = move.vx - body.vx;
-    const dvz = move.vz - body.vz;
+    const dvx = wantX - body.vx;
+    const dvz = wantZ - body.vz;
     const change = Math.hypot(dvx, dvz);
     const k = change > maxChange ? maxChange / change : 1;
     vx = body.vx + dvx * k;

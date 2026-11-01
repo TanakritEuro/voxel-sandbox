@@ -26,9 +26,11 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 8 (flowing water) in progress, plan approved (`docs/milestone-8.md`).
-Milestones 1–7 built (`docs/milestone-1.md` to `docs/milestone-7.md`), waiting for playtests
-(Milestone 7, mobs: four invented passive animals, each in its own biome, wandering by A*
+Milestones 1–8 built (`docs/milestone-1.md` to `docs/milestone-8.md`), waiting for playtests
+(Milestone 8, flowing water: a cellular automaton woken by edits, falling, spreading in eighths
+towards the nearest drop, new sources between two, drying up, ticked 4 times a second with one
+light update a tick and remeshing in the workers, saved and carrying on after loading, a
+current that carries the player and mobs; Milestone 7, mobs: four invented passive animals, each in its own biome, wandering by A*
 paths, grazing, resting at night, three hits and gone in a puff, with calls; Milestone 6, 120 fps on a laptop GPU: chunks drawn in batched pages with multi-draw, faces
 pointing away skipped, far columns at lower detail, leaves in their own pass so solid blocks
 never discard; antialiasing and render resolution in the settings)
@@ -111,7 +113,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, light, day length, sky, mobs.
+  reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push).
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked), textures and sound per face, the default
@@ -132,6 +134,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   falling, spreading towards the nearest drop, new sources between two, drying up; changes
   returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
+  `currentAt`: flowing water carries bodies down its slope;
   `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
   timing and crack stage).
 - `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,

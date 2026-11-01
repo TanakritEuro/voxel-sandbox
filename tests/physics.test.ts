@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TUNING } from '../src/config';
 import { FixedStep } from '../src/math';
 import { Block } from '../src/world/blocks';
-import { type Body, type BlockSource, createBody, HALF_WIDTH, type MoveInput, moveBody, NO_INPUT, stepPlayer, touchesLiquid, underLiquid } from '../src/world/physics';
+import { type Body, type BlockSource, createBody, currentAt, HALF_WIDTH, type MoveInput, moveBody, NO_INPUT, stepMob, stepPlayer, touchesLiquid, underLiquid } from '../src/world/physics';
 
 /** Floor top at y = 41: every block at y ≤ 40 is stone. */
 const FLOOR = 41;
@@ -309,6 +309,49 @@ describe('swimming', () => {
     expect(body.x).toBeGreaterThan(10);
     expect(body.y).toBe(SURFACE + 1);
     expect(body.inWater).toBe(false);
+  });
+});
+
+describe('flowing water', () => {
+  // A stream along +x on the floor: a source at x = -1, then levels 7 down to 1 for x = 0..6, with
+  // walls along z = ±2 (so it runs one way); still water (sources) for x ≥ 20.
+  const LEVELS = [Block.WaterFlow7, Block.WaterFlow6, Block.WaterFlow5, Block.WaterFlow4, Block.WaterFlow3, Block.WaterFlow2, Block.WaterFlow1];
+  const stream = worldOf((x, y, z) => {
+    if (y < FLOOR || Math.abs(z) >= 2) return y < FLOOR + 3 ? Block.Stone : Block.Air;
+    if (y !== FLOOR) return Block.Air;
+    if (x === -1 || x >= 20) return Block.Water;
+    return x >= 0 && x < 7 ? LEVELS[x] : Block.Air;
+  });
+
+  it('flows from deep to shallow, and not at all in still water', () => {
+    const [fx, fz] = currentAt(createBody(2.5, FLOOR, 0.5), stream);
+    expect(fx).toBeCloseTo(1);
+    expect(fz).toBeCloseTo(0);
+    expect(currentAt(createBody(25.5, FLOOR, 0.5), stream)).toEqual([0, 0]);
+    expect(currentAt(standing(0.5, 0.5), flat)).toEqual([0, 0]);
+  });
+
+  it('carries a player standing in it along, and slows one walking against it', () => {
+    const still = createBody(2.5, FLOOR, 0.5);
+    run(still, stream, 0.5, NO_INPUT);
+    expect(still.x - 2.5).toBeGreaterThan(0.3);
+    expect(Math.abs(still.z - 0.5)).toBeLessThan(1e-9);
+    const up = createBody(4.5, FLOOR, 0.5);
+    run(up, stream, 0.5, input({ forward: 1, yaw: Math.PI / 2 })); // west, up the stream
+    const dry = standing(4.5, 0.5);
+    run(dry, flat, 0.5, input({ forward: 1, yaw: Math.PI / 2 }));
+    expect(4.5 - up.x).toBeLessThan(4.5 - dry.x - 0.3);
+    expect(up.x).toBeLessThan(4.5);
+    // In the still water nothing moves it.
+    const pool = createBody(25.5, FLOOR, 0.5);
+    run(pool, stream, 1, NO_INPUT);
+    expect(pool.x).toBeCloseTo(25.5, 9);
+  });
+
+  it('carries mobs too', () => {
+    const mob = createBody(2.5, FLOOR, 0.5, 0.25, 0.5);
+    for (let i = 0; i < 60; i++) stepMob(mob, { vx: 0, vz: 0, jump: false, jumpHeight: 1 }, stream);
+    expect(mob.x - 2.5).toBeGreaterThan(0.3);
   });
 });
 

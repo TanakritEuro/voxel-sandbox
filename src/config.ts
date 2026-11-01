@@ -156,6 +156,8 @@ export const TUNING = {
     maxPerTick: 1024,
     /** Water on flat ground runs towards the nearest drop within this many blocks (at most 8). */
     dropSearch: 4,
+    /** Flowing water carries the player and mobs down its slope at this speed (blocks / s), added to their own. */
+    push: 1.4,
   },
   save: {
     /** Edited chunks are written this long after an edit (ms); at once when unloaded or when the page is hidden. */

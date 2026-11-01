@@ -422,3 +422,86 @@ mobs off:
 - Water saved after three ticks and loaded into a fresh world, its columns woken, ends exactly as
   the uninterrupted flow does.
 - Water held back by an unloaded column flows on into it once it loads and wakes.
+
+## Step 6: the current, and the end of the milestone (2026-11-01)
+
+**What changed:**
+- **`currentAt`** (`world/physics.ts`): which way the water a body is in flows, as a horizontal
+  unit vector.
+  - Each water block the body reaches below the surface of pushes towards each neighbour by how
+    much shallower that is: other water by the difference in depth, an open block over a drop by
+    its whole depth.
+  - The sum is made unit length, so a stream pushes the same whatever its slope.
+  - Sources among sources (the sea, lakes) don't push.
+- **The current** (`TUNING.water.push`, 1.4 blocks a second) is added to the velocity the player
+  heads for, walking, wading or swimming, and to a mob's. Not when flying.
+  - Standing in a stream, you're carried along. Walking against it, you're slower.
+- **Cost:** 2.24–2.28 µs a physics step against 1.27–1.44 before (bench, alternating). The
+  overlapped blocks are read again, and their neighbours where there's water. 0.009 ms a frame for
+  the player.
+
+**Felt in Chrome:**
+- Water placed on the grass by the spawn, then walked into for a second.
+- With nothing held, the player kept moving down the stream, about 2.5 blocks across x and 3.6
+  across z in 3 s: roughly the 1.4 blocks a second of the push.
+
+**Tests (3 new, 285 in all):**
+- In a stream of levels 7 to 1 the current points downstream; in still water and on dry land
+  there's none.
+- A player standing in it is carried at least 0.3 blocks in half a second, and not sideways.
+- Walking up it is slower than on dry ground. In still water nothing moves.
+- A mob is carried too.
+
+## The milestone, measured
+
+- **The worst case,** `?flood` (a 32 × 32 room opened under the sea at once), in Chrome on your
+  laptop at radius 8: 1, 0, 0 and 0 frames over 20 ms in four 10 s runs, none over 33. Each half
+  of the slowest tick: 3.0–3.5 ms working the changes out, 4.3–6.7 ms making them, on separate
+  frames (step 5).
+- **Ordinary flows** cost under 0.5 ms a tick (bench, step 3).
+- **Still water costs nothing:** with nothing woken there is no tick. Each column that loads costs
+  0.1 ms to look for held-back water.
+  - `?autofly=20` at radius 8 with mobs: 1,844 frames, 5 over 20 ms, none over 33, no holes, as at
+    the end of Milestone 6 (step 5).
+  - The mountain probe wasn't run again. Nothing in this milestone draws anything new where there's
+    no moving water (the shader's one new term only reads a byte), and the Chrome window was a
+    different size today, so its numbers wouldn't compare.
+- **Against the plan's targets:**
+  - **No frame over 20 ms while a cave floods:** met in three runs of four, with a 24.8 ms frame in
+    the other.
+  - **A busy tick under 4 ms:** working it out is; making the changes (mostly light) is 4.3–6.7 ms,
+    on a frame of its own.
+
+**Known limits:**
+- **A thousand blocks set in one frame** (only `?flood` does it, by opening its whole ceiling at
+  once) takes about 50 ms, mostly light.
+- **Mesh results can be dropped:** a chunk whose water changes every tick gets a new version each
+  quarter second. A worker's mesh made from an older version is dropped when it arrives, so in a
+  long busy flow a chunk's picture can lag until the flow there settles. Not seen in the flood
+  runs.
+- **Waking is local:** a change wakes only its six neighbours. Water already settled several
+  blocks away doesn't change course when a new drop opens near it, until something next to it
+  changes.
+- **No buckets:** taking water away is placing a block in it and breaking the block. A source
+  can't be picked up.
+
+## Playtest questions
+
+1. **Placing water** (the hotbar's 9) on flat ground, on a slope and at a cliff edge: does it
+   spread, run off edges and fall the way you'd expect? Is a quarter second a step the right
+   speed?
+2. **Digging into a lake or the sea** from the side, and from below:
+   - Does it pour in?
+   - Do channels dug from a pond fill up (the new-source rule)?
+   - Does a hole dug down through the seabed fill?
+3. **Blocking and draining:** put a block on a source. Does the stream drain away tidily, a level
+   at a time?
+4. **Looks:** do the steps of eighths look right next to each other, and next to the sea and
+   falling water? Any holes, flickering or doubled faces where depths meet, near or far?
+5. **Being in it:**
+   - Wading through shallow water and swimming from five eighths: does that feel right?
+   - Is the current (1.4 blocks a second) too strong or too weak?
+   - Does the underwater view come on at the right moment?
+6. **Torches:** water washes them away. Is that what you want?
+7. **Saving:** leave a world while water is still flowing and come back. Does it carry on?
+8. **Mobs:** do they cope with streams (swimming, being carried, getting out)?
