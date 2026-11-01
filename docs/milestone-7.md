@@ -519,6 +519,10 @@ alternating runs. At the mountains all 24 mobs are crag goats.
   in the flights.
 - Mobs aren't saved, as agreed: they appear again around you.
 
+**Afterwards (2026-11-01, during Milestone 8):** the laptop was back to its usual speed. `?autofly=20`
+at radius 8, with mobs: 1,844 frames, 5 over 20 ms, none over 33, no holes, as at the end of
+Milestone 6.
+
 ## Playtest questions
 
 1. **Looks:** with `?showcase` (and out in the world), do the four read as what they are: the

@@ -17,6 +17,8 @@ export interface EngineCounters {
   levels: [number, number, number];
   /** The mobs, as text (`game.ts`). */
   mobs: string;
+  /** Flowing water, as text (`game.ts`). */
+  water: string;
   queued: number;
   inFlight: number;
   /** Fraction of worker time spent on jobs, or null before there are workers. */
@@ -147,6 +149,7 @@ export class Stats {
       `chunks ${c.chunks} loaded, ${c.visible} could be seen, ${c.meshed} meshed, in ${c.pages.count} pages ${Math.round(c.pages.full * 100)}% full`,
       `detail: ${c.levels[0]} columns full, ${c.levels[1]} half, ${c.levels[2]} quarter`,
       `mobs: ${c.mobs}`,
+      `water: ${c.water}`,
       `time ${c.time}`,
       `saving ${c.saving}`,
       `jobs ${c.queued} queued, ${c.inFlight} in flight` + (c.workerBusy === null ? '' : `, workers ${Math.round(c.workerBusy * 100)}% busy`),

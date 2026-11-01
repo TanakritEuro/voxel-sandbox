@@ -19,8 +19,9 @@
 
 import { TUNING } from '../config';
 import { Block, BLOCKS } from './blocks';
-import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, WORLD_HEIGHT } from './coords';
+import { CHUNK_SIZE, CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, WORLD_HEIGHT } from './coords';
 import type { BlockSource } from './physics';
+import { EMPTY_BLOCKS, type World } from './world';
 
 /** The blocks, and which columns are loaded: water treats unloaded land as a wall. */
 export interface WaterWorld extends BlockSource {
@@ -40,6 +41,10 @@ const KIND = new Uint8Array(256);
 BLOCKS.forEach((info, b) => {
   KIND[b] = info.liquid ? (b === Block.Water ? SOURCE : b === Block.WaterFalling ? FALLING : FLOWING) : info.passable ? OPEN : SOLID;
 });
+
+/** Moving water: flowing or falling, not a source. */
+const MOVING = new Uint8Array(256);
+KIND.forEach((k, b) => (MOVING[b] = k === FLOWING || k === FALLING ? 1 : 0));
 
 /** Flowing water at `level` (1–7). */
 export const flowing = (level: number): Block => (Block.WaterFlow1 + level - 1) as Block;
@@ -244,6 +249,43 @@ export class WaterFlow {
     }
     return yes;
   }
+}
+
+/**
+ * Column (cx, cz) has just been loaded: wake the moving water in it if it was read from the save
+ * (`saved`: water left mid-flow carries on), and the moving water in the loaded columns beside it
+ * on the faces looking into it (held back while it wasn't loaded, as by a wall). Generated land
+ * has no moving water, so those faces only cost a look. Returns the blocks woken.
+ */
+export function wakeColumn(flow: WaterFlow, world: World, cx: number, cz: number, saved: boolean): number {
+  const S = CHUNK_SIZE;
+  let woken = 0;
+  for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
+    const own = saved ? world.getChunk(cx, cy, cz) : undefined;
+    if (own && own.blocks !== EMPTY_BLOCKS) {
+      const blocks = own.blocks;
+      for (let i = 0; i < CHUNK_VOLUME; i++) {
+        if (!MOVING[blocks[i]]) continue;
+        flow.wake(cx * S + (i & 31), cy * S + (i >> 10), cz * S + ((i >> 5) & 31));
+        woken++;
+      }
+    }
+    for (let d = 0; d < 4; d++) {
+      const n = world.getChunk(cx + DX[d], cy, cz + DZ[d]);
+      if (!n || n.blocks === EMPTY_BLOCKS) continue;
+      // The face of the neighbour that looks back towards (cx, cz).
+      for (let a = 0; a < S; a++) {
+        const lx = DX[d] > 0 ? 0 : DX[d] < 0 ? S - 1 : a;
+        const lz = DZ[d] > 0 ? 0 : DZ[d] < 0 ? S - 1 : a;
+        for (let ly = 0; ly < S; ly++) {
+          if (!MOVING[n.blocks[(ly * S + lz) * S + lx]]) continue;
+          flow.wake(n.cx * S + lx, cy * S + ly, n.cz * S + lz);
+          woken++;
+        }
+      }
+    }
+  }
+  return woken;
 }
 
 /** Can water go into this block: air, a torch, or flowing water (not a source, not falling)? */

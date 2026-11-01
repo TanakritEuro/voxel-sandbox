@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Block } from '../src/world/blocks';
-import { flowing, flowLevel, WaterFlow, type WaterWorld } from '../src/world/water';
+import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
+import { flowing, flowLevel, wakeColumn, WaterFlow, type WaterWorld } from '../src/world/water';
+import { World } from '../src/world/world';
 import { Grid } from './grid';
 
 /** A grid that is loaded everywhere (or where `loaded` says). */
@@ -161,5 +163,68 @@ describe('flowing water', () => {
     const a = waterIn(whole, -30, 30, 0, 8, -30, 30);
     expect(a.size).toBeGreaterThan(20);
     expect(waterIn(split, -30, 30, 0, 8, -30, 30)).toEqual(a);
+  });
+});
+
+describe('flowing water in a loaded world', () => {
+  /** Column (cx, cz)'s chunks: a stone floor whose top is at y = 59, air above; or `copy`'s chunks. */
+  const floorColumn = (): (Uint8Array | null)[] =>
+    Array.from({ length: MAX_CHUNK_Y - MIN_CHUNK_Y + 1 }, (_, i) => {
+      if (MIN_CHUNK_Y + i !== 1) return null;
+      const blocks = new Uint8Array(CHUNK_VOLUME);
+      // Chunk 1 is y 32..63: stone up to y 59 (local 27).
+      blocks.fill(Block.Stone, 0, 28 * 32 * 32);
+      return blocks;
+    });
+  const settleWorld = (world: World, flow: WaterFlow, most = 400) => {
+    for (let t = 0; t < most && flow.pending; t++) world.setBlocks(flow.tick(world));
+    expect(flow.pending).toBe(0);
+  };
+  const waterOf = (world: World) => {
+    const out = new Map<string, number>();
+    for (const c of world.chunks.values()) c.blocks.forEach((b, i) => b >= Block.Water && (b === Block.Water || b >= Block.WaterFlow1) && out.set(`${c.key}:${i}`, b));
+    return out;
+  };
+
+  it('carries on after being saved and loaded mid-flow, to the same end', () => {
+    const make = () => {
+      const w = new World(1);
+      for (let cz = -1; cz <= 0; cz++) for (let cx = -1; cx <= 0; cx++) w.addColumn(cx, cz, floorColumn());
+      return w;
+    };
+    const whole = make();
+    const flowA = new WaterFlow();
+    whole.setBlocks([[-1, 60, -1, Block.Water]]);
+    flowA.wake(-1, 60, -1);
+    // Three ticks, then "saved": the chunks copied into a new world, as loading them would.
+    for (let t = 0; t < 3; t++) whole.setBlocks(flowA.tick(whole));
+    const loaded = new World(1);
+    for (let cz = -1; cz <= 0; cz++)
+      for (let cx = -1; cx <= 0; cx++)
+        loaded.addColumn(cx, cz, Array.from({ length: MAX_CHUNK_Y - MIN_CHUNK_Y + 1 }, (_, i) => whole.getChunk(cx, MIN_CHUNK_Y + i, cz)!.blocks.slice()));
+    const flowB = new WaterFlow();
+    let woken = 0;
+    for (let cz = -1; cz <= 0; cz++) for (let cx = -1; cx <= 0; cx++) woken += wakeColumn(flowB, loaded, cx, cz, true);
+    expect(woken).toBeGreaterThan(0);
+    settleWorld(whole, flowA);
+    settleWorld(loaded, flowB);
+    expect(waterOf(loaded)).toEqual(waterOf(whole));
+    expect(loaded.getBlock(-1 + 7, 60, -1)).toBe(flowing(1));
+  });
+
+  it('lets water held back at land that was not loaded flow on when it loads', () => {
+    const world = new World(1);
+    world.addColumn(0, 0, floorColumn());
+    const flow = new WaterFlow();
+    world.setBlocks([[29, 60, 5, Block.Water]]);
+    flow.wake(29, 60, 5);
+    settleWorld(world, flow);
+    expect(world.getBlock(31, 60, 5)).toBe(flowing(6));
+    expect(world.getBlock(32, 60, 5)).toBe(Block.Air); // not loaded yet
+    world.addColumn(1, 0, floorColumn());
+    expect(wakeColumn(flow, world, 1, 0, false)).toBeGreaterThan(0);
+    settleWorld(world, flow);
+    expect(world.getBlock(32, 60, 5)).toBe(flowing(5));
+    expect(world.getBlock(36, 60, 5)).toBe(flowing(1));
   });
 });

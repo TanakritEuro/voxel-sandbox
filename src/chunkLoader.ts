@@ -285,6 +285,18 @@ export class ChunkLoader {
     this.centre = { cx: Number.NaN, cy: Number.NaN, cz: Number.NaN };
   }
 
+  /** Called when a column's chunks have been added to the world (generated, or read from the save if `saved`). */
+  onColumnAdded: ((cx: number, cz: number, saved: boolean) => void) | null = null;
+
+  /**
+   * Blocks in column (cx, cz) changed, and needn't show this frame (flowing water): its stale
+   * chunks are remeshed in the workers like any other, the old meshes shown meanwhile.
+   */
+  remeshSoon(cx: number, cz: number): void {
+    this.dirty = true;
+    this.unsettle(cx, cz);
+  }
+
   /** Remesh now, on this thread (after an edit), so the change shows this frame. */
   remesh(cx: number, cy: number, cz: number): void {
     // A chunk without a mesh yet is meshed by the next walk, from its new version. The edit may
@@ -317,6 +329,7 @@ export class ChunkLoader {
       if (this.inKeepRange(result.cx, result.cz)) {
         this.world.addColumn(result.cx, result.cz, result.chunks, result.connectivity, result.light);
         this.walkSoon = true;
+        this.onColumnAdded?.(result.cx, result.cz, this.saves?.has(result.cx, result.cz) ?? false);
       }
       return;
     }

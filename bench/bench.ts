@@ -23,7 +23,7 @@ import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, reachableChunks } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
-import { WaterFlow } from '../src/world/water';
+import { wakeColumn, WaterFlow } from '../src/world/water';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -399,6 +399,22 @@ it('water', () => {
   // then its changes made, either one at a time with World.setBlock (a light update each) or
   // all at once with World.setBlocks (one light update), each on a fresh world.
   const lines = [''];
+  {
+    // What loading a column costs the water: a look along the faces of the columns beside it
+    // (`wakeColumn`), on generated land with no moving water, as while flying.
+    const world = new World(SEED);
+    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) world.ensureColumn(dx, dz);
+    const flow = new WaterFlow();
+    const times: number[] = [];
+    for (let run = 0; run < 5; run++)
+      for (let dz = -3; dz <= 3; dz++)
+        for (let dx = -3; dx <= 3; dx++) {
+          const t0 = performance.now();
+          wakeColumn(flow, world, dx, dz, false);
+          times.push(performance.now() - t0);
+        }
+    lines.push(`water: waking on a column's load ${median(times).toFixed(3)} ms median, ${Math.max(...times).toFixed(3)} max (${flow.pending} woken)`);
+  }
   for (const batched of [false, true]) {
     const world = new World(SEED);
     for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) world.ensureColumn(dx, dz);

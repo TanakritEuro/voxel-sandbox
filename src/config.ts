@@ -153,7 +153,7 @@ export const TUNING = {
     flow: 0.12,
     /** Flowing water (`world/water.ts`): a tick this often (seconds), at most this many blocks looked at a tick. */
     tickSeconds: 0.25,
-    maxPerTick: 4096,
+    maxPerTick: 1024,
     /** Water on flat ground runs towards the nearest drop within this many blocks (at most 8). */
     dropSearch: 4,
   },

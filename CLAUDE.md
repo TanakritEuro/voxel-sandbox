@@ -130,7 +130,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `water.ts` (flowing water, a cellular automaton: `WaterFlow` wakes blocks round edits and ticks them,
   falling, spreading towards the nearest drop, new sources between two, drying up; changes
-  returned for the caller to make; unloaded land a wall; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
+  returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
   timing and crack stage).
@@ -182,7 +182,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   only re-sorts them (no walk), so view distance 16 loads and turns cheaply. Each column has a
   level of detail by distance (`lodLevel`, with hysteresis; far ones walled on every side,
   `wallsFor`); a mesh is known by its stamp (version and form), so a level change remeshes like
-  an edit, after the chunks with no mesh at all, the old mesh shown meanwhile.
+  an edit, after the chunks with no mesh at all, the old mesh shown meanwhile. `remeshSoon` remeshes a
+  column's changed chunks that way (flowing water); `onColumnAdded` tells the game a column is in.
 - `src/audio/` — `cues.ts` (which sounds movement and digging make, when; `heard`: how loud
   and from which side a mob is: pure), `sound.ts` (Web Audio: a recipe per block material, mob
   voices panned to their side, volume, mute).
@@ -200,13 +201,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/player.ts` — the player: physics at a fixed step, interpolated camera, fly toggle,
   waiting for the ground to load; `autopilot` for `?autofly`.
 - `src/main.ts` — entry point: the world list, or the game for `?world=<id>` (or an unsaved
-  world). `src/game.ts` — the game: opening the world, editing, HUD, frame loop, pause,
-  autosave.
+  world). `src/game.ts` — the game: opening the world, editing (each edit wakes the water),
+  flowing water (a tick every 0.25 s, its changes made the frame after: blocks and light at once,
+  saved, remeshed in the workers), HUD, frame loop, pause, autosave.
 - `src/ui/` — `worldList.ts` (play, new, rename, delete, settings), `pauseMenu.ts` (play,
   settings, save and quit, keys), `inventory.ts` (the block picker), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3), with GPU time per frame (`render/gpuTimer.ts`). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
-  sprint flight that reports frame times and holes. `?radius=12` overrides the view radius,
+  sprint flight that reports frame times and holes. `src/flood.ts` — `?flood`, the sea let into a
+  32 × 32 room under it at once, reporting frame and water tick times. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
   an unsaved world), `?light` shows light as grey,
   `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every

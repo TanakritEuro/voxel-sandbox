@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { heard, SoundCues, underfoot } from './audio/cues';
 import { Sound } from './audio/sound';
 import { Autofly } from './autofly';
+import { Flood } from './flood';
 import { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
 import { Input } from './input';
@@ -32,6 +33,7 @@ import type { Mob } from './mobs/brain';
 import { mobOnRay } from './mobs/hit';
 import { KINDS } from './mobs/kinds';
 import { MobManager } from './mobs/mobs';
+import { BlockCache } from './mobs/blockCache';
 import { MobRenderer } from './render/mobRenderer';
 import { Block, BLOCKS, hotbarFrom, isTorch, torchFor } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
@@ -39,6 +41,7 @@ import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock } from './world/physics';
 import { raycast, type RayHit } from './world/raycast';
+import { WaterFlow, type WaterChange, type WaterWorld, wakeColumn } from './world/water';
 import { World } from './world/world';
 
 const params = new URLSearchParams(location.search);
@@ -158,6 +161,78 @@ scene.add(chunks.group);
 const workersParam = Number(params.get('workers'));
 const pool = new WorkerPool(Number.isInteger(workersParam) && workersParam > 0 ? workersParam : undefined);
 const loader = new ChunkLoader(world, chunks, pool, saver);
+
+// Flowing water (`world/water.ts`): edits wake it, and it ticks every `TUNING.water.tickSeconds`.
+const flow = new WaterFlow();
+let waterClock = 0;
+/** For `?stats`: the last tick's changes and times, and the slowest since the line was last read. */
+let waterLast = { changes: 0, sim: 0, apply: 0 };
+let waterWorst = 0;
+// A column read from the save carries on flowing; one next to held-back water lets it through.
+loader.onColumnAdded = (cx, cz, saved) => void wakeColumn(flow, world, cx, cz, saved);
+
+/** Make a tick's changes (or `?flood`'s): the blocks and their light at once, then saving, and remeshing in the workers. */
+function applyWater(changes: WaterChange[]): void {
+  const stale = world.setBlocks(changes);
+  const edited = new Set<string>();
+  for (const [x, y, z] of changes) {
+    const c = world.getChunk(toChunk(x), toChunk(y), toChunk(z));
+    if (c && !edited.has(c.key)) {
+      edited.add(c.key);
+      saver.edited(c);
+    }
+  }
+  const columns = new Set<string>();
+  for (const c of stale) {
+    if (columns.has(`${c.cx},${c.cz}`)) continue;
+    columns.add(`${c.cx},${c.cz}`);
+    loader.remeshSoon(c.cx, c.cz);
+  }
+}
+
+/** A tick's changes, made the frame after it ran (and its simulation time). */
+let waterDue: { changes: WaterChange[]; sim: number } | null = null;
+
+/**
+ * Once a frame (not while paused): a water tick when one is due. Its changes are made on the
+ * next frame, so a busy tick's two halves (working them out, then the blocks and light) fall on
+ * different frames; they're made long before the next tick, as the flow needs.
+ */
+function flowWater(dt: number): void {
+  if (waterDue) {
+    const { changes, sim } = waterDue;
+    waterDue = null;
+    const t0 = performance.now();
+    applyWater(changes);
+    const apply = performance.now() - t0;
+    waterLast = { changes: changes.length, sim, apply };
+    waterWorst = Math.max(waterWorst, sim, apply);
+    flood?.tick(changes.length, sim, apply);
+    return;
+  }
+  const T = TUNING.water.tickSeconds;
+  waterClock += dt;
+  if (waterClock < T) return;
+  waterClock = Math.min(waterClock - T, T); // never more than one tick behind
+  if (!flow.pending) return;
+  const t0 = performance.now();
+  const cache = new BlockCache(world);
+  const blocks: WaterWorld = { getBlock: (x, y, z) => cache.getBlock(x, y, z), hasColumn: (cx, cz) => world.hasColumn(cx, cz) };
+  const changes = flow.tick(blocks);
+  const sim = performance.now() - t0;
+  if (changes.length) waterDue = { changes, sim };
+  else waterLast = { changes: 0, sim, apply: 0 };
+}
+
+/** The water line of `?stats`: blocks waiting, the last tick, and the slowest tick since last read. */
+function waterLine(): string {
+  const w = waterLast;
+  const line =
+    `${flow.pending} woken; last tick ${w.changes} changes, ${w.sim.toFixed(2)} ms simulating, ${w.apply.toFixed(2)} ms making them; ` +
+    `slowest half a tick ${waterWorst.toFixed(2)} ms`;
+  waterWorst = 0;
+  return line;
+}
 const input = new Input(canvas);
 
 /** Are the columns around (x, z) loaded? The player holds still until they are. */
@@ -196,6 +271,7 @@ const stats = new Stats(
     pages: chunks.pages,
     levels: loader.levels,
     mobs: mobLine(),
+    water: waterLine(),
     mouse: { now: input.takeBiggestMove(), ever: input.biggestMoveEver, raw: input.raw, dropped: input.spikes.dropped },
     queued: loader.queued,
     inFlight: loader.inFlight,
@@ -219,6 +295,13 @@ const autofly =
         stats.note = text;
         console.log(`[autofly]\n${text}\n${JSON.stringify(report)}`);
       });
+// `?flood`: the sea let into a room under it at once, to measure the worst case (`flood.ts`).
+const flood = params.has('flood')
+  ? new Flood(world, flow, applyWater, (report, text) => {
+      stats.note = text;
+      console.log(`[flood]\n${text}\n${JSON.stringify(report)}`);
+    })
+  : null;
 
 // Outline around the block you're looking at.
 const outline = new THREE.LineSegments(
@@ -272,6 +355,8 @@ function edit(x: number, y: number, z: number, block: Block): void {
   const stale = world.setBlock(x, y, z, block);
   if (stale.length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
   for (const c of stale) loader.remesh(c.cx, c.cy, c.cz);
+  // The water round it may flow now (in, out, or on).
+  if (stale.length) flow.wake(x, y, z);
   lastEdit = { ms: performance.now() - t0, lightMs: world.lightMs, chunks: stale.length };
 }
 
@@ -408,6 +493,8 @@ function frame(now: number): void {
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 
+  if (!paused()) flowWater(dt);
+  flood?.update(now, interval, player.body.x, player.body.z, player.waiting);
   target = raycast(world, camera.position, dir, TUNING.edit.reach);
   // A mob nearer than the block looked at takes the left button instead: hit, not dug (and no
   // outline on the block behind it).

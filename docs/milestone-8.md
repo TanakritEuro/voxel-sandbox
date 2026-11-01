@@ -362,3 +362,63 @@ column against 2.1.)
   - an eighth-high step between each pair of flowing blocks.
 - **Far chunks** keep flowing and falling water through coarsening, and mesh the flowing top at its
   depth.
+
+## Step 5: water in the game — built (2026-11-01)
+
+**What changed:**
+- **Edits wake the water** round them (`game.ts`, `edit`): breaking or placing next to water lets it
+  flow, and placing water (the hotbar's 9) puts down a source that spreads.
+- **A tick every 0.25 s,** reading blocks through a `BlockCache`:
+  - Its changes are made with `World.setBlocks` on the next frame, so a busy tick's two halves,
+    working out the changes and then the blocks and light, fall on different frames. They're made
+    long before the next tick, as the flow needs. Nothing flows while paused.
+  - Each changed chunk is marked edited for saving.
+  - The stale chunks' columns are remeshed in the workers like any other changed chunk
+    (`ChunkLoader.remeshSoon`), the old meshes shown meanwhile. Edits still remesh at once on the
+    main thread.
+- **Waking on load** (`wakeColumn`, called from `ChunkLoader.onColumnAdded`):
+  - A column read from the save wakes its moving water, so water saved mid-flow carries on.
+  - Every column that loads wakes the moving water on the faces of the loaded columns beside it,
+    which it held back while unloaded.
+  - On generated land there is none, and the look costs 0.1 ms a column (bench).
+- **`?stats`** has a water line: blocks woken, the last tick's changes and the time of each half,
+  and the slowest half since the last read.
+- **`?flood`** (`src/flood.ts`), the worst case for measuring:
+  - a room 32 × 32 and 6 high is carved under the nearest open sea;
+  - two seconds later its ceiling (about 7,000 blocks) is taken away at once;
+  - 10 s of frames and ticks are reported.
+  - Taking the ceiling away costs 46–53 ms in one frame (no player can do that), timed on its own
+    and not counted.
+- **The per-tick limit is down from 4,096 woken blocks to 1,024** (`TUNING.water.maxPerTick`).
+  - At 4,096 the worst tick in Chrome took 5.9 ms to work out and 7.7 ms to make, and the flood
+    had a 33 ms frame.
+  - Splitting the work across ticks ends the same (step 2's test). A flood that big now takes about
+    40 ticks (10 s) rather than 23. Ordinary flows never reach the limit.
+
+**Looked at in Chrome:**
+- Water placed on the grass by the spawn (the hotbar's 9, right click): a full-height source, with
+  falling water under it where it stood over a dip.
+- Streams step down in eighths towards the nearest drops, each step with its strip of side.
+- 101 fps while it flowed. No console errors.
+
+**Measured** in Chrome on your laptop, radius 8, 2560 × 1201. `?flood`, 10 s from the opening,
+mobs off:
+
+| | frames | over 20 ms | over 33 ms | slowest frame | slowest tick: working out / making changes |
+| --- | --- | --- | --- | --- | --- |
+| 4,096 a tick, both halves in one frame | 1,197 | 1 | 0 | 33.2 ms | 5.9 / 7.7 ms |
+| 1,024 a tick, both halves in one frame (2 runs) | 1,084, 1,089 | 1, 1 | 0, 0 | 25.0, 24.8 ms | 4.9 / 6.0, 3.4 / 3.8 ms |
+| 1,024 a tick, halves on separate frames (4 runs) | 1,097, 1,194, 1,190, 1,192 | 1, 0, 0, 0 | 0 | 24.8, 9.7, 16.9, 16.7 ms | 3.0–3.5 / 4.3–6.7 ms |
+
+- **The flood:** 38 ticks, 10,212 changes in the 10 s.
+- **Against the plan's 4 ms a tick:** working the changes out is under it (3.0–3.5 ms). Making
+  them, mostly light, is over it at 4.3–6.7 ms, but on a frame of its own. Frames stayed under
+  20 ms in three of four runs, and the fourth had one at 24.8 ms.
+- **`?autofly=20` at radius 8 with mobs and still water:** 1,844 frames, 5 over 20 ms, none over 33,
+  no holes. That's the laptop back at its Milestone 6 speed: the slow flights in Milestone 7 step
+  6 were the machine.
+
+**Tests (2 new, 282 in all):**
+- Water saved after three ticks and loaded into a fresh world, its columns woken, ends exactly as
+  the uninterrupted flow does.
+- Water held back by an unloaded column flows on into it once it loads and wakes.
