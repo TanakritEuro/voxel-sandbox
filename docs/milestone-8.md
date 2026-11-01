@@ -1,6 +1,8 @@
 # Milestone 8: flowing water
 
-**Plan, to check with you.**
+**Plan approved (2026-11-01)** as proposed: new sources from two side by side, flowing towards
+the nearest drop, flat steps in eighths, the push along the flow, torches washed away, 4 ticks a
+second.
 
 **Goal.** Water that moves:
 - dig into the side of a lake and it pours into the hole;
@@ -190,3 +192,33 @@ radius 8, and no frame over 20 ms while a cave floods.
 - **The push** along the flow for the player and mobs: yes or no?
 - **Torches washed away** by water: yes (gone, as there are no drops), or water stops at them?
 - **Speed:** 4 ticks a second (a block of spread every quarter second)?
+
+## Step 1: the blocks, and being in water by its depth — built (2026-11-01)
+
+**What changed:**
+- **Eight new block ids** (`world/blocks.ts`):
+  - `WaterFlow1` to `WaterFlow7` (27–33) and `WaterFalling` (34), copies of water: liquid,
+    passable, transparent, light cost 1, its texture and sound.
+  - Not in the picker, and a saved hotbar can't hold them.
+  - Nothing makes them yet; the flow (step 2) will.
+- **`liquidHeight`:** how deep the water in a block is. 1 for sources and falling water, level/8
+  for flowing water, 0 for everything else.
+- **Being in water** (`world/physics.ts`):
+  - A full block of water counts as soon as the box overlaps it, as before, so the sea and
+    swimming are unchanged.
+  - Shallower flowing water counts only when its surface is more than 0.3 of the body's height
+    over the feet (`TUNING.player.swim.wade`).
+  - So the player wades through levels 1–4 at walking speed and swims from level 5. A hopper (half
+    a block tall) swims from level 2.
+- **`underLiquid`:** a point is in water only below the surface. The player's eye uses it for the
+  underwater view, and mobs use it for keeping their heads up.
+
+Nothing shows in the game yet, so there was nothing to look at in a browser.
+
+**Tests (2 new, 264 in all):**
+- A body wades an eighth of water at the same speed as on dry ground, and swims in seven eighths.
+- A hopper-sized body swims in three eighths where the player wades.
+- A source is water at any depth.
+- The eye is under a half-deep flowing block only below its surface, and under a source all the
+  way up.
+- The picker doesn't offer moving water.

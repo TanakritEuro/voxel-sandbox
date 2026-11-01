@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TUNING } from '../src/config';
 import { FixedStep } from '../src/math';
 import { Block } from '../src/world/blocks';
-import { type Body, type BlockSource, createBody, HALF_WIDTH, type MoveInput, moveBody, NO_INPUT, stepPlayer } from '../src/world/physics';
+import { type Body, type BlockSource, createBody, HALF_WIDTH, type MoveInput, moveBody, NO_INPUT, stepPlayer, touchesLiquid, underLiquid } from '../src/world/physics';
 
 /** Floor top at y = 41: every block at y ≤ 40 is stone. */
 const FLOOR = 41;
@@ -271,6 +271,35 @@ describe('swimming', () => {
     expect(high).toBeGreaterThan(SURFACE - 0.1);
     expect(high).toBeLessThan(SURFACE + 0.7);
     expect(low).toBeGreaterThan(SURFACE - 1.5);
+  });
+
+  it('wades through shallow flowing water, and swims in deep', () => {
+    const layer = (water: Block) => worldOf((_x, y) => (y < FLOOR ? Block.Stone : y === FLOOR ? water : Block.Air));
+    // An eighth deep: walked through at walking speed, not swum.
+    const puddle = layer(Block.WaterFlow1);
+    const wading = standing(0.5, 0.5, puddle);
+    expect(wading.inWater).toBe(false);
+    run(wading, puddle, 1, input({ forward: 1, yaw: EAST }));
+    const dry = standing(0.5, 0.5);
+    run(dry, flat, 1, input({ forward: 1, yaw: EAST }));
+    expect(wading.x).toBeCloseTo(dry.x, 6);
+    // Seven eighths: swum.
+    const deep = standing(0.5, 0.5, layer(Block.WaterFlow7));
+    expect(deep.inWater).toBe(true);
+    // A small body swims where the player wades: three eighths is deep for a hopper.
+    const small = createBody(0.5, FLOOR, 0.5, 0.25, 0.5);
+    expect(touchesLiquid(small, layer(Block.WaterFlow3))).toBe(true);
+    expect(touchesLiquid(createBody(0.5, FLOOR, 0.5), layer(Block.WaterFlow3))).toBe(false);
+    // A source is water at any depth over the feet.
+    expect(touchesLiquid(createBody(0.5, FLOOR + 0.9, 0.5), layer(Block.Water))).toBe(true);
+  });
+
+  it('has the eye under water only below the surface', () => {
+    const w = worldOf((_x, y) => (y === FLOOR ? Block.WaterFlow4 : y === FLOOR + 1 ? Block.Water : Block.Air));
+    expect(underLiquid(w, 0.5, FLOOR + 0.4, 0.5)).toBe(true);
+    expect(underLiquid(w, 0.5, FLOOR + 0.6, 0.5)).toBe(false); // above half a block of flowing water
+    expect(underLiquid(w, 0.5, FLOOR + 1.99, 0.5)).toBe(true); // a source is full
+    expect(underLiquid(w, 0.5, FLOOR + 2.1, 0.5)).toBe(false);
   });
 
   it('climbs out onto a bank one block above the water', () => {

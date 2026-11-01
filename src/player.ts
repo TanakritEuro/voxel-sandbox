@@ -6,8 +6,7 @@ import * as THREE from 'three';
 import { TUNING } from './config';
 import type { Controls } from './input';
 import { FixedStep } from './math';
-import { BLOCKS } from './world/blocks';
-import { type BlockSource, type Body, createBody, type MoveInput, stepPlayer } from './world/physics';
+import { type BlockSource, type Body, createBody, type MoveInput, stepPlayer, underLiquid } from './world/physics';
 
 /** Two presses of Space closer together than this (seconds) start or stop flying. */
 const DOUBLE_TAP = 0.3;
@@ -141,6 +140,6 @@ export class Player {
     const b = this.body;
     const c = this.camera.position.set(lerp(p.x, b.x, t), lerp(p.y, b.y, t) + this.eye, lerp(p.z, b.z, t));
     this.camera.rotation.set(this.input.pitch, this.input.yaw, 0, 'YXZ');
-    this.eyeInWater = BLOCKS[this.world.getBlock(Math.floor(c.x), Math.floor(c.y), Math.floor(c.z))].liquid;
+    this.eyeInWater = underLiquid(this.world, c.x, c.y, c.z);
   }
 }

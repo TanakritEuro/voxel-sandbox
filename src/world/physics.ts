@@ -33,7 +33,7 @@ export interface Body {
   vz: number;
   /** Standing on something since the last step. */
   onGround: boolean;
-  /** The box overlaps a liquid block (as of the last step). */
+  /** The box reaches below a liquid's surface (as of the last step). */
   inWater: boolean;
   /** The box: half its width on x and z, and its height (the player's, or a mob's). */
   halfWidth: number;
@@ -148,8 +148,26 @@ function anyOverlapped(body: Body, test: (bx: number, by: number, bz: number) =>
   return false;
 }
 
-/** Does the box overlap any liquid? */
-export const touchesLiquid = (body: Body, world: BlockSource): boolean => anyOverlapped(body, (x, y, z) => BLOCKS[world.getBlock(x, y, z)].liquid);
+/**
+ * Is the box in a liquid it overlaps? In a full block (a source, falling water), as soon as it
+ * overlaps it; in shallower flowing water, only when the surface is more than `swim.wade` of the
+ * body's height over its feet, so a puddle is waded through.
+ */
+export function touchesLiquid(body: Body, world: BlockSource): boolean {
+  const wade = TUNING.player.swim.wade * body.height;
+  return anyOverlapped(body, (x, y, z) => {
+    const info = BLOCKS[world.getBlock(x, y, z)];
+    if (!info.liquid) return false;
+    return info.liquidHeight >= 1 || y + info.liquidHeight - body.y > wade;
+  });
+}
+
+/** Is the point (x, y, z) under a liquid's surface? */
+export function underLiquid(world: BlockSource, x: number, y: number, z: number): boolean {
+  const by = Math.floor(y);
+  const info = BLOCKS[world.getBlock(Math.floor(x), by, Math.floor(z))];
+  return info.liquid && y < by + info.liquidHeight;
+}
 
 /** Is there a solid block under some part of the box, with the feet at (x, body.y, z)? */
 function supported(body: Body, x: number, z: number, world: BlockSource): boolean {
@@ -288,7 +306,7 @@ export function stepMob(body: Body, move: MobMove, world: BlockSource, dt = TUNI
     vz = body.vz + (move.vz - body.vz) * k;
     vy0 = body.vy;
     // Up while the head is under, otherwise sink back gently: it bobs at the surface.
-    const headUnder = BLOCKS[world.getBlock(Math.floor(body.x), Math.floor(body.y + body.height * 0.6), Math.floor(body.z))].liquid;
+    const headUnder = underLiquid(world, body.x, body.y + body.height * 0.6, body.z);
     vy = vy0 + ((headUnder ? M.floatSpeed : -0.5) - vy0) * k;
   } else {
     const maxChange = (body.onGround ? M.groundAccel : M.airAccel) * dt;

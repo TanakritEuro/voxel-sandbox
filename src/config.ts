@@ -81,6 +81,8 @@ export const TUNING = {
       drag: 4,
       /** Upward speed from swimming against a wall with Space held: enough to jump out onto a bank one block above the water. */
       exitBoost: 8.5,
+      /** Flowing water no deeper over the feet than this fraction of a body's height is waded through, not swum (any body, mobs too). */
+      wade: 0.3,
     },
   },
   fly: {

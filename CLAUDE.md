@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 8 (flowing water) in progress, plan approved (`docs/milestone-8.md`).
 Milestones 1–7 built (`docs/milestone-1.md` to `docs/milestone-7.md`), waiting for playtests
 (Milestone 7, mobs: four invented passive animals, each in its own biome, wandering by A*
 paths, grazing, resting at night, three hits and gone in a puff, with calls; Milestone 6, 120 fps on a laptop GPU: chunks drawn in batched pages with multi-draw, faces
@@ -112,7 +113,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, light, day length, sky, mobs.
 - `src/math.ts` — seeded PRNG and coordinate hash.
-- `src/world/` — `blocks.ts` (block ids, properties, textures and sound per face, the default
+- `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
+  water levels 1–7 and falling water are ids 27–34, never picked), textures and sound per face, the default
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport`),
   `torches.ts` (`torchesHeldBy`: the torches a block holds up), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
@@ -127,7 +129,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
-  crouching at edges, swimming, flying; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
+  crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
+  `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
   timing and crack stage).
 - `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,
   groups), `brain.ts` (a mob: idle, wander, flee, rest; following paths, jumping, getting

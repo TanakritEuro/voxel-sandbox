@@ -35,6 +35,15 @@ export enum Block {
   WallTorchPosX = 24,
   WallTorchNegZ = 25,
   WallTorchPosZ = 26,
+  /** Flowing water, an eighth deep (1) to seven eighths (7), and falling water: made by the flow, never picked. */
+  WaterFlow1 = 27,
+  WaterFlow2 = 28,
+  WaterFlow3 = 29,
+  WaterFlow4 = 30,
+  WaterFlow5 = 31,
+  WaterFlow6 = 32,
+  WaterFlow7 = 33,
+  WaterFalling = 34,
 }
 
 type RGB = [number, number, number];
@@ -68,6 +77,8 @@ export interface BlockInfo {
   cutout: boolean;
   /** Swum in, not walked on (water). */
   liquid: boolean;
+  /** How deep a liquid is, from the block's bottom (1 full, level / 8 flowing); 0 for the rest. */
+  liquidHeight: number;
   /** Seconds of holding the button to break it (by hand; there are no tools). */
   hardness: number;
   /** Light it gives, 0–15 (`light.ts`). */
@@ -99,6 +110,7 @@ const solid = (name: string, hardness: number, textures: BlockInfo['textures'], 
   transparent: false,
   cutout: false,
   liquid: false,
+  liquidHeight: 0,
   hardness,
   light: 0,
   lightCost: 0,
@@ -108,6 +120,18 @@ const solid = (name: string, hardness: number, textures: BlockInfo['textures'], 
   bottom: hex(bottom),
 });
 
+/** Water: a source (the sea, lakes, water placed), and what flowing and falling water copy. */
+const WATER: Omit<BlockInfo, 'sound'> = {
+  ...solid('Water', Infinity, faces('water'), 0x3a78c9),
+  opaque: false,
+  passable: true,
+  targetable: false,
+  transparent: true,
+  liquid: true,
+  liquidHeight: 1,
+  lightCost: 1,
+};
+
 const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   // Never drawn; its textures are only there to fill the table.
   { ...solid('Air', 0, faces('stone'), 0), opaque: false, passable: true, targetable: false },
@@ -116,7 +140,7 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   solid('Grass', 0.7, faces('grass_top', 'grass_side', 'dirt'), 0x6aa84f, 0x7d7a45, 0x86603e),
   solid('Sand', 0.6, faces('sand'), 0xdccb8e),
   // Not a raycast target, so never broken.
-  { ...solid('Water', Infinity, faces('water'), 0x3a78c9), opaque: false, passable: true, targetable: false, transparent: true, liquid: true, lightCost: 1 },
+  WATER,
   solid('Wood', 1.5, faces('wood_top', 'wood_side'), 0xa7854f, 0x6b4a2b),
   { ...solid('Leaves', 0.3, faces('leaves'), 0x3f8a36), opaque: false, cutout: true, lightCost: 1 },
   solid('Planks', 1.5, faces('planks'), 0xb88c55),
@@ -156,6 +180,8 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
     light: 14,
     icon: 'torch_item' as const,
   })),
+  ...[1, 2, 3, 4, 5, 6, 7].map((level) => ({ ...WATER, pickable: false, liquidHeight: level / 8 })),
+  { ...WATER, pickable: false },
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
@@ -180,11 +206,19 @@ const SOUNDS: Partial<Record<Block, BlockSound>> = {
   [Block.WallTorchPosX]: 'wood',
   [Block.WallTorchNegZ]: 'wood',
   [Block.WallTorchPosZ]: 'wood',
+  [Block.WaterFlow1]: 'water',
+  [Block.WaterFlow2]: 'water',
+  [Block.WaterFlow3]: 'water',
+  [Block.WaterFlow4]: 'water',
+  [Block.WaterFlow5]: 'water',
+  [Block.WaterFlow6]: 'water',
+  [Block.WaterFlow7]: 'water',
+  [Block.WaterFalling]: 'water',
 };
 
 export const BLOCKS: readonly BlockInfo[] = TABLE.map((info, b) => ({ ...info, sound: SOUNDS[b as Block] ?? 'stone' }));
 
-/** Every block the creative picker offers: all but air and wall torches, in id order. */
+/** Every block the creative picker offers: all but air, wall torches and moving water, in id order. */
 export const PLACEABLE: readonly Block[] = BLOCKS.map((_, b) => b as Block).filter((b) => b !== Block.Air && BLOCKS[b].pickable);
 
 /**
