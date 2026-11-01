@@ -58,15 +58,15 @@ describe('mob spawning', () => {
     const m = new MobManager(world, 3);
     const [gx, gz] = columnWhere((b) => b === Block.Grass);
     m.mobs.push(createMob(1, MobKind.Mossback, gx + 0.5, top(gx, gz) + 1, gz + 0.5, 1));
-    m.update(0, gx, gz, 1);
+    m.update(0, [[gx, gz]], 1);
     expect(m.mobs.length).toBeGreaterThanOrEqual(1);
     const near = m.mobs.length;
-    m.update(0, gx + TUNING.mobs.despawnDistance + 1, gz, 1);
+    m.update(0, [[gx + TUNING.mobs.despawnDistance + 1, gz]], 1);
     expect(m.mobs.length).toBeLessThan(near);
     expect(m.mobs.some((mob) => mob.id === 1)).toBe(false);
     // A mob in a column that isn't loaded goes too.
     m.mobs.push(createMob(2, MobKind.Mossback, 500.5, 80, 500.5, 2));
-    m.update(0, 500, 500, 1);
+    m.update(0, [[500, 500]], 1);
     expect(m.mobs.some((mob) => mob.id === 2)).toBe(false);
   });
 
@@ -83,12 +83,12 @@ describe('mob spawning', () => {
     };
     TUNING.mobs.pathBudgetMs = -1; // used up before it starts
     const starved = make();
-    starved.update(0.1, gx, gz, 1);
+    starved.update(0.1, [[gx, gz]], 1);
     expect(starved.searches).toBe(0);
     expect(starved.deferred).toBeGreaterThan(0);
     TUNING.mobs.pathBudgetMs = 1000;
     const fed = make();
-    fed.update(0.1, gx, gz, 1);
+    fed.update(0.1, [[gx, gz]], 1);
     expect(fed.searches).toBeGreaterThan(0);
     expect(fed.deferred).toBe(0);
   });

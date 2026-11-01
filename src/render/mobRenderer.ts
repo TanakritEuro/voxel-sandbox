@@ -12,7 +12,15 @@ import * as THREE from 'three';
 import { SHADE } from '../mesh/mesher';
 import type { Mob } from '../mobs/brain';
 import { MobKind } from '../mobs/kinds';
-import type { MobManager } from '../mobs/mobs';
+import type { Before } from '../mobs/mobs';
+
+/** What the renderer draws: the host's (or a lone player's) `MobManager`, or a guest's `MobMirror`. */
+export interface MobView {
+  readonly mobs: readonly Mob[];
+  /** Where each was before the last steps, drawn between that and now by `alpha`. */
+  readonly before: ReadonlyMap<Mob, Before>;
+  readonly alpha: number;
+}
 import { MODELS, type MobTexture, type ModelPart } from '../mobs/models';
 import { poseOf } from '../mobs/pose';
 import type { World } from '../world/world';
@@ -88,7 +96,7 @@ export class MobRenderer {
   }
 
   /** Once a frame, after the mobs moved: their parts, posed, between the last two steps. `t` is any steady clock (seconds). */
-  update(manager: MobManager, world: World, daylight: number, t: number): void {
+  update(manager: MobView, world: World, daylight: number, t: number): void {
     for (const p of this.parts) p.mesh.count = 0;
     const alpha = manager.alpha;
     for (const mob of manager.mobs) {

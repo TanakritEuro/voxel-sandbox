@@ -371,3 +371,56 @@ Both come with the game's guest side in step 5. The sessions already report who 
   block refused inside anyone, a torch allowed.
 - **The loader:** land round a guest 40 chunks away is loaded but not drawn, the host's own range
   stays, and it all goes when the guest leaves.
+
+## Step 4: water, mobs, hits and time from the host — built (2026-11-01)
+
+**What changed:**
+- **Water:** each tick's changes go to every guest with the edits message, marked as water. Guests
+  make them and remesh in the workers, as the host does; they don't run the water themselves.
+  Blocks kept for a column a guest hasn't got are made the same way when it arrives.
+- **`MobManager` round every player:**
+  - `update` takes where every player is.
+  - Each spawning try is round one of them, chosen at random when there are several, so one player
+    alone spawns exactly as before. Never within the spawning distance of any.
+  - A mob goes only when it's beyond 96 blocks of every player.
+  - The cap is 24 for each player, 48 at most (`limit`, shown in `?stats`).
+  - `byId` finds a mob for a guest's hit.
+- **`net/mobState.ts`:** a mob in 52 bytes (13 float32s: number, kind, position, facing, what it's
+  doing, velocity, on the ground, ground walked, time since hit) and a sound in 20. Nonsense refused.
+- **`HostSession.shareMobs`,** 10 times a second (`TUNING.net.mobRate`):
+  - each guest gets the mobs within 96 blocks of where it was last heard, on the unordered channel;
+  - and the sounds made within hearing of it since last time, on the reliable one, so a puff is
+    never lost.
+- **`net/mobMirror.ts`, `MobMirror`:** a guest's mobs, as real `Mob`s.
+  - Drawn 0.15 s behind, between the snapshots either side, turning the short way; held past the
+    newest.
+  - One missing from a snapshot has gone. An older snapshot is dropped.
+  - The red flash after a hit fades on its own clock.
+  - The renderer takes a `MobView` (the manager, or a mirror), and the crosshair's ray takes the
+    mirror's mobs, so a guest draws and aims at mobs as the host does.
+- **Hits:** a guest's hit goes to the host as a `hit`. The host makes it if the mob is within reach
+  (with slack) of where the guest was last heard, knocked back away from the guest. The knockback,
+  flash and puff come back with the mobs and sounds.
+- **Time of day:** the host's, every 2 s (`TUNING.net.timeEvery`), and in the welcome.
+- **The host game (`?bot`):** mobs live round the bot too, mob sounds and the water go out, the time
+  goes out, and guests' hits are checked and made.
+
+**Looked at in Chrome** (`?bot`, mobs on): 48 mobs round the host and the bot ("48 of 48" after
+fixing the line, which had shown the cap for one), 0.2–0.3 ms a frame for all of them, no console
+errors. A guest's view of mobs and water needs the guest's game, step 5.
+
+**Tests (8 new, 322 in all):**
+- **Mobs on the wire:** they round-trip (104 bytes for two), and nonsense is refused.
+- **Two players 200 blocks apart:**
+  - mobs spawn round both, never within spawning distance of either;
+  - the cap doubles with two, and stays doubled with three;
+  - a mob near one player stays while that player does.
+- **The mirror:**
+  - between snapshots, the short way round, with the kind's own body;
+  - an older snapshot dropped, a mob left out gone, held past the newest;
+  - the red flash fades as on the host.
+- **Over the network:**
+  - a guest gets only the mobs near it, and only the sounds it can hear;
+  - its hit reaches the host's game;
+  - water edits are marked as water and others not;
+  - the time arrives in the welcome and after.

@@ -8,6 +8,7 @@
 
 import { BLOCKS } from '../world/blocks';
 import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/coords';
+import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackState } from './playerState';
 
 export const PROTOCOL = 1;
@@ -50,16 +51,25 @@ export type Message =
   | { type: 'edit'; seq: number; x: number; y: number; z: number; block: number }
   /**
    * Host → guests: blocks set, packed by `packEdits`. `from` is the player whose edit it was (0 the
-   * host, also for flowing water) and `seq` their number for it (0 if none).
+   * host, also for flowing water) and `seq` their number for it (0 if none). `water`: a tick of
+   * flowing water (remeshed in the workers, not at once).
    */
-  | { type: 'edits'; from: number; seq: number; data: ArrayBuffer }
+  | { type: 'edits'; from: number; seq: number; data: ArrayBuffer; water: boolean }
   /** Host → guest: your edit `seq` wasn't made; the block there is `block`. */
   | { type: 'refused'; seq: number; x: number; y: number; z: number; block: number }
   /**
    * A player's state (`playerState.ts`), on the unordered channel: a guest's own to the host (`id`
    * is ignored there: the link says who), and the host's and every guest's to the others.
    */
-  | { type: 'state'; id: number; data: ArrayBuffer };
+  | { type: 'state'; id: number; data: ArrayBuffer }
+  /** Host → guest, unordered: every mob near the guest at `time` on the host's clock (`mobState.ts`). */
+  | { type: 'mobs'; time: number; data: ArrayBuffer }
+  /** Host → guest: sounds mobs near it made (a puff: one gone), packed by `packMobSounds`. */
+  | { type: 'mobsounds'; data: ArrayBuffer }
+  /** Guest → host: this player hit mob `id`. */
+  | { type: 'hit'; id: number }
+  /** Host → guests: the time of day now (0–1). */
+  | { type: 'time'; time: number };
 
 /** A block set: where, and what. */
 export type BlockChange = [number, number, number, number];
@@ -193,9 +203,22 @@ export function parseMessage(raw: unknown): Message | null {
         ? { type: 'edit', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number, block: raw.block }
         : null;
     case 'edits':
-      return isCount(raw.from, 0, MAX_PLAYERS - 1) && isCount(raw.seq, 0, 0x7fffffff) && raw.data instanceof ArrayBuffer && raw.data.byteLength <= 16 * 65536 && unpackEdits(raw.data) !== null
-        ? { type: 'edits', from: raw.from, seq: raw.seq, data: raw.data }
+      return isCount(raw.from, 0, MAX_PLAYERS - 1) &&
+        isCount(raw.seq, 0, 0x7fffffff) &&
+        raw.data instanceof ArrayBuffer &&
+        raw.data.byteLength <= 16 * 65536 &&
+        typeof raw.water === 'boolean' &&
+        unpackEdits(raw.data) !== null
+        ? { type: 'edits', from: raw.from, seq: raw.seq, data: raw.data, water: raw.water }
         : null;
+    case 'mobs':
+      return isNumber(raw.time) && raw.data instanceof ArrayBuffer && raw.data.byteLength <= 52 * 256 && unpackMobs(raw.data) !== null ? { type: 'mobs', time: raw.time, data: raw.data } : null;
+    case 'mobsounds':
+      return raw.data instanceof ArrayBuffer && raw.data.byteLength <= 20 * 1024 && unpackMobSounds(raw.data) !== null ? { type: 'mobsounds', data: raw.data } : null;
+    case 'hit':
+      return isCount(raw.id, 0, 0x7fffffff) ? { type: 'hit', id: raw.id } : null;
+    case 'time':
+      return isNumber(raw.time) && raw.time >= 0 && raw.time < 1 ? { type: 'time', time: raw.time } : null;
     case 'state':
       return isCount(raw.id, 0, MAX_PLAYERS - 1) && raw.data instanceof ArrayBuffer && unpackState(raw.data) !== null ? { type: 'state', id: raw.id, data: raw.data } : null;
     case 'refused':

@@ -32,7 +32,7 @@ import { WorkerPool } from './workers/pool';
 import type { Mob } from './mobs/brain';
 import { mobOnRay } from './mobs/hit';
 import { KINDS } from './mobs/kinds';
-import { MobManager } from './mobs/mobs';
+import { type MobSound, MobManager } from './mobs/mobs';
 import { BlockCache } from './mobs/blockCache';
 import { Bot } from './net/bot';
 import { editAllowed, hostWorld } from './net/hostWorld';
@@ -149,7 +149,7 @@ function mobLine(): string {
   const now = performance.now();
   const seconds = Math.max((now - mobsRead) / 1000, 1e-3);
   const line =
-    `${mobs.mobs.length} of ${mobs.max} (${mobs.counts().map((n, k) => `${KINDS[k].name.toLowerCase()} ${n}`).join(', ')}), ` +
+    `${mobs.mobs.length} of ${mobs.limit} (${mobs.counts().map((n, k) => `${KINDS[k].name.toLowerCase()} ${n}`).join(', ')}), ` +
     `${(mobs.searches / seconds).toFixed(1)} paths a second (${(mobs.deferred / seconds).toFixed(1)} put off), ${mobs.ms.toFixed(2)} ms`;
   mobs.searches = mobs.deferred = 0;
   mobsRead = now;
@@ -179,6 +179,7 @@ loader.onColumnAdded = (cx, cz, saved) => void wakeColumn(flow, world, cx, cz, s
 /** Make a tick's changes (or `?flood`'s): the blocks and their light at once, then saving, and remeshing in the workers. */
 function applyWater(changes: WaterChange[]): void {
   const stale = world.setBlocks(changes);
+  host?.shareEdits(changes, 0, 0, true);
   const edited = new Set<string>();
   for (const [x, y, z] of changes) {
     const c = world.getChunk(toChunk(x), toChunk(y), toChunk(z));
@@ -277,6 +278,7 @@ const host: HostSession | null = room
         position: () => [player.body.x, player.body.y, player.body.z],
         allowed: (id, x, y, z, block): boolean => editAllowed(host?.states().get(id), host?.states().values() ?? [], x, y, z, block),
         edit: (x, y, z, block) => guestEdit(x, y, z, block),
+        hitMob: (id, mobId) => guestHit(id, mobId),
       }),
       'Host',
       () => performance.now() / 1000,
@@ -291,6 +293,27 @@ if (playerView) {
 /** Arm swings so far (digging hits, breaks, places), for the others to see. */
 let swings = 0;
 let lastStateSent = Number.NEGATIVE_INFINITY;
+let lastMobsSent = Number.NEGATIVE_INFINITY;
+let lastTimeSent = Number.NEGATIVE_INFINITY;
+/** Mob sounds made since the mobs were last sent to guests. */
+let mobSoundsOut: MobSound[] = [];
+
+/** Where the players the mobs live round are: this one, and those it plays with. */
+function mobPlayers(): [number, number][] {
+  const out: [number, number][] = [[player.body.x, player.body.z]];
+  if (host) for (const r of host.remotes.values()) if (r.latest) out.push([r.latest.x, r.latest.z]);
+  return out;
+}
+
+/** A guest hit mob `mobId`: made as this player's hit would be, if it was in reach of where they were last heard. */
+function guestHit(id: number, mobId: number): void {
+  const mob = mobs?.byId(mobId);
+  const who = host?.states().get(id);
+  if (!mob || !who) return;
+  const b = mob.body;
+  const far = Math.hypot(b.x - who.x, b.y + b.height / 2 - (who.y + TUNING.player.eyeHeight), b.z - who.z);
+  if (far <= TUNING.edit.reach + TUNING.net.reachSlack + 1) hitMob(mob, who.x, who.z);
+}
 
 /** Once a frame, when open to others: this player's state now and then, the others' land kept loaded, and them drawn. */
 function playTogether(now: number): void {
@@ -314,6 +337,16 @@ function playTogether(now: number): void {
       swings,
       digging: mining.target?.block ?? 0,
     });
+  }
+  // The mobs near each guest, and the sounds they made; the time of day now and then.
+  if (mobs && now / 1000 - lastMobsSent >= 1 / TUNING.net.mobRate) {
+    lastMobsSent = now / 1000;
+    host.shareMobs(mobs.mobs, mobSoundsOut);
+    mobSoundsOut = [];
+  }
+  if (now / 1000 - lastTimeSent >= TUNING.net.timeEvery) {
+    lastTimeSent = now / 1000;
+    host.shareTime(time);
   }
   const others = [...host.remotes].flatMap(([id, remote]) => {
     const pose = remote.poseAt(host.clock());
@@ -440,12 +473,12 @@ function swing(): void {
   swings++;
 }
 
-/** A click on a mob: a swing, and it's knocked back (or gone in a puff on the last hit). */
-function hitMob(mob: Mob): void {
+/** A hit on a mob from (fromX, fromZ): knocked back (or gone in a puff on the last hit). This player's own (from where it stands) swings. */
+function hitMob(mob: Mob, fromX = player.body.x, fromZ = player.body.z): void {
   if (!mobs) return;
-  swing();
+  if (fromX === player.body.x && fromZ === player.body.z) swing();
   const b = mob.body;
-  if (mobs.hit(mob, player.body.x, player.body.z)) {
+  if (mobs.hit(mob, fromX, fromZ)) {
     const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow);
     particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, light);
   }
@@ -584,7 +617,7 @@ function frame(now: number): void {
   editing(dt);
   // The mobs think and move (not while paused), then are drawn where they are.
   if (mobs && mobView) {
-    mobs.update(paused() ? 0 : dt, player.body.x, player.body.z, daylightNow);
+    mobs.update(paused() ? 0 : dt, mobPlayers(), daylightNow);
     if (showcase && !player.waiting) {
       mobs.showcase(player.body.x, player.body.y, player.body.z, input.yaw);
       showcase = false;
@@ -594,6 +627,7 @@ function frame(now: number): void {
     for (const s of mobs.takeSounds()) {
       const h = heard(s.x, s.y + 0.5, s.z, p.x, p.y, p.z, input.yaw);
       if (h) sound.play({ name: 'mob', voice: s.voice, kind: s.kind, ...h });
+      if (host) mobSoundsOut.push(s);
     }
   }
   playTogether(now);

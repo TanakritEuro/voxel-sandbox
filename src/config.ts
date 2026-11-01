@@ -112,6 +112,11 @@ export const TUNING = {
     landRadius: 3,
     /** A guest's edit may be this much further than the reach (blocks), for the delay between where it was and where the host last heard. */
     reachSlack: 1.5,
+    /** The host sends guests their mobs this often (a second); a guest draws them this far behind (s). */
+    mobRate: 10,
+    mobBehind: 0.15,
+    /** The host's time of day is sent this often (s). */
+    timeEvery: 2,
   },
   particles: {
     /** Cubes in a break's burst, and chips each digging hit. */

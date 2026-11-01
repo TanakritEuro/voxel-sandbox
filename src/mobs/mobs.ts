@@ -6,6 +6,10 @@
 // water, a small group of that kind appears there. Up to `max` at once. A mob goes when it's
 // further than `despawnDistance` across, or its column unloads. They aren't saved.
 //
+// Playing together, the host's manager does this round every player: each try is round one of
+// them (in turn, at random), never within the spawning distance of any, a mob goes only when it's
+// far from all of them, and the cap is `max` for each player, twice `max` at most.
+//
 // Each frame they're stepped at the fixed rate, reading blocks through one `BlockCache`, with
 // path searches stopping for the frame once `pathBudgetMs` is used (a mob whose search must wait
 // tries again a moment later).
@@ -69,6 +73,7 @@ export class MobManager {
     readonly max = TUNING.mobs.max,
   ) {
     this.rng = createRng(seed);
+    this.cap = max;
     this.voices = createRng(seed ^ 0x5eed);
   }
 
@@ -84,14 +89,25 @@ export class MobManager {
     return n;
   }
 
-  /** Once a frame (dt 0 while paused): spawn, despawn, think and move. */
-  update(dt: number, px: number, pz: number, daylight: number): void {
+  /** Mobs at once now: `max` for each player, twice `max` at most. */
+  private cap: number;
+
+  /** The cap now, by how many players there are (for `?stats`). */
+  get limit(): number {
+    return this.cap;
+  }
+
+  /** Once a frame (dt 0 while paused), with where the players are (x, z): spawn, despawn, think and move. */
+  update(dt: number, players: readonly (readonly [number, number])[], daylight: number): void {
     const t0 = performance.now();
-    this.despawn(px, pz);
+    this.cap = Math.min(this.max * Math.max(players.length, 1), this.max * 2);
+    this.despawn(players);
     this.untilSpawn -= dt;
-    if (this.untilSpawn <= 0) {
+    if (this.untilSpawn <= 0 && players.length) {
       this.untilSpawn = TUNING.mobs.spawnInterval;
-      if (this.mobs.length < this.max) this.trySpawn(px, pz);
+      // Round one player, chosen at random when there are several (so one alone spawns as it always did).
+      const [px, pz] = players.length > 1 ? players[Math.floor(this.rng() * players.length)] : players[0];
+      if (this.mobs.length < this.cap) this.trySpawn(px, pz, players);
     }
     const steps = this.clock.advance(dt);
     if (steps > 0) {
@@ -188,18 +204,23 @@ export class MobManager {
     return lo + (hi - lo) * this.voices();
   }
 
-  private despawn(px: number, pz: number): void {
+  private despawn(players: readonly (readonly [number, number])[]): void {
     const far = TUNING.mobs.despawnDistance;
     for (let i = this.mobs.length - 1; i >= 0; i--) {
       const b = this.mobs[i].body;
-      const gone =
-        Math.hypot(b.x - px, b.z - pz) > far || b.y < -16 || !this.world.hasColumn(toChunk(Math.floor(b.x)), toChunk(Math.floor(b.z)));
+      const near = players.some(([px, pz]) => Math.hypot(b.x - px, b.z - pz) <= far);
+      const gone = !near || b.y < -16 || !this.world.hasColumn(toChunk(Math.floor(b.x)), toChunk(Math.floor(b.z)));
       if (gone) this.remove(this.mobs[i]);
     }
   }
 
-  /** A try at a group: one random column at spawning distance, as described at the top. */
-  trySpawn(px: number, pz: number): boolean {
+  /** The mob numbered `id`, if it's here. */
+  byId(id: number): Mob | undefined {
+    return this.mobs.find((m) => m.id === id);
+  }
+
+  /** A try at a group: one random column at spawning distance from (px, pz), and from every one of `players`, as described at the top. */
+  trySpawn(px: number, pz: number, players: readonly (readonly [number, number])[] = [[px, pz]]): boolean {
     const [near, far] = TUNING.mobs.spawnDistance;
     const angle = this.rng() * 2 * Math.PI;
     const r = near + (far - near) * this.rng();
@@ -214,11 +235,11 @@ export class MobManager {
     const [lo, hi] = info.group;
     const size = lo + Math.floor(this.rng() * (hi - lo + 1));
     let made = 0;
-    for (let i = 0; i < size * 3 && made < size && this.mobs.length < this.max; i++) {
+    for (let i = 0; i < size * 3 && made < size && this.mobs.length < this.cap; i++) {
       // The first where the try was, the rest a few blocks round it.
       const gx = i === 0 ? x : x + Math.floor((this.rng() - 0.5) * 7);
       const gz = i === 0 ? z : z + Math.floor((this.rng() - 0.5) * 7);
-      if (Math.hypot(gx + 0.5 - px, gz + 0.5 - pz) < near) continue;
+      if (players.some(([ox, oz]) => Math.hypot(gx + 0.5 - ox, gz + 0.5 - oz) < near)) continue;
       const y = this.groundAt(gx, gz, kind);
       if (y === null) continue;
       this.mobs.push(createMob(this.nextId++, kind, gx + 0.5, y, gz + 0.5, Math.floor(this.rng() * 0x7fffffff)));

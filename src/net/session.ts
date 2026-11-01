@@ -15,9 +15,14 @@
 // would miss it otherwise; for one the host's answer already had, making it again changes nothing.
 
 import type { ChunkSaves } from '../chunkLoader';
+import { TUNING } from '../config';
+import type { MobSound } from '../mobs/mobs';
+import type { Mob } from '../mobs/brain';
 import type { SavedChunk } from '../workers/protocol';
 import { toChunk } from '../world/coords';
 import type { Link, Room } from './link';
+import { MobMirror } from './mobMirror';
+import { packMobs, packMobSounds, unpackMobs, unpackMobSounds } from './mobState';
 import { packState, type PlayerState, unpackState } from './playerState';
 import { RemotePlayer } from './remotePlayer';
 import { type BlockChange, checkChunk, MAX_PLAYERS, type Message, packEdits, parseMessage, type PlayerInfo, PROTOCOL, unpackEdits } from './protocol';
@@ -36,12 +41,14 @@ export interface HostWorld {
   /** Player `player` asks for a block: make the edit if it's allowed, and say whether it was. */
   edit(player: number, x: number, y: number, z: number, block: number): boolean;
   blockAt(x: number, y: number, z: number): number;
+  /** Player `player` hit mob `id`: the game checks it's in reach and makes the hit. */
+  hitMob(player: number, id: number): void;
 }
 
 /** What a guest's game gives its session, once the world is made. */
 export interface GuestWorld {
-  /** Make blocks the host set (blocks, light, remeshing), in this order. */
-  apply(changes: BlockChange[]): void;
+  /** Make blocks the host set (blocks, light, remeshing), in this order; `water` a tick of flowing water. */
+  apply(changes: BlockChange[], water: boolean): void;
   hasColumn(cx: number, cz: number): boolean;
 }
 
@@ -107,11 +114,34 @@ export class HostSession {
     return out;
   }
 
-  /** The host's own blocks set (its edits, flowing water): to every guest. */
-  shareEdits(changes: readonly BlockChange[], from = 0, seq = 0): void {
+  /** The host's own blocks set (its edits, `water`: a tick of flowing water): to every guest. */
+  shareEdits(changes: readonly BlockChange[], from = 0, seq = 0, water = false): void {
     if (!changes.length || !this.guests.size) return;
     const data = packEdits(changes);
-    for (const link of this.guests.values()) link.send({ type: 'edits', from, seq, data });
+    for (const link of this.guests.values()) link.send({ type: 'edits', from, seq, data, water });
+  }
+
+  /**
+   * The mobs (`TUNING.net.mobRate` times a second): to each guest, those within the despawning
+   * distance of where it was last heard, and the sounds made within hearing of it since last time.
+   */
+  shareMobs(mobs: readonly Mob[], sounds: readonly MobSound[]): void {
+    const far = TUNING.mobs.despawnDistance;
+    const hearing = TUNING.mobs.hearing;
+    const time = this.now();
+    for (const [id, link] of this.guests) {
+      const at = this.remotes.get(id)?.latest;
+      if (!at) continue;
+      const near = mobs.filter((m) => Math.hypot(m.body.x - at.x, m.body.z - at.z) <= far);
+      link.send({ type: 'mobs', time, data: packMobs(near) }, 'frames');
+      const heard = sounds.filter((s) => Math.hypot(s.x - at.x, s.y - at.y, s.z - at.z) <= hearing);
+      if (heard.length) link.send({ type: 'mobsounds', data: packMobSounds(heard) });
+    }
+  }
+
+  /** The time of day now (every `TUNING.net.timeEvery` seconds): to every guest. */
+  shareTime(time: number): void {
+    for (const link of this.guests.values()) link.send({ type: 'time', time });
   }
 
   /** Close the world to friends: tell them why, and hang up. */
@@ -177,6 +207,9 @@ export class HostSession {
         break;
       case 'ping':
         link.send({ type: 'pong', t: m.t, at: this.now() });
+        break;
+      case 'hit':
+        this.world.hitMob(id, m.id);
         break;
       case 'state': {
         // Theirs, whatever number they put on it; on to the others as theirs.
@@ -265,6 +298,14 @@ export class GuestSession {
   offset = 0;
   /** The others (the host and the other guests) as this browser sees them, by player number. */
   readonly remotes = new Map<number, RemotePlayer>();
+  /** The mobs near this player, as the host runs them. */
+  readonly mobs = new MobMirror();
+  /** Sounds mobs near this player made (calls, cries, landings, puffs). */
+  onMobSounds: (sounds: MobSound[]) => void = () => {};
+  /** The host's time of day, as last heard (from the welcome on). */
+  time = 0;
+  /** The time of day was heard (every few seconds). */
+  onTime: (time: number) => void = () => {};
   /** Recent round trips and the offsets they gave. */
   private readonly samples: { rtt: number; offset: number }[] = [];
   /** Something to tell the player (someone joined, left). */
@@ -295,6 +336,7 @@ export class GuestSession {
       if (m.type === 'welcome' && this.you < 0) {
         this.you = m.you;
         this.players = m.players;
+        this.time = m.time;
         for (let i = 0; i < m.edited.length; i += 2) this.saves.edited.add(columnKey(m.edited[i], m.edited[i + 1]));
         answer?.resolve(m);
       } else if (m.type === 'reject') {
@@ -338,6 +380,11 @@ export class GuestSession {
     this.link.send({ type: 'state', id: this.you, data: packState({ ...state, time: this.clock() }) }, 'frames');
   }
 
+  /** This player hit mob `id`: the host makes the hit (the knockback, the flash and any puff come back with the mobs). */
+  hit(id: number): void {
+    if (!this.closed) this.link.send({ type: 'hit', id });
+  }
+
   /** This player set a block (it shows already): ask the host to make it. */
   edit(x: number, y: number, z: number, block: number): void {
     if (this.closed) return;
@@ -358,7 +405,7 @@ export class GuestSession {
     if (!kept) return;
     this.kept.delete(key);
     this.keptCount -= kept.size;
-    this.world?.apply([...kept.values()]);
+    this.world?.apply([...kept.values()], true);
   }
 
   /** Leave the game. */
@@ -377,11 +424,21 @@ export class GuestSession {
         break;
       case 'edits':
         if (m.from === this.you && m.seq) this.pending.delete(m.seq);
-        this.made(unpackEdits(m.data) ?? []);
+        this.made(unpackEdits(m.data) ?? [], m.water);
         break;
       case 'refused':
         this.pending.delete(m.seq);
-        this.made([[m.x, m.y, m.z, m.block]]);
+        this.made([[m.x, m.y, m.z, m.block]], false);
+        break;
+      case 'mobs':
+        this.mobs.push(m.time, unpackMobs(m.data) ?? []);
+        break;
+      case 'mobsounds':
+        this.onMobSounds(unpackMobSounds(m.data) ?? []);
+        break;
+      case 'time':
+        this.time = m.time;
+        this.onTime(m.time);
         break;
       case 'joined':
         this.players = [...this.players.filter((p) => p.id !== m.player.id), m.player].sort((a, b) => a.id - b.id);
@@ -418,7 +475,7 @@ export class GuestSession {
   }
 
   /** Blocks the host set: made now where the column is here, kept for later where it isn't. */
-  private made(changes: BlockChange[]): void {
+  private made(changes: BlockChange[], water: boolean): void {
     const now: BlockChange[] = [];
     for (const c of changes) {
       const cx = toChunk(c[0]);
@@ -442,7 +499,7 @@ export class GuestSession {
       this.kept.delete(oldest);
       this.keptCount -= blocks.size;
     }
-    if (now.length) this.world?.apply(now);
+    if (now.length) this.world?.apply(now, water);
   }
 
   private end(reason: string): void {

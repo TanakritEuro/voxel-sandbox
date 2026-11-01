@@ -113,6 +113,7 @@ describe('states over the network', () => {
     columnChunks: async () => [],
     edit: () => true,
     blockAt: () => Block.Air,
+    hitMob: () => {},
   };
 
   it("go from each guest to the host and the other guests, and the host's to everyone, on the host's clock", async () => {

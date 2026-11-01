@@ -153,7 +153,9 @@ describe('messages', () => {
     { type: 'ask', cx: -3, cz: 12 },
     { type: 'column', cx: -3, cz: 12, chunks: [{ cy: 2, data: new Uint8Array([0x80, 0x80, 0x02, 1]).buffer }] },
     { type: 'edit', seq: 7, x: -40, y: 64, z: 1000, block: Block.Torch },
-    { type: 'edits', from: 2, seq: 7, data: packEdits([[-40, 64, 1000, Block.Torch], [1, 2, 3, Block.Air]]) },
+    { type: 'edits', from: 2, seq: 7, data: packEdits([[-40, 64, 1000, Block.Torch], [1, 2, 3, Block.Air]]), water: false },
+    { type: 'hit', id: 41 },
+    { type: 'time', time: 0.75 },
     { type: 'refused', seq: 7, x: -40, y: 64, z: 1000, block: Block.Stone },
   ];
 
@@ -195,7 +197,12 @@ describe('messages', () => {
       { type: 'edit', seq: 0, x: 0, y: 64, z: 0, block: 1 },
       { type: 'edit', seq: 1, x: 0, y: 256, z: 0, block: 1 },
       { type: 'edit', seq: 1, x: 0, y: 64, z: 0, block: BLOCKS.length },
-      { type: 'edits', from: 0, seq: 0, data: new ArrayBuffer(12) },
+      { type: 'edits', from: 0, seq: 0, data: new ArrayBuffer(12), water: false },
+      { type: 'edits', from: 0, seq: 0, data: packEdits([[0, 1, 0, 1]]) }, // no water flag
+      { type: 'hit', id: -1 },
+      { type: 'time', time: 1 },
+      { type: 'mobs', time: 1, data: new ArrayBuffer(50) },
+      { type: 'mobsounds', data: new Float32Array([9, 0, 0, 0, 0]).buffer }, // no such voice
       { type: 'edits', from: 0, seq: 0, data: packEdits([[0, -1, 0, 1]]) },
       { type: 'edits', from: 5, seq: 0, data: packEdits([[0, 1, 0, 1]]) },
       { type: 'refused', seq: 1, x: 0, y: 64, z: 0, block: -1 },

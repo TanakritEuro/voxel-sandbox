@@ -54,7 +54,7 @@ async function makeHost(env: Env) {
   const room = env.net.room('ABCD');
   const session = new HostSession(
     room,
-    hostWorld(world, saver, { time: () => 0.3, position: () => [1.5, 80, 2.5], allowed: () => allow.ok, edit }),
+    hostWorld(world, saver, { time: () => 0.3, position: () => [1.5, 80, 2.5], allowed: () => allow.ok, edit, hitMob: () => {} }),
     'Host',
     env.now,
   );

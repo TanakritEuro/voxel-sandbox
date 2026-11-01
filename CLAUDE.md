@@ -144,7 +144,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
   spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
   or with the column, a cap, stepping at the fixed rate with a per-frame path search budget;
-  hits (three and it's gone); the sounds they make; not saved), `hit.ts` (the mob under the
+  hits (three and it's gone); the sounds they make; round every player when playing together, the cap
+  by players; not saved), `hit.ts` (the mob under the
   crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
   cutting, swimming at the surface, node and range limits; typed arrays reused between
   searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
@@ -174,7 +175,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   and the water texture's drift.
   `crack.ts` — the crack pattern and overlay. `particles.ts` — breaking and digging particles
   (simulation, pure; one InstancedMesh), and the puff of smoke a mob goes in. `heldBlock.ts` — the held block (a lone block meshed,
-  drawn in its own pass; bob, swing and switch motion, pure). `mobRenderer.ts` — the mobs: each
+  drawn in its own pass; bob, swing and switch motion, pure). `mobRenderer.ts` — the mobs (from a `MobView`: the manager, or a guest's mirror): each
   kind's model posed, one InstancedMesh per box (an instance per copy per mob, so at most 19 draw
   calls), lit by the world's light and fogged, drawn between physics steps; its shader compiled
   at startup. `mobTextures.ts` — their 16 × 16 textures painted at startup, a face and its box's
@@ -216,7 +217,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `hostWorld.ts` (the host's world and saver as its session sees them; `settable`, `editAllowed`:
   reach and not inside anyone), `playerState.ts` (a player's state packed in 80 bytes),
   `remotePlayer.ts` (states → where to draw someone now: 0.1 s behind, between states, guessed on
-  briefly past the newest), `bot.ts` (`?bot`: a test guest in the page).
+  briefly past the newest), `mobState.ts` (mobs 52 bytes each and their sounds, host → guests),
+  `mobMirror.ts` (a guest's mobs: real `Mob`s placed between the host's snapshots, for drawing and
+  hitting), `bot.ts` (`?bot`: a test guest in the page).
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
   until taken, mouse look and pointer lock (raw input where the browser has it, else `SpikeFilter`
   drops Chrome's occasional huge moves).

@@ -96,7 +96,7 @@ describe('mob sounds', () => {
     const m = new MobManager(world, 2, 0);
     for (let i = 0; i < 3; i++) m.mobs.push(createMob(i + 1, MobKind.Mossback, x + 0.5 + i, y, z + 0.5, i + 1));
     const minute = 60;
-    for (let t = 0; t < minute; t += 0.1) m.update(0.1, x, z, 1);
+    for (let t = 0; t < minute; t += 0.1) m.update(0.1, [[x, z]], 1);
     const calls = m.takeSounds().filter((s) => s.voice === 'call');
     const [lo, hi] = TUNING.mobs.calls;
     // Each calls between a minute / hi and a minute / lo times, give or take the first.
@@ -104,7 +104,7 @@ describe('mob sounds', () => {
     expect(calls.length).toBeLessThanOrEqual(3 * Math.ceil(minute / lo + 1));
     for (const mob of m.mobs) mob.state = 'rest';
     m.mobs.forEach((mob) => (mob.timer = Number.POSITIVE_INFINITY));
-    for (let t = 0; t < minute; t += 0.1) m.update(0.1, x, z, 0); // night: they stay at rest
+    for (let t = 0; t < minute; t += 0.1) m.update(0.1, [[x, z]], 0); // night: they stay at rest
     expect(m.takeSounds().filter((s) => s.voice === 'call')).toEqual([]);
   });
 
@@ -114,7 +114,7 @@ describe('mob sounds', () => {
     const hopper = createMob(1, MobKind.Hopper, x + 0.5, y + 2, z + 0.5, 1);
     hopper.timer = Number.POSITIVE_INFINITY; // idle where it is
     m.mobs.push(hopper);
-    for (let t = 0; t < 1; t += 1 / 60) m.update(1 / 60, x, z, 1);
+    for (let t = 0; t < 1; t += 1 / 60) m.update(1 / 60, [[x, z]], 1);
     expect(m.takeSounds().filter((s) => s.voice === 'land').length).toBe(1);
   });
 

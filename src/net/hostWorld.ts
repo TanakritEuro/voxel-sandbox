@@ -24,6 +24,8 @@ export interface HostGame {
   allowed(player: number, x: number, y: number, z: number, block: Block): boolean;
   /** Make an edit as the game does (blocks and light, remeshing, saving, waking the water). */
   edit(x: number, y: number, z: number, block: Block): void;
+  /** Player `player` hit mob `id`: check it's in reach, and make the hit. */
+  hitMob(player: number, id: number): void;
 }
 
 /**
@@ -75,5 +77,6 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
       return true;
     },
     blockAt: (x, y, z) => world.getBlock(x, y, z),
+    hitMob: (player, id) => game.hitMob(player, id),
   };
 }
