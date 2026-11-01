@@ -111,6 +111,9 @@ export const TUNING = {
     friction: 0.6,
     /** Seconds they live, from and to. */
     life: [0.6, 1.1],
+    /** The puff a mob goes in: how many, how big. */
+    puffCount: 24,
+    puffSize: 0.2,
   },
   sound: {
     /** A footstep every this many blocks walked on the ground. */
@@ -216,5 +219,12 @@ export const TUNING = {
     despawnDistance: 96,
     /** Path searches stop for the frame once mobs have used this much of it (ms); the rest wait. */
     pathBudgetMs: 1,
+    /** Hits that make a mob go (in a puff), and a hit's push away and up (blocks / s). */
+    hits: 3,
+    knockback: 6,
+    knockUp: 5,
+    /** A mob calls every so often (seconds, from and to), heard this far away (blocks). */
+    calls: [8, 24] as [number, number],
+    hearing: 24,
   },
 };

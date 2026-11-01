@@ -7,7 +7,14 @@
 // is the recipe once; digging a quieter, shorter one; breaking a louder, longer crunch in two
 // bursts; placing a soft low thump with the material on top; landing a deeper thud. Pitch and
 // level vary a little each time so repeats don't sound mechanical.
+//
+// Mobs have voices: a pitched oscillator gliding through a filter, with a wobble. A mossback
+// groans low, a hopper chirps twice, a crag goat bleats, a dune beetle chitters; hurt, the call
+// comes higher and shorter over a thump. A hopper lands with a soft thump; a mob that's gone
+// leaves a rising whoosh of noise. Each is panned to the side it came from.
 
+import { MobKind } from '../mobs/kinds';
+import type { MobVoice } from '../mobs/mobs';
 import type { BlockSound } from '../world/blocks';
 import type { SoundEvent } from './cues';
 
@@ -103,7 +110,95 @@ export class Sound {
         this.material('water', e.gain * 1.2, 2.2, 0);
         this.material('water', e.gain * 0.6, 1.5, 0.08);
         break;
+      case 'mob':
+        this.mob(e.kind, e.voice, e.gain, e.pan);
+        break;
     }
+  }
+
+  /** A mob's call, cry, landing or puff, at `gain`, panned by `pan`. */
+  private mob(kind: MobKind, voice: MobVoice, gain: number, pan: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noise) return;
+    const out = ctx.createStereoPanner();
+    out.pan.value = pan;
+    out.connect(this.master);
+    const t = ctx.currentTime;
+    if (voice === 'land') {
+      this.thump(150, 0.08, gain * 0.35, out);
+      return;
+    }
+    if (voice === 'puff') {
+      // A whoosh: noise through a band rising in pitch.
+      const n = ctx.createBufferSource();
+      n.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass';
+      f.Q.value = 1.2;
+      f.frequency.setValueAtTime(500, t);
+      f.frequency.exponentialRampToValueAtTime(2800, t + 0.35);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(gain * 0.7, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      n.connect(f).connect(g).connect(out);
+      n.start(t, Math.random() * 2);
+      n.stop(t + 0.42);
+      return;
+    }
+    const hurt = voice === 'hurt';
+    if (hurt) this.thump(110, 0.1, gain * 0.5, out);
+    const p = (hurt ? 1.35 : 1) * vary(0.06);
+    const len = hurt ? 0.6 : 1;
+    switch (kind) {
+      case MobKind.Mossback:
+        this.voiced('sawtooth', 105 * p, 82 * p, 0.75 * len, 650, 5, 3, gain * 0.45, t, out);
+        break;
+      case MobKind.Hopper:
+        this.voiced('sine', 2300 * p, 3100 * p, 0.06, 6000, 0, 0, gain * 0.25, t, out);
+        this.voiced('sine', 2400 * p, 3300 * p, 0.05, 6000, 0, 0, gain * 0.2, t + 0.09, out);
+        break;
+      case MobKind.CragGoat:
+        this.voiced('sawtooth', 430 * p, 380 * p, 0.5 * len, 1500, 17, 28, gain * 0.3, t, out);
+        break;
+      case MobKind.DuneBeetle:
+        for (let i = 0; i < (hurt ? 3 : 5); i++) this.tone(3300 * p * vary(0.05), 0.018, gain * 0.25, t + i * 0.032, out);
+        break;
+    }
+  }
+
+  /**
+   * A voice: an oscillator gliding from `from` to `to` Hz over `length` s through a low-pass at
+   * `cutoff`, wobbling `depth` Hz `rate` times a second, starting at `t`.
+   */
+  private voiced(type: OscillatorType, from: number, to: number, length: number, cutoff: number, rate: number, depth: number, gain: number, t: number, out: AudioNode): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(from, t);
+    o.frequency.exponentialRampToValueAtTime(to, t + length);
+    const stop = t + length + 0.02;
+    if (depth > 0) {
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = rate;
+      const amount = ctx.createGain();
+      amount.gain.value = depth;
+      lfo.connect(amount).connect(o.frequency);
+      lfo.start(t);
+      lfo.stop(stop);
+    }
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = cutoff;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + Math.min(0.05, length * 0.25));
+    g.gain.setValueAtTime(gain, t + length * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, t + length);
+    o.connect(f).connect(g).connect(out);
+    o.start(t);
+    o.stop(stop);
   }
 
   private level(): number {
@@ -139,8 +234,8 @@ export class Sound {
     if (r.click) this.tone(r.click.frequency * pitch, r.click.decay * length, r.click.gain * gain, t0);
   }
 
-  /** A low thump: a sine sliding down an octave. */
-  private thump(frequency: number, decay: number, gain: number): void {
+  /** A low thump: a sine sliding down an octave (to `out`, or the master). */
+  private thump(frequency: number, decay: number, gain: number, out?: AudioNode): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
     const t = ctx.currentTime;
@@ -152,13 +247,13 @@ export class Sound {
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(gain, t + 0.005);
     g.gain.exponentialRampToValueAtTime(0.001, t + decay);
-    o.connect(g).connect(this.master);
+    o.connect(g).connect(out ?? this.master);
     o.start(t);
     o.stop(t + decay + 0.02);
   }
 
-  /** A short pitched tick at time `t`. */
-  private tone(frequency: number, decay: number, gain: number, t: number): void {
+  /** A short pitched tick at time `t` (to `out`, or the master). */
+  private tone(frequency: number, decay: number, gain: number, t: number, out?: AudioNode): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
     const o = ctx.createOscillator();
@@ -169,7 +264,7 @@ export class Sound {
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(gain, t + 0.002);
     g.gain.exponentialRampToValueAtTime(0.001, t + decay);
-    o.connect(g).connect(this.master);
+    o.connect(g).connect(out ?? this.master);
     o.start(t);
     o.stop(t + decay + 0.02);
   }

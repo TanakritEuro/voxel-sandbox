@@ -102,9 +102,9 @@ export function hurt(mob: Mob, fromX: number, fromZ: number): void {
   const dx = b.x - fromX;
   const dz = b.z - fromZ;
   const d = Math.hypot(dx, dz) || 1;
-  b.vx = (dx / d) * 6;
-  b.vz = (dz / d) * 6;
-  b.vy = 5;
+  b.vx = (dx / d) * TUNING.mobs.knockback;
+  b.vz = (dz / d) * TUNING.mobs.knockback;
+  b.vy = TUNING.mobs.knockUp;
   b.onGround = false;
   mob.hits++;
   mob.sinceHurt = 0;

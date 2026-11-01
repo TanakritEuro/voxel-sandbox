@@ -134,7 +134,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
   spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
   or with the column, a cap, stepping at the fixed rate with a per-frame path search budget;
-  not saved), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
+  hits (three and it's gone); the sounds they make; not saved), `hit.ts` (the mob under the
+  crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
   cutting, swimming at the surface, node and range limits; typed arrays reused between
   searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
   `World.getBlock`), `models.ts` (each kind's boxes, pivots, textures and how each part moves; pure
@@ -161,7 +162,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
   and the water texture's drift.
   `crack.ts` — the crack pattern and overlay. `particles.ts` — breaking and digging particles
-  (simulation, pure; one InstancedMesh). `heldBlock.ts` — the held block (a lone block meshed,
+  (simulation, pure; one InstancedMesh), and the puff of smoke a mob goes in. `heldBlock.ts` — the held block (a lone block meshed,
   drawn in its own pass; bob, swing and switch motion, pure). `mobRenderer.ts` — the mobs: each
   kind's model posed, one InstancedMesh per box (an instance per copy per mob, so at most 19 draw
   calls), lit by the world's light and fogged, drawn between physics steps; its shader compiled
@@ -176,8 +177,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   level of detail by distance (`lodLevel`, with hysteresis; far ones walled on every side,
   `wallsFor`); a mesh is known by its stamp (version and form), so a level change remeshes like
   an edit, after the chunks with no mesh at all, the old mesh shown meanwhile.
-- `src/audio/` — `cues.ts` (which sounds movement and digging make, when: pure), `sound.ts`
-  (Web Audio: a recipe per block material, volume, mute).
+- `src/audio/` — `cues.ts` (which sounds movement and digging make, when; `heard`: how loud
+  and from which side a mob is: pure), `sound.ts` (Web Audio: a recipe per block material, mob
+  voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time),

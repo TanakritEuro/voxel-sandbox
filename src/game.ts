@@ -3,7 +3,7 @@
 // the pause menu.
 
 import * as THREE from 'three';
-import { SoundCues, underfoot } from './audio/cues';
+import { heard, SoundCues, underfoot } from './audio/cues';
 import { Sound } from './audio/sound';
 import { Autofly } from './autofly';
 import { ChunkLoader } from './chunkLoader';
@@ -28,6 +28,8 @@ import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
+import type { Mob } from './mobs/brain';
+import { mobOnRay } from './mobs/hit';
 import { KINDS } from './mobs/kinds';
 import { MobManager } from './mobs/mobs';
 import { MobRenderer } from './render/mobRenderer';
@@ -273,6 +275,17 @@ function edit(x: number, y: number, z: number, block: Block): void {
   lastEdit = { ms: performance.now() - t0, lightMs: world.lightMs, chunks: stale.length };
 }
 
+/** A click on a mob: a swing, and it's knocked back (or gone in a puff on the last hit). */
+function hitMob(mob: Mob): void {
+  if (!mobs) return;
+  held.motion.swing();
+  const b = mob.body;
+  if (mobs.hit(mob, player.body.x, player.body.z)) {
+    const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow);
+    particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, light);
+  }
+}
+
 /** Breaking (hold the left button) and placing (a click of the right one), once per frame. */
 function editing(dt: number): void {
   const broken = mining.update(target, input.isHeld('Mouse0'), dt);
@@ -396,6 +409,11 @@ function frame(now: number): void {
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 
   target = raycast(world, camera.position, dir, TUNING.edit.reach);
+  // A mob nearer than the block looked at takes the left button instead: hit, not dug (and no
+  // outline on the block behind it).
+  const aimed = mobs && !paused() ? mobOnRay(mobs.mobs, camera.position, dir, target ? target.distance : TUNING.edit.reach) : null;
+  if (aimed) target = null;
+  if (input.take('Mouse0') && aimed) hitMob(aimed.mob);
   editing(dt);
   // The mobs think and move (not while paused), then are drawn where they are.
   if (mobs && mobView) {
@@ -405,6 +423,11 @@ function frame(now: number): void {
       showcase = false;
     }
     mobView.update(mobs, world, daylightNow, now / 1000);
+    const p = camera.position;
+    for (const s of mobs.takeSounds()) {
+      const h = heard(s.x, s.y + 0.5, s.z, p.x, p.y, p.z, input.yaw);
+      if (h) sound.play({ name: 'mob', voice: s.voice, kind: s.kind, ...h });
+    }
   }
   outline.visible = target !== null;
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);

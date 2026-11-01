@@ -6,14 +6,34 @@
 // - Landing from a fall faster than a jump's: a thud, louder for a bigger fall, and a step.
 // - Splashing into water, from how fast the player went in.
 // - Digging: a hit in the block's material every `TUNING.sound.digInterval` while breaking.
+// - Mobs (`MobManager.takeSounds`): `heard` says how loud and from which side.
 
 import { TUNING } from '../config';
 import { type Block, BLOCKS, type BlockSound } from '../world/blocks';
+import type { MobKind } from '../mobs/kinds';
+import type { MobVoice } from '../mobs/mobs';
 import { HALF_WIDTH } from '../world/physics';
 
 export type SoundEvent =
   | { name: 'step' | 'dig' | 'break' | 'place' | 'land'; material: BlockSound; gain: number }
-  | { name: 'splash'; gain: number };
+  | { name: 'splash'; gain: number }
+  | { name: 'mob'; voice: MobVoice; kind: MobKind; gain: number; pan: number };
+
+/**
+ * How a sound at (x, y, z) is heard from (lx, ly, lz) looking along `yaw`: louder nearer, fading
+ * out at `TUNING.mobs.hearing` (null beyond), and panned to the side it's on (-1 left to 1 right).
+ */
+export function heard(x: number, y: number, z: number, lx: number, ly: number, lz: number, yaw: number): { gain: number; pan: number } | null {
+  const dx = x - lx;
+  const dz = z - lz;
+  const d = Math.hypot(dx, y - ly, dz);
+  const H = TUNING.mobs.hearing;
+  if (d >= H) return null;
+  const across = Math.hypot(dx, dz);
+  // The listener's right is (cos yaw, -sin yaw); a sound straight ahead or behind is in the middle.
+  const pan = across > 1e-6 ? ((dx * Math.cos(yaw) - dz * Math.sin(yaw)) / across) * 0.8 : 0;
+  return { gain: (1 - d / H) ** 2, pan };
+}
 
 /** What the cues need from the player each frame. */
 export interface CueInput {

@@ -408,3 +408,50 @@ of them mossbacks, the rest hoppers), alternating runs:
 - Every texture a model names exists.
 - A face and its sides share one texture, the face in the right half; every box is one material.
 - An instance per part copy per mob, and draw calls only for the kinds there are.
+
+## Step 5: hitting them, and their sounds — built (2026-11-01)
+
+**What changed:**
+- **`mobs/hit.ts`** (pure): the mob under the crosshair. A ray against each mob's box, the
+  nearest it enters. Its reach is the distance to the block looked at (or the 7-block reach), so
+  a mob behind a block can't be hit through it.
+- **In the game:** with a mob nearer than the block looked at, the block loses its outline and
+  isn't dug. A click hits the mob instead, with a swing of the held block.
+- **`MobManager.hit`:**
+  - A hit knocks the mob away from you and up (`TUNING.mobs.knockback` 6, `knockUp` 5 blocks a
+    second). It flashes red, cries out and flees for 4 s.
+  - The third (`TUNING.mobs.hits`) takes it away in a puff: 24 grey-white cubes out of its body
+    that drift up and out (`Particles.puff`; particles now have a weight, almost none for smoke).
+- **Sounds,** synthesised (`audio/sound.ts`), reported by the manager (`takeSounds`) and played
+  by the game:
+  - **Calls** every 8–24 s each (`TUNING.mobs.calls`), none at rest. A mossback groans low (a
+    sawtooth gliding down through a low-pass), a hopper chirps twice, a crag goat bleats (with a
+    fast wobble), a dune beetle chitters (quick ticks). Their own random numbers, so sounds don't
+    change where mobs spawn.
+  - **Hurt:** the call higher and shorter, over a thump.
+  - **A hopper landing:** a soft thump.
+  - **The puff:** a whoosh of noise rising in pitch.
+  - **Heard** (`audio/cues.ts`, `heard`): fading out to nothing at 24 blocks
+    (`TUNING.mobs.hearing`), and panned to the side the mob is on.
+
+**Looked at in Chrome** (`?showcase`, midday): a click on the mossback knocked it back into the
+air and it turned and fled; with three quick clicks it went in a puff. The block outline leaves the
+ground while a mob is under the crosshair. Clicks that miss (it already flew out of the way) dig
+the ground as before. No console errors.
+- **Not heard:** browsers only start audio after a real click, and these clicks were scripted.
+  The sounds are for your playtest.
+
+**Measured** in Chrome on your laptop, radius 8, spinning at the spawn with 24 mobs: 108 fps,
+main thread 2.1 ms, GPU 4.4 ms, mobs 0.30 ms a frame. That's the same as step 4.
+
+**Tests (7 new, 262 in all):**
+- The ray finds the nearest mob in front within reach. It misses one behind, beside, over its back,
+  under its feet, or out of reach.
+- On generated land, a mob is hit in the open but not behind a stone block put in the way.
+- A hit pushes the mob away and up, and it flees. The third takes it away, and the sounds are
+  hurt, hurt, hurt, puff.
+- Three mossbacks over a minute call about as often as they should; at rest, not at all.
+- A hopper dropped onto grass thumps once.
+- Mobs are heard louder nearer, not at all beyond 24 blocks, and from their side (turning round
+  swaps it).
+- A puff starts inside the mob's body and drifts up.

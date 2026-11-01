@@ -1,5 +1,6 @@
 // Block particles: when a block breaks, a burst of small cubes in its colours flies out of where
-// it was; while it's being dug, a few smaller chips come off the face being hit. They fall,
+// it was; while it's being dug, a few smaller chips come off the face being hit; a mob that's
+// gone leaves a puff of smoke that drifts up (it barely falls). They fall,
 // bounce off solid blocks (a point test against the world, one axis at a time, so they never
 // end up inside one), slow down on the ground and shrink away over about a second.
 //
@@ -14,6 +15,13 @@ export const MAX_PARTICLES = 512;
 
 type RGB = [number, number, number];
 
+/** A puff's greys. */
+const SMOKE: readonly RGB[] = [
+  [0.93, 0.93, 0.93],
+  [0.8, 0.8, 0.82],
+  [0.86, 0.85, 0.83],
+];
+
 /** How bright the packed light (sun << 4 | block light) is as a colour factor, with `daylight` as the shader has it. */
 export function brightness(light: number, daylight: number): number {
   const f = TUNING.render.lightFalloff;
@@ -27,6 +35,8 @@ export class Particles {
   readonly velocity = new Float32Array(MAX_PARTICLES * 3);
   readonly colour = new Float32Array(MAX_PARTICLES * 3);
   readonly size = new Float32Array(MAX_PARTICLES);
+  /** How much gravity pulls each (1 for block bits, little for smoke). */
+  readonly weight = new Float32Array(MAX_PARTICLES);
   readonly age = new Float32Array(MAX_PARTICLES);
   /** Seconds each lives; 0 for an empty slot. */
   readonly life = new Float32Array(MAX_PARTICLES);
@@ -69,6 +79,17 @@ export class Particles {
     }
   }
 
+  /** A mob of half-width `w` and height `h` standing at (x, y, z) is gone: a puff of smoke out of its body, drifting up and out. */
+  puff(x: number, y: number, z: number, w: number, h: number, light: number): void {
+    const P = TUNING.particles;
+    for (let n = 0; n < P.puffCount; n++) {
+      const px = x + (this.random() - 0.5) * 2 * w;
+      const py = y + this.random() * h;
+      const pz = z + (this.random() - 0.5) * 2 * w;
+      this.add(px, py, pz, (px - x) * 2, 0.8 + this.random() * 0.8, (pz - z) * 2, SMOKE, light, P.puffSize, 0.05);
+    }
+  }
+
   /** Move them all `dt` seconds on; `solid(x, y, z)` says whether the block at those integer coordinates stops them. */
   step(dt: number, solid: (x: number, y: number, z: number) => boolean): void {
     const P = TUNING.particles;
@@ -81,7 +102,7 @@ export class Particles {
         this.life[i] = 0;
         continue;
       }
-      vel[i * 3 + 1] -= P.gravity * dt;
+      vel[i * 3 + 1] -= P.gravity * this.weight[i] * dt;
       let grounded = false;
       // One axis at a time: a move into a solid block is undone and bounces back, softly.
       for (let a = 0; a < 3; a++) {
@@ -101,7 +122,7 @@ export class Particles {
     }
   }
 
-  private add(x: number, y: number, z: number, vx: number, vy: number, vz: number, colours: readonly RGB[], light: number, size: number): void {
+  private add(x: number, y: number, z: number, vx: number, vy: number, vz: number, colours: readonly RGB[], light: number, size: number, weight = 1): void {
     const P = TUNING.particles;
     const i = this.next;
     this.next = (this.next + 1) % MAX_PARTICLES;
@@ -111,6 +132,7 @@ export class Particles {
     const shade = light * (0.85 + this.random() * 0.3);
     this.colour.set([Math.min(1, c[0] * shade), Math.min(1, c[1] * shade), Math.min(1, c[2] * shade)], i * 3);
     this.size[i] = size * (0.75 + this.random() * 0.5);
+    this.weight[i] = weight;
     this.age[i] = 0;
     this.life[i] = P.life[0] + this.random() * (P.life[1] - P.life[0]);
   }

@@ -9,6 +9,9 @@
 // Each frame they're stepped at the fixed rate, reading blocks through one `BlockCache`, with
 // path searches stopping for the frame once `pathBudgetMs` is used (a mob whose search must wait
 // tries again a moment later).
+//
+// It also says what the mobs sound like (`takeSounds`): each calls now and then unless resting,
+// a hopper lands with a soft thump, a hit one cries out, and the third hit sends it off in a puff.
 
 import { TUNING } from '../config';
 import { createRng, FixedStep, type Rng } from '../math';
@@ -16,7 +19,7 @@ import { BLOCKS, Block } from '../world/blocks';
 import { toChunk, WORLD_HEIGHT } from '../world/coords';
 import type { World } from '../world/world';
 import { BlockCache } from './blockCache';
-import { createMob, type Mob, type MobContext, pathOptions, stepBrain } from './brain';
+import { createMob, hurt, type Mob, type MobContext, pathOptions, stepBrain } from './brain';
 import { headroom, KINDS, type MobKind } from './kinds';
 import { findPath } from './pathfind';
 
@@ -26,6 +29,19 @@ export interface Before {
   y: number;
   z: number;
   yaw: number;
+  onGround: boolean;
+}
+
+/** What a mob sounds: its call, a cry when hit, a hopper landing, the puff it goes in. */
+export type MobVoice = 'call' | 'hurt' | 'land' | 'puff';
+
+/** A sound a mob made, where it was. */
+export interface MobSound {
+  voice: MobVoice;
+  kind: MobKind;
+  x: number;
+  y: number;
+  z: number;
 }
 
 export class MobManager {
@@ -34,6 +50,11 @@ export class MobManager {
   readonly before = new Map<Mob, Before>();
   private readonly clock = new FixedStep(TUNING.mobs.step);
   private readonly rng: Rng;
+  /** For when mobs call: its own, so sounds don't change where mobs spawn. */
+  private readonly voices: Rng;
+  /** Seconds until each mob calls next. */
+  private readonly calls = new Map<Mob, number>();
+  private readonly sounds: MobSound[] = [];
   private nextId = 1;
   private untilSpawn = 0;
   /** For `?stats`: path searches done and put off since the last read, and this frame's time (ms). */
@@ -48,6 +69,7 @@ export class MobManager {
     readonly max = TUNING.mobs.max,
   ) {
     this.rng = createRng(seed);
+    this.voices = createRng(seed ^ 0x5eed);
   }
 
   /** 0..1: how far between the last step and the next the present is, for drawing. */
@@ -73,7 +95,7 @@ export class MobManager {
     }
     const steps = this.clock.advance(dt);
     if (steps > 0) {
-      for (const m of this.mobs) this.before.set(m, { x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw });
+      for (const m of this.mobs) this.before.set(m, { x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw, onGround: m.body.onGround });
       const blocks = new BlockCache(this.world);
       const deadline = t0 + TUNING.mobs.pathBudgetMs;
       const ctx: MobContext = {
@@ -89,6 +111,18 @@ export class MobManager {
         },
       };
       for (let s = 0; s < steps; s++) for (const m of this.mobs) stepBrain(m, ctx);
+      for (const m of this.mobs) if (KINDS[m.kind].hops && m.body.onGround && !this.before.get(m)?.onGround) this.sound(m, 'land');
+    }
+    // Calls, now and then; none at rest.
+    if (dt > 0) {
+      for (const m of this.mobs) {
+        let wait = (this.calls.get(m) ?? this.callWait()) - (m.state === 'rest' ? 0 : dt);
+        if (wait <= 0) {
+          this.sound(m, 'call');
+          wait = this.callWait();
+        }
+        this.calls.set(m, wait);
+      }
     }
     this.ms = performance.now() - t0;
   }
@@ -119,11 +153,39 @@ export class MobManager {
     });
   }
 
+  /**
+   * The player at (fromX, fromZ) hits `mob`: knocked back, it cries out and flees; the last of
+   * `TUNING.mobs.hits` sends it off in a puff instead. True if it's gone.
+   */
+  hit(mob: Mob, fromX: number, fromZ: number): boolean {
+    hurt(mob, fromX, fromZ);
+    this.sound(mob, 'hurt');
+    if (mob.hits < TUNING.mobs.hits) return false;
+    this.sound(mob, 'puff');
+    this.remove(mob);
+    return true;
+  }
+
+  /** The sounds made since the last time this was asked, oldest first. */
+  takeSounds(): MobSound[] {
+    return this.sounds.splice(0);
+  }
+
   /** Remove a mob (despawned, or gone in a puff). */
   remove(mob: Mob): void {
     const i = this.mobs.indexOf(mob);
     if (i >= 0) this.mobs.splice(i, 1);
     this.before.delete(mob);
+    this.calls.delete(mob);
+  }
+
+  private sound(mob: Mob, voice: MobVoice): void {
+    this.sounds.push({ voice, kind: mob.kind, x: mob.body.x, y: mob.body.y, z: mob.body.z });
+  }
+
+  private callWait(): number {
+    const [lo, hi] = TUNING.mobs.calls;
+    return lo + (hi - lo) * this.voices();
   }
 
   private despawn(px: number, pz: number): void {
