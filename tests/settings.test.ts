@@ -10,7 +10,7 @@ describe('settings', () => {
   it('are the defaults with nothing saved, and come back as saved', () => {
     const storage = memory();
     expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS);
-    const mine = { viewDistance: 12, fov: 90, resolution: 0.75, antialias: false, sensitivity: 3.5, invertY: true, volume: 0.3, muted: true };
+    const mine = { viewDistance: 12, fov: 90, resolution: 0.75, antialias: false, sensitivity: 3.5, invertY: true, volume: 0.3, muted: true, name: 'Pim' };
     saveSettings(mine, storage);
     expect(loadSettings(storage)).toEqual(mine);
   });
@@ -22,6 +22,10 @@ describe('settings', () => {
     // Out of range: the nearest allowed value; view distance a whole number of chunks.
     expect(cleanSettings({ viewDistance: 40, fov: 10, sensitivity: -2, volume: 3, resolution: 0.2 })).toMatchObject({ viewDistance: 16, fov: 60, sensitivity: 0.5, volume: 1, resolution: 0.5 });
     expect(cleanSettings({ resolution: 3, antialias: 'off' })).toMatchObject({ resolution: 1, antialias: true });
+    // A name tidied as the network tidies it; none, or nothing left of it, the default.
+    expect(cleanSettings({ name: '  Pim   B ' }).name).toBe('Pim B');
+    expect(cleanSettings({ name: '   ' }).name).toBe(DEFAULT_SETTINGS.name);
+    expect(cleanSettings({ name: 7 }).name).toBe(DEFAULT_SETTINGS.name);
     expect(cleanSettings({ antialias: false }).antialias).toBe(false);
     expect(cleanSettings({ viewDistance: 6.6 }).viewDistance).toBe(7);
     const storage = memory();

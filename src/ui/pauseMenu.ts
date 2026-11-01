@@ -1,6 +1,7 @@
 // The pause menu: over the game whenever the mouse isn't captured (at the start, and after
 // Esc). Play captures it again; Settings opens the settings; quitting saves and goes back to
-// the world list. The keys are listed under it.
+// the world list (a guest leaves). Playing together has a part of its own (`together`: open to
+// friends, the code, who's in). The keys are listed under it.
 
 import type { Settings } from '../settings';
 import { button, el } from './dom';
@@ -16,6 +17,17 @@ export interface PauseEvents {
   onQuit(): void;
   /** A setting changed (already saved). */
   onSettings(settings: Settings): void;
+  /** Draws the playing-together part into the menu, each time it's shown (`refresh` asks again). */
+  together?(panel: HTMLElement, refresh: () => void): void;
+}
+
+export interface PauseOptions {
+  /** Kept in this browser (else a note says it isn't). */
+  saved: boolean;
+  /** Instead of the usual note about unsaved worlds. */
+  note?: string;
+  /** The quit button's words, if not the usual. */
+  quitLabel?: string;
 }
 
 export class PauseMenu {
@@ -26,7 +38,7 @@ export class PauseMenu {
   constructor(
     parent: HTMLElement,
     private readonly world: string,
-    private readonly saved: boolean,
+    private readonly options: PauseOptions,
     private readonly settings: Settings,
     private readonly events: PauseEvents,
   ) {
@@ -41,6 +53,13 @@ export class PauseMenu {
     this.root.classList.toggle('hidden', !visible);
   }
 
+  /** Draw the main view again (what's shown for playing together changed). */
+  refresh(): void {
+    if (!this.root.classList.contains('hidden') && !this.inSettings) this.main();
+  }
+
+  private inSettings = false;
+
   /** Quitting: nothing more to press while the world is written. */
   quitting(): void {
     this.quitting_ = true;
@@ -48,13 +67,17 @@ export class PauseMenu {
   }
 
   private main(): void {
+    this.inSettings = false;
     this.panel.replaceChildren();
     el(this.panel, 'div', 'menu-title', this.world);
-    if (!this.saved) el(this.panel, 'p', 'menu-help', 'This world isn’t saved: links with ?seed, ?at or ?autofly start afresh each time.');
+    const { saved, note, quitLabel } = this.options;
+    if (note) el(this.panel, 'p', 'menu-help', note);
+    else if (!saved) el(this.panel, 'p', 'menu-help', 'This world isn’t saved: links with ?seed, ?at or ?autofly start afresh each time.');
     const actions = el(this.panel, 'div', 'menu-row');
     const play = button(actions, 'Play', this.events.onPlay, 'menu-go');
     const settings = button(actions, 'Settings', () => this.showSettings());
-    const quit = button(actions, this.saved ? 'Save and quit to the world list' : 'Quit to the world list', this.events.onQuit);
+    const quit = button(actions, quitLabel ?? (saved ? 'Save and quit to the world list' : 'Quit to the world list'), this.events.onQuit);
+    if (this.events.together && !this.quitting_) this.events.together(el(this.panel, 'div', 'menu-together'), () => this.refresh());
     if (this.quitting_) {
       play.disabled = settings.disabled = quit.disabled = true;
       quit.textContent = 'Saving…';
@@ -63,6 +86,7 @@ export class PauseMenu {
   }
 
   private showSettings(): void {
+    this.inSettings = true;
     this.panel.replaceChildren();
     el(this.panel, 'div', 'menu-title', this.world);
     el(this.panel, 'div', 'menu-heading', 'Settings');

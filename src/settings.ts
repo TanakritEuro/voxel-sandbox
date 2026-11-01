@@ -4,6 +4,7 @@
 // storage is missing or blocked (private windows), the defaults, for the visit.
 
 import { TUNING } from './config';
+import { cleanName } from './net/protocol';
 
 export interface Settings {
   /** Chunks loaded and drawn around the player. */
@@ -23,6 +24,8 @@ export interface Settings {
   /** Sound: master volume 0–1, and mute. */
   volume: number;
   muted: boolean;
+  /** The name others see when playing together. */
+  name: string;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -34,6 +37,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   invertY: false,
   volume: 0.8,
   muted: false,
+  name: 'Player',
 };
 
 /** Allowed range and step of each number. */
@@ -69,6 +73,7 @@ export function cleanSettings(raw: unknown): Settings {
   }
   s.viewDistance = Math.round(s.viewDistance);
   for (const key of ['invertY', 'muted', 'antialias'] as const) if (typeof r[key] === 'boolean') s[key] = r[key];
+  s.name = cleanName(r.name) ?? DEFAULT_SETTINGS.name;
   return s;
 }
 

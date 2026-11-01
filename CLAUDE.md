@@ -112,7 +112,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 
 ## Layout
 
-- `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume) in localStorage,
+- `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), net.
@@ -219,18 +219,23 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `remotePlayer.ts` (states → where to draw someone now: 0.1 s behind, between states, guessed on
   briefly past the newest), `mobState.ts` (mobs 52 bytes each and their sounds, host → guests),
   `mobMirror.ts` (a guest's mobs: real `Mob`s placed between the host's snapshots, for drawing and
-  hitting), `bot.ts` (`?bot`: a test guest in the page).
+  hitting), `traffic.ts` (bytes each way, counted by wrapping links and rooms, for `?stats`),
+  `bot.ts` (`?bot`: a test guest in the page).
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
   until taken, mouse look and pointer lock (raw input where the browser has it, else `SpikeFilter`
   drops Chrome's occasional huge moves).
 - `src/player.ts` — the player: physics at a fixed step, interpolated camera, fly toggle,
   waiting for the ground to load; `autopilot` for `?autofly`.
 - `src/main.ts` — entry point: the world list, or the game for `?world=<id>` (or an unsaved
-  world). `src/game.ts` — the game: opening the world, editing (each edit wakes the water),
+  world, or `?join=<code>` a friend's). `src/game.ts` — the game: opening the world (or joining
+  a friend's: connected first, their seed and time, edited chunks from them; PeerJS loaded only
+  then), opening it to friends from the pause menu, editing (each edit wakes the water, and goes
+  to the others), playing together (states, the others drawn, a host's mobs, water and time to its
+  guests, a guest's from its host; the world doesn't pause while together),
   flowing water (a tick every 0.25 s, its changes made the frame after: blocks and light at once,
   saved, remeshed in the workers), HUD, frame loop, pause, autosave.
-- `src/ui/` — `worldList.ts` (play, new, rename, delete, settings), `pauseMenu.ts` (play,
-  settings, save and quit, keys), `inventory.ts` (the block picker), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
+- `src/ui/` — `worldList.ts` (play, new, rename, delete, settings, join a friend, why a game
+  ended), `pauseMenu.ts` (play, settings, save and quit or leave, keys, a part for playing together), `inventory.ts` (the block picker), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3), with GPU time per frame (`render/gpuTimer.ts`). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `src/flood.ts` — `?flood`, the sea let into a

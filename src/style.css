@@ -358,3 +358,54 @@ body.menu-mode #hud {
   line-height: 1.2;
   text-align: center;
 }
+
+/* Playing together: the pause menu's part, the code, why a game ended, lines on screen. */
+
+.menu-together {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.menu-together:empty {
+  display: none;
+}
+
+.menu-code {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.menu-notice {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(220, 120, 60, 0.25);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.events {
+  position: absolute;
+  top: 34px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.event {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+  transition: opacity 1s;
+}
+
+.event.fading {
+  opacity: 0;
+}

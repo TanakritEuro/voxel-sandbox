@@ -6,7 +6,9 @@
 import { TUNING } from '../config';
 import { IndexedDbStore, newWorldRecord, type WorldRecord, type WorldStore } from '../save/store';
 import { ago, byLastPlayed, freeName, newWorldId, seedFromText } from '../save/worlds';
-import { loadSettings } from '../settings';
+import { cleanRoomCode } from '../net/roomCode';
+import { cleanName } from '../net/protocol';
+import { loadSettings, saveSettings } from '../settings';
 import { button, el, field } from './dom';
 import { settingsControls } from './settingsPanel';
 
@@ -38,8 +40,20 @@ export async function showWorldList(): Promise<void> {
   new WorldList(panel, store, await store.listWorlds());
 }
 
+/**
+ * Why the last game ended, if it ended on its own (`?left=…`, from a game played together); taken
+ * out of the address, so it's said once.
+ */
+function endedWhy(): string | null {
+  const why = new URLSearchParams(location.search).get('left');
+  if (why !== null) history.replaceState(null, '', location.pathname);
+  return why ? why.slice(0, 200) : null;
+}
+
 class WorldList {
   private worlds: WorldRecord[];
+  /** Why the last game ended: said on the first screen shown. */
+  private notice = endedWhy();
   private selected: string | null;
 
   constructor(
@@ -77,8 +91,36 @@ class WorldList {
     const remove = button(actions, 'Delete', () => this.remove(), 'menu-danger');
     button(actions, 'Settings', () => this.settings());
     for (const b of [play, rename, remove]) b.disabled = !this.chosen;
-    el(panel, 'p', 'menu-help', 'Worlds are kept in this browser. Double-click a world to play it.');
+    const together = el(panel, 'div', 'menu-row');
+    button(together, 'Join a friend', () => this.join());
+    el(panel, 'p', 'menu-help', 'Worlds are kept in this browser. Double-click a world to play it. To play together, open your world to friends from its pause menu.');
     play.focus();
+  }
+
+  /** Join a friend's world: their code, and the name to go by. */
+  private join(): void {
+    const panel = this.reset('Join a friend');
+    const back = () => (this.worlds.length ? this.list() : this.create());
+    const problem = el(panel, 'p', 'menu-help');
+    const go_ = () => {
+      const code = cleanRoomCode(codeInput.value);
+      const name = cleanName(nameInput.value);
+      if (!code) return void (problem.textContent = 'A code is four letters and numbers, as your friend sees it in their pause menu.');
+      if (!name) return void (problem.textContent = 'Give yourself a name.');
+      const settings = loadSettings();
+      settings.name = name;
+      saveSettings(settings);
+      go(`?join=${code}`);
+    };
+    const codeInput = field(panel, 'Code', '', 'four letters, from your friend', go_, back);
+    codeInput.maxLength = 8;
+    const nameInput = field(panel, 'Your name', loadSettings().name, '', go_, back);
+    nameInput.maxLength = 16;
+    const actions = el(panel, 'div', 'menu-row');
+    button(actions, 'Join', go_, 'menu-go');
+    button(actions, 'Cancel', back);
+    el(panel, 'p', 'menu-help', 'You play in their world while they do; nothing is saved in this browser.');
+    codeInput.focus();
   }
 
   private select(id: string): void {
@@ -101,6 +143,8 @@ class WorldList {
     const actions = el(panel, 'div', 'menu-row');
     button(actions, 'Create and play', () => void make(), 'menu-go');
     if (this.worlds.length) button(actions, 'Cancel', back);
+    // With no worlds of their own yet, a friend's can still be joined.
+    else button(actions, 'Join a friend', () => this.join());
     nameInput.select();
   }
 
@@ -154,6 +198,8 @@ class WorldList {
   private reset(heading?: string): HTMLElement {
     this.panel.replaceChildren();
     el(this.panel, 'div', 'menu-title', 'VOXEL SANDBOX');
+    if (this.notice) el(this.panel, 'p', 'menu-notice', this.notice);
+    this.notice = null;
     if (heading) el(this.panel, 'div', 'menu-heading', heading);
     return this.panel;
   }

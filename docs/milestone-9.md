@@ -424,3 +424,70 @@ errors. A guest's view of mobs and water needs the guest's game, step 5.
   - its hit reaches the host's game;
   - water edits are marked as water and others not;
   - the time arrives in the welcome and after.
+
+## Step 5: the menus, and a guest's game — built (2026-11-01)
+
+**What changed:**
+- **Opening a world to friends** (the pause menu's "Open to friends"):
+  - a name (kept in the settings), then a four-letter code from the PeerJS server;
+  - the menu shows the code and who's in, and "Close to friends" sends everyone home;
+  - quitting closes it too.
+  - Any world can be opened, saved or not. The host's name is the setting's.
+- **Joining** (the world list's "Join a friend", also offered when there are no worlds yet):
+  - a code and a name; the page loads again with `?join=<code>`.
+  - The game connects before making anything, says hello, and on the welcome makes the world from
+    the host's seed and time, as "<host>'s world", unsaved, starting where the host stands.
+  - Failing (no such code, full, another version, no network), it goes back to the world list,
+    which says why.
+- **A guest's game:**
+  - edited chunks come from the host (`RemoteSaves` as the loader's saves);
+  - its edits show at once and go to the host;
+  - the host's edits are made as they come: others' remeshed at once and heard where they are
+    (break and place sounds), water in the workers;
+  - it runs no water and no mobs of its own: the host's mobs are drawn from the mirror and aimed at
+    as before, and a hit goes to the host;
+  - mob sounds and puffs come from the host, and the time of day is the host's.
+  - Pausing doesn't stop the world.
+  - "Leave" goes back to the world list. When the host closes or leaves, or the line goes quiet,
+    the guest goes back to the list with the reason.
+- **While playing together nothing pauses:** water, mobs and time go on when the host (or a guest)
+  has the pause menu up. The player stands still.
+- **On screen:** a line for a few seconds when someone joins or leaves, or a problem with the room.
+- **`?stats`:** a `net` line:
+  - who (hosting with the code and how many are in, or in whose world, with the round trip);
+  - KB a second out and in, and messages a second (`net/traffic.ts`, which counts by wrapping the
+    links).
+- **PeerJS is loaded only when hosting or joining** (its own 90 KB chunk, 24 KB gzipped). Playing
+  alone downloads nothing more.
+- **Two fixes found trying it:**
+  - "Join a friend" was only on the list of worlds, not on the new-world screen that comes up when
+    there are none; it's on both now.
+  - The reason a game ended didn't show on that screen either. It shows on whichever screen comes
+    first, once, and is taken out of the address.
+
+**Tried in Chrome, over the real PeerJS server:**
+- **Two tabs first** (a hidden tab stops drawing, but handles messages):
+  - The host opened to friends: code XLPH.
+  - The second tab joined from the world list as "Guesty": "Hosty's world", "Here: Hosty, Guesty",
+    the land loaded, standing where the host stood.
+  - The guest walked away and placed a plank. The host made it ("last edit… 1 chunks remeshed") and
+    showed Guesty, blue, looking down beside it.
+  - Network lines: the guest's round trip 2 ms; the host 20.3 KB/s out (mostly 48 mobs, 10 times a
+    second) and 1.7 KB/s in.
+  - Leave: the host got "Guesty left.". The guest joined again and the host closed: the guest
+    landed on the world list with "The host closed the world."
+- **Then side by side**, the host in your Chrome window and the guest (as "Player") in the app's
+  built-in browser, both drawing at 60 fps:
+  - the guest heard 31.4 KB/s and sent 1.7 KB/s, round trip 3 ms, with 48 mobs near it;
+  - from the guest's screen the host stood facing it, red shirt, face and name, then walked off
+    when the host walked.
+  - The extension can't drive a tab dragged into a window of its own, hence the built-in browser
+    for the guest.
+- **Not tried live yet:** water flowing on a guest's screen, mobs seen up close on a guest, a guest
+  flying far from the host, and frame times with both busy. Those are for step 6, with the
+  measurements.
+- **Not done:** others' footsteps and digging sounds (their breaks and places are heard).
+
+**Tests (2 new, 324 in all):** `bytesOf` sizes messages; a room's guests' traffic is counted both
+ways per second, and messages still reach their handlers. The settings test now covers names
+(tidied; the default when there's none or nothing left).

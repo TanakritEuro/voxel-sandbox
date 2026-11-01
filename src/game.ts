@@ -36,8 +36,13 @@ import { type MobSound, MobManager } from './mobs/mobs';
 import { BlockCache } from './mobs/blockCache';
 import { Bot } from './net/bot';
 import { editAllowed, hostWorld } from './net/hostWorld';
+import type { Room } from './net/link';
 import { Network } from './net/loopback';
-import { HostSession } from './net/session';
+import { cleanName, type BlockChange } from './net/protocol';
+import { cleanRoomCode } from './net/roomCode';
+import { GuestSession, HostSession } from './net/session';
+import { Traffic } from './net/traffic';
+import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
 import { Block, BLOCKS, hotbarFrom, isTorch, torchFor } from './world/blocks';
@@ -98,10 +103,42 @@ window.addEventListener('resize', () => {
 
 const waterView = new WaterView(scene);
 
+// Joining a friend's world (`?join=<code>`, from the world list): connected before anything is
+// made, since the world is theirs: its seed, its time, where they stand. Failing, back to the
+// list with why. Everything sent and heard is counted for `?stats`.
+const traffic = new Traffic(() => performance.now() / 1000);
+const guest = params.has('join') ? await joinFriend(cleanRoomCode(params.get('join') ?? '')) : null;
+const welcome = guest ? await guest.welcome : null;
+const hostName = welcome?.players.find((p) => p.id === 0)?.name ?? 'Your friend';
+
+/** Connect to the world with this code; on failure, back to the world list saying why (and never return). */
+async function joinFriend(code: string | null): Promise<GuestSession> {
+  const note = el(document.body, 'div', 'menu-root');
+  el(el(note, 'div', 'menu'), 'div', 'menu-title', code ? `Joining ${code}…` : 'Joining…');
+  try {
+    if (!code) throw new Error('That isn’t a code: it’s four letters and numbers.');
+    const { joinRoom } = await import('./net/link');
+    const session = new GuestSession(traffic.link(await joinRoom(code)), settings.name, () => performance.now() / 1000);
+    session.onClose = leaveFor;
+    await session.welcome;
+    note.remove();
+    return session;
+  } catch (e) {
+    leaveFor(e instanceof Error ? e.message : 'Couldn’t join.');
+    return new Promise<never>(() => {});
+  }
+}
+
+/** Back to the world list, telling the player why. */
+function leaveFor(reason: string): void {
+  location.replace(`${location.pathname}?left=${encodeURIComponent(reason)}`);
+}
+
 // The world chosen in the list, saved in this browser (IndexedDB) as it's played; or one the URL
 // asks for to look at or measure (`?seed=`, `?at=`, `?autofly`), which starts fresh each time
-// and is kept in memory only. A world that isn't there (deleted in another tab) goes back to the list.
-const unsaved = isUnsavedUrl(params);
+// and is kept in memory only; or a friend's, as a guest, kept nowhere here. A world that isn't
+// there (deleted in another tab) goes back to the list.
+const unsaved = isUnsavedUrl(params) || guest !== null;
 const store: WorldStore = unsaved ? new MemoryStore() : await openStore();
 const found = unsaved ? undefined : await store.getWorld(params.get('world') ?? '');
 if (!unsaved && !found) {
@@ -109,7 +146,13 @@ if (!unsaved && !found) {
   location.replace(location.pathname);
   await new Promise<never>(() => {});
 }
-const record = found ?? newWorldRecord('unsaved', 'Unsaved world', Number(params.get('seed') ?? TUNING.world.seed), TUNING.day.start);
+const record =
+  found ??
+  (welcome
+    ? newWorldRecord('guest', `${hostName}’s world`, welcome.seed, welcome.time)
+    : newWorldRecord('unsaved', 'Unsaved world', Number(params.get('seed') ?? TUNING.world.seed), TUNING.day.start));
+// A guest starts where the host stands.
+if (welcome) record.player = { x: welcome.at[0], y: welcome.at[1], z: welcome.at[2], yaw: 0, pitch: 0, flying: false };
 record.played = Date.now();
 const saver = await WorldSaver.open(store, record);
 let time = timeHeld ? Number(timeParam) : record.time;
@@ -132,8 +175,9 @@ let daylightNow = 1;
 // Mobs (`mobs/`): animals round the player, not saved. `?mobs=0` none, `?mobs=40` a cap of 40.
 const mobsParam = Number(params.get('mobs') ?? Number.NaN);
 const mobCap = Number.isFinite(mobsParam) ? Math.max(0, Math.floor(mobsParam)) : TUNING.mobs.max;
-const mobs = mobCap > 0 ? new MobManager(world, record.seed ^ 0x6d6f62, mobCap) : null;
-const mobView = mobs ? new MobRenderer(mobCap) : null;
+const mobs = mobCap > 0 && !guest ? new MobManager(world, record.seed ^ 0x6d6f62, mobCap) : null;
+// Room for the most there can be: twice the cap when playing together.
+const mobView = mobCap > 0 ? new MobRenderer(mobCap * 2) : null;
 if (mobView) {
   scene.add(mobView.group);
   // Its shader compiled now, not when the first mob comes into view: compiling then made frames
@@ -145,6 +189,7 @@ let mobsRead = performance.now();
 let showcase = params.has('showcase');
 /** The mobs line of `?stats`: how many of each kind, path searches a second since last read (and put off), time this frame. */
 function mobLine(): string {
+  if (guest) return `${guest.mobs.mobs.length} near, run by the host`;
   if (!mobs) return 'off (?mobs=0)';
   const now = performance.now();
   const seconds = Math.max((now - mobsRead) / 1000, 1e-3);
@@ -165,7 +210,7 @@ scene.add(chunks.group);
 // `?workers=1` runs fewer workers, to see how a machine with fewer cores loads.
 const workersParam = Number(params.get('workers'));
 const pool = new WorkerPool(Number.isInteger(workersParam) && workersParam > 0 ? workersParam : undefined);
-const loader = new ChunkLoader(world, chunks, pool, saver);
+const loader = new ChunkLoader(world, chunks, pool, guest ? guest.saves : saver);
 
 // Flowing water (`world/water.ts`): edits wake it, and it ticks every `TUNING.water.tickSeconds`.
 const flow = new WaterFlow();
@@ -173,8 +218,9 @@ let waterClock = 0;
 /** For `?stats`: the last tick's changes and times, and the slowest since the line was last read. */
 let waterLast = { changes: 0, sim: 0, apply: 0 };
 let waterWorst = 0;
-// A column read from the save carries on flowing; one next to held-back water lets it through.
-loader.onColumnAdded = (cx, cz, saved) => void wakeColumn(flow, world, cx, cz, saved);
+// A column read from the save carries on flowing; one next to held-back water lets it through. On a
+// guest, the host's edits that came for a column meanwhile are made in it.
+loader.onColumnAdded = (cx, cz, saved) => (guest ? guest.columnAdded(cx, cz) : void wakeColumn(flow, world, cx, cz, saved));
 
 /** Make a tick's changes (or `?flood`'s): the blocks and their light at once, then saving, and remeshing in the workers. */
 function applyWater(changes: WaterChange[]): void {
@@ -188,11 +234,36 @@ function applyWater(changes: WaterChange[]): void {
       saver.edited(c);
     }
   }
+  remeshSoon(stale);
+}
+
+/** These chunks' columns remeshed in the workers, the old meshes shown meanwhile. */
+function remeshSoon(stale: readonly { cx: number; cz: number }[]): void {
   const columns = new Set<string>();
   for (const c of stale) {
     if (columns.has(`${c.cx},${c.cz}`)) continue;
     columns.add(`${c.cx},${c.cz}`);
     loader.remeshSoon(c.cx, c.cz);
+  }
+}
+
+/**
+ * A guest makes the blocks the host set: flowing water at once and remeshed in the workers, as the
+ * host does; edits one by one, remeshed now. Someone else's edit is heard where it is (its own come
+ * back already made, and change nothing).
+ */
+function fromHost(changes: BlockChange[], water: boolean): void {
+  if (water) {
+    remeshSoon(world.setBlocks(changes));
+    return;
+  }
+  const p = camera.position;
+  for (const [x, y, z, b] of changes) {
+    const was = world.getBlock(x, y, z);
+    if (was === b) continue;
+    for (const c of world.setBlock(x, y, z, b)) loader.remesh(c.cx, c.cy, c.cz);
+    const h = heard(x + 0.5, y + 0.5, z + 0.5, p.x, p.y, p.z, input.yaw);
+    if (h) sound.play(b === Block.Air ? { name: 'break', material: BLOCKS[was].sound, gain: h.gain } : { name: 'place', material: BLOCKS[b].sound, gain: h.gain });
   }
 }
 
@@ -266,30 +337,72 @@ if (record.player) {
   player.flying = record.player.flying;
 }
 
-// Playing together (`net/`). For now `?bot` only: the world opened to a test guest in this page,
-// over the test network, walking circles round the start and building (`net/bot.ts`).
+// Playing together (`net/`): this world opened to friends from the pause menu (the host), or a
+// friend's joined (`guest`). `?bot` opens it at once to a test guest in this page, over the test
+// network, walking circles round the start and building (`net/bot.ts`).
+let host: HostSession | null = null;
 const network = params.has('bot') ? new Network() : null;
-const room = network?.room('BOT1') ?? null;
-const host: HostSession | null = room
-  ? new HostSession(
-      room,
-      hostWorld(world, saver, {
-        time: () => time,
-        position: () => [player.body.x, player.body.y, player.body.z],
-        allowed: (id, x, y, z, block): boolean => editAllowed(host?.states().get(id), host?.states().values() ?? [], x, y, z, block),
-        edit: (x, y, z, block) => guestEdit(x, y, z, block),
-        hitMob: (id, mobId) => guestHit(id, mobId),
-      }),
-      'Host',
-      () => performance.now() / 1000,
-    )
-  : null;
-const bot = room ? new Bot(room, world, [player.body.x, player.body.z], () => performance.now() / 1000) : null;
-const playerView = host ? new PlayerRenderer() : null;
-if (playerView) {
-  scene.add(playerView.group);
-  renderer.compile(playerView.group, camera);
+let bot: Bot | null = null;
+const playerView = new PlayerRenderer();
+scene.add(playerView.group);
+renderer.compile(playerView.group, camera);
+// A guest makes the host's edits in this world, hears who comes and goes, and keeps the host's time.
+if (guest) {
+  guest.attach({ apply: fromHost, hasColumn: (cx, cz) => world.hasColumn(cx, cz) });
+  guest.onEvent = (text) => {
+    say(text);
+    pauseMenu.refresh();
+  };
+  guest.onTime = (t) => {
+    if (!timeHeld) time = t;
+  };
+  guest.onMobSounds = (sounds) => {
+    const p = camera.position;
+    for (const s of sounds) {
+      const h = heard(s.x, s.y + 0.5, s.z, p.x, p.y, p.z, input.yaw);
+      if (h) sound.play({ name: 'mob', voice: s.voice, kind: s.kind, ...h });
+      if (s.voice === 'puff') {
+        const k = KINDS[s.kind];
+        particles.puff(s.x, s.y, s.z, k.halfWidth, k.height, brightness(world.getLight(Math.floor(s.x), Math.floor(s.y + 0.5), Math.floor(s.z)), daylightNow));
+      }
+    }
+  };
 }
+
+/** Open this world to friends in `room`: from now on the host. */
+function openToFriends(room: Room): HostSession {
+  room.onError = (reason) => say(reason);
+  const session = new HostSession(
+    traffic.room(room),
+    hostWorld(world, saver, {
+      time: () => time,
+      position: () => [player.body.x, player.body.y, player.body.z],
+      allowed: (id, x, y, z, block): boolean => editAllowed(session.states().get(id), session.states().values(), x, y, z, block),
+      edit: (x, y, z, block) => guestEdit(x, y, z, block),
+      hitMob: (id, mobId) => guestHit(id, mobId),
+    }),
+    settings.name,
+    () => performance.now() / 1000,
+  );
+  session.onEvent = (text) => {
+    say(text);
+    pauseMenu.refresh();
+  };
+  host = session;
+  pauseMenu.refresh();
+  return session;
+}
+
+/** Close this world to friends: they're sent home. */
+function closeToFriends(): void {
+  host?.close();
+  host = null;
+  loader.setOthers([]);
+  pauseMenu.refresh();
+}
+
+/** While playing together the world goes on when this player pauses: water, mobs and time. */
+const worldRuns = () => !paused() || host !== null || guest !== null;
 /** Arm swings so far (digging hits, breaks, places), for the others to see. */
 let swings = 0;
 let lastStateSent = Number.NEGATIVE_INFINITY;
@@ -305,6 +418,14 @@ function mobPlayers(): [number, number][] {
   return out;
 }
 
+/** A line on screen for a moment (someone joined or left, a problem). */
+const eventsEl = el(document.body, 'div', 'events');
+function say(text: string): void {
+  const line = el(eventsEl, 'div', 'event', text);
+  setTimeout(() => line.classList.add('fading'), 5000);
+  setTimeout(() => line.remove(), 6000);
+}
+
 /** A guest hit mob `mobId`: made as this player's hit would be, if it was in reach of where they were last heard. */
 function guestHit(id: number, mobId: number): void {
   const mob = mobs?.byId(mobId);
@@ -315,15 +436,17 @@ function guestHit(id: number, mobId: number): void {
   if (far <= TUNING.edit.reach + TUNING.net.reachSlack + 1) hitMob(mob, who.x, who.z);
 }
 
-/** Once a frame, when open to others: this player's state now and then, the others' land kept loaded, and them drawn. */
+/** Once a frame, playing together: this player's state now and then, the others drawn; a host also sends mobs and time, and keeps the others' land loaded. */
 function playTogether(now: number): void {
-  if (!host || !playerView) return;
+  const net = host ?? guest;
   network?.advance(now / 1000);
   bot?.update();
+  guest?.update();
+  if (!net) return;
   if (now / 1000 - lastStateSent >= 1 / TUNING.net.stateRate) {
     lastStateSent = now / 1000;
     const b = player.body;
-    host.sendState({
+    net.sendState({
       x: b.x,
       y: b.y,
       z: b.z,
@@ -339,21 +462,30 @@ function playTogether(now: number): void {
     });
   }
   // The mobs near each guest, and the sounds they made; the time of day now and then.
-  if (mobs && now / 1000 - lastMobsSent >= 1 / TUNING.net.mobRate) {
+  if (host && mobs && now / 1000 - lastMobsSent >= 1 / TUNING.net.mobRate) {
     lastMobsSent = now / 1000;
     host.shareMobs(mobs.mobs, mobSoundsOut);
     mobSoundsOut = [];
   }
-  if (now / 1000 - lastTimeSent >= TUNING.net.timeEvery) {
+  if (host && now / 1000 - lastTimeSent >= TUNING.net.timeEvery) {
     lastTimeSent = now / 1000;
     host.shareTime(time);
   }
-  const others = [...host.remotes].flatMap(([id, remote]) => {
-    const pose = remote.poseAt(host.clock());
-    return pose ? [{ id, name: host.players.find((p) => p.id === id)?.name ?? '', pose }] : [];
+  const clockNow = net.clock();
+  const others = [...net.remotes].flatMap(([id, remote]) => {
+    const pose = remote.poseAt(clockNow);
+    return pose ? [{ id, name: net.players.find((p) => p.id === id)?.name ?? '', pose }] : [];
   });
-  loader.setOthers(others.map((o) => [o.pose.x, o.pose.z]));
+  if (host) loader.setOthers(others.map((o) => [o.pose.x, o.pose.z]));
   playerView.update(others, world, daylightNow);
+}
+
+/** The network line of `?stats`: who, and what goes each way. */
+function netLine(): string {
+  if (!host && !guest) return 'playing alone';
+  const r = traffic.rates();
+  const who = host ? `hosting ${host.code}, ${host.players.length} in` : `in ${hostName}’s world, ${guest!.players.length} in, round trip ${Math.round(guest!.rtt * 1000)} ms`;
+  return `${who}; ${(r.up / 1024).toFixed(1)} KB/s out, ${(r.down / 1024).toFixed(1)} KB/s in, ${Math.round(r.messages)} messages a second`;
 }
 
 // Measuring: `?stats` overlay (F3), `?autofly` scripted flight.
@@ -368,6 +500,7 @@ const stats = new Stats(
     levels: loader.levels,
     mobs: mobLine(),
     water: waterLine(),
+    net: netLine(),
     mouse: { now: input.takeBiggestMove(), ever: input.biggestMoveEver, raw: input.raw, dropped: input.spikes.dropped },
     queued: loader.queued,
     inFlight: loader.inFlight,
@@ -454,9 +587,12 @@ function edit(x: number, y: number, z: number, block: Block, share = true): void
   const stale = world.setBlock(x, y, z, block);
   if (stale.length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
   for (const c of stale) loader.remesh(c.cx, c.cy, c.cz);
-  // The water round it may flow now (in, out, or on).
-  if (stale.length) flow.wake(x, y, z);
-  if (stale.length && share) host?.shareEdits([[x, y, z, block]]);
+  // The water round it may flow now (in, out, or on); a guest's is the host's to run.
+  if (stale.length && !guest) flow.wake(x, y, z);
+  if (stale.length && share) {
+    host?.shareEdits([[x, y, z, block]]);
+    guest?.edit(x, y, z, block);
+  }
   lastEdit = { ms: performance.now() - t0, lightMs: world.lightMs, chunks: stale.length };
 }
 
@@ -537,11 +673,65 @@ window.addEventListener('wheel', (e) => {
   renderHotbar();
 });
 // Paused whenever the mouse isn't captured (at the start, and after Esc), except under `?autofly`.
-const pauseMenu = new PauseMenu(document.body, record.name, !unsaved, settings, {
-  onPlay: () => input.lock(),
-  onQuit: () => void quit(),
-  onSettings: applySettings,
-});
+const pauseMenu = new PauseMenu(
+  document.body,
+  record.name,
+  guest ? { saved: false, note: `Playing in ${hostName}’s world: what you build stays in theirs.`, quitLabel: 'Leave' } : { saved: !unsaved },
+  settings,
+  {
+    onPlay: () => input.lock(),
+    onQuit: () => void quit(),
+    onSettings: applySettings,
+    together: togetherMenu,
+  },
+);
+
+/** The pause menu's part for playing together: who's in, and (for this world's owner) opening it to friends. */
+function togetherMenu(panel: HTMLElement, refresh: () => void): void {
+  const names = (host ?? guest)?.players.map((p) => p.name) ?? [];
+  if (guest) {
+    el(panel, 'p', 'menu-help', `Here: ${names.join(', ')}.`);
+    return;
+  }
+  if (host) {
+    el(panel, 'p', 'menu-code', `Open to friends · code ${host.code}`);
+    el(panel, 'p', 'menu-help', names.length > 1 ? `Here: ${names.join(', ')}.` : 'Friends join with this code, from “Join a friend” in their world list.');
+    button(el(panel, 'div', 'menu-row'), 'Close to friends', () => {
+      closeToFriends();
+      refresh();
+    });
+    return;
+  }
+  const row = el(panel, 'div', 'menu-row');
+  button(row, 'Open to friends', () => {
+    // A name to go by, then a code.
+    panel.replaceChildren();
+    const status = el(panel, 'p', 'menu-help', 'Up to three friends can join. The world stays yours, saved here.');
+    const open = async () => {
+      const name = cleanName(nameInput.value);
+      if (!name) return void (status.textContent = 'Give yourself a name.');
+      settings.name = name;
+      saveSettings(settings);
+      status.textContent = 'Opening…';
+      openButton.disabled = true;
+      try {
+        const { openRoom } = await import('./net/link');
+        openToFriends(await openRoom());
+      } catch (e) {
+        status.textContent = e instanceof Error ? e.message : 'Couldn’t open the world to friends.';
+        openButton.disabled = false;
+        return;
+      }
+      refresh();
+    };
+    const nameInput = field(panel, 'Your name', settings.name, '', () => void open(), refresh);
+    nameInput.maxLength = 16;
+    const actions = el(panel, 'div', 'menu-row');
+    const openButton = button(actions, 'Open', () => void open(), 'menu-go');
+    button(actions, 'Cancel', refresh);
+    nameInput.select();
+  });
+}
 applySettings(settings);
 const paused = () => !input.locked && !autofly;
 // The picker frees the mouse too, without the pause menu.
@@ -588,7 +778,7 @@ function frame(now: number): void {
     held.motion.update(dt, b.onGround && !player.flying ? moved : 0);
   }
   lastFeet = { x: player.body.x, z: player.body.z };
-  if (!timeHeld && !paused()) time = (time + dt / TUNING.day.length) % 1;
+  if (!timeHeld && worldRuns()) time = (time + dt / TUNING.day.length) % 1;
   const sky = skyAt(time);
   daylightNow = sky.daylight;
   particleMesh.update();
@@ -606,18 +796,25 @@ function frame(now: number): void {
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 
-  if (!paused()) flowWater(dt);
+  if (!guest && worldRuns()) flowWater(dt);
   flood?.update(now, interval, player.body.x, player.body.z, player.waiting);
   target = raycast(world, camera.position, dir, TUNING.edit.reach);
   // A mob nearer than the block looked at takes the left button instead: hit, not dug (and no
   // outline on the block behind it).
-  const aimed = mobs && !paused() ? mobOnRay(mobs.mobs, camera.position, dir, target ? target.distance : TUNING.edit.reach) : null;
+  const shown = mobs?.mobs ?? guest?.mobs.mobs;
+  const aimed = shown && !paused() ? mobOnRay(shown, camera.position, dir, target ? target.distance : TUNING.edit.reach) : null;
   if (aimed) target = null;
-  if (input.take('Mouse0') && aimed) hitMob(aimed.mob);
+  if (input.take('Mouse0') && aimed) {
+    // A guest's hit is the host's to make: the knockback and any puff come back with the mobs.
+    if (guest) {
+      swing();
+      guest.hit(aimed.mob.id);
+    } else hitMob(aimed.mob);
+  }
   editing(dt);
   // The mobs think and move (not while paused), then are drawn where they are.
   if (mobs && mobView) {
-    mobs.update(paused() ? 0 : dt, mobPlayers(), daylightNow);
+    mobs.update(worldRuns() ? dt : 0, mobPlayers(), daylightNow);
     if (showcase && !player.waiting) {
       mobs.showcase(player.body.x, player.body.y, player.body.z, input.yaw);
       showcase = false;
@@ -629,6 +826,11 @@ function frame(now: number): void {
       if (h) sound.play({ name: 'mob', voice: s.voice, kind: s.kind, ...h });
       if (host) mobSoundsOut.push(s);
     }
+  }
+  // A guest's mobs, where the host's snapshots put them.
+  if (guest && mobView) {
+    guest.mobs.update(guest.clock());
+    mobView.update(guest.mobs, world, daylightNow, now / 1000);
   }
   playTogether(now);
   outline.visible = target !== null;
@@ -697,10 +899,21 @@ function saveAll(): void {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') saveAll();
 });
-window.addEventListener('pagehide', saveAll);
+window.addEventListener('pagehide', () => {
+  saveAll();
+  // Tell the others at once, rather than leaving them to notice the silence.
+  guest?.leave();
+  host?.close('The host left.');
+});
 
-/** Write everything, then back to the world list. */
+/** Write everything, then back to the world list (a guest just leaves; a host's friends are sent home). */
 async function quit(): Promise<void> {
+  if (guest) {
+    guest.leave();
+    location.href = location.pathname;
+    return;
+  }
+  closeToFriends();
   pauseMenu.quitting();
   await saver.writeDirty();
   await saver.saveRecord(playerState(), time);
@@ -718,4 +931,10 @@ async function openStore(): Promise<WorldStore> {
 }
 
 renderHotbar();
+// `?bot`: open to the test guest now that everything is made.
+if (network) {
+  const room = network.room('BOT1');
+  openToFriends(room);
+  bot = new Bot(room, world, [player.body.x, player.body.z], () => performance.now() / 1000);
+}
 requestAnimationFrame(frame);
