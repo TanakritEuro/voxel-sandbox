@@ -222,3 +222,54 @@ Nothing shows in the game yet, so there was nothing to look at in a browser.
 - The eye is under a half-deep flowing block only below its surface, and under a source all the
   way up.
 - The picker doesn't offer moving water.
+
+## Step 2: the flow, headless — built (2026-11-01)
+
+**What changed:**
+- **`world/water.ts`, `WaterFlow`:** the rules as planned.
+  - **Falling:** water above a block makes it falling water.
+  - **New sources:** a block between two sources, on solid ground or a source, becomes a source.
+  - **Spreading:** otherwise a block takes one less than the highest water spreading into it from
+    the side. A source or falling water spreads at 7, flowing water at its own level less one.
+    With nothing spreading into it, it is dry.
+  - **Water spreads sideways only standing on something solid.** Over air or other water it falls,
+    or rests on the water: a waterfall into the sea doesn't spread over the surface.
+  - **Towards the nearest drop:** where water can go, a breadth-first search up to 4 blocks
+    (`TUNING.water.dropSearch`) finds the nearest place to fall, and it goes only the ways that
+    reach it soonest; with none, every way.
+- **A tick reads the world as it was at the start and returns its changes,** so the order doesn't
+  matter. Blocks read, columns loaded and each spreading block's ways are cached for the tick. The
+  drop search uses a reused grid and queue, so it allocates nothing.
+- **Only woken blocks are looked at,** oldest first, at most 4,096 a tick
+  (`TUNING.water.maxPerTick`). A change wakes its six neighbours for the next tick.
+- **Unloaded land is a wall.**
+- **What water can go into:** air and torches; torches are washed away. Nothing else passable and
+  dry exists yet.
+- `TUNING.water.tickSeconds` (0.25) is for step 5, when the game ticks it.
+
+**Bench** (`npm run bench`, the `water` case, Node under Vitest), ticked until settled:
+
+| | ticks | changes | most a tick | simulation ms a tick, median / max | one `setBlock` at a time, median / max |
+| --- | --- | --- | --- | --- | --- |
+| A source on grass near the spawn (it runs downhill a long way) | 134 | 506 | 14 | 0.032 / 0.39 | 0.01 / 0.65 |
+| The sea into a small cave down a shaft | 53 | 237 | 11 | 0.075 / 0.34 | 0.03 / 0.33 |
+| A 32 × 32 room under the sea, its ceiling opened at once | 23 | 13,601 | 1,037 | 1.6 / 3.2 | 9.3 / 16.4 |
+
+- The last is the worst case: a thousand columns pouring in together. The simulation stays inside
+  the plan's 4 ms a tick.
+- Making its changes one block at a time, each with its own light update, costs up to 16 ms. Step 3
+  batches them.
+
+**Tests (8 new, 272 in all), in a small grid world:**
+- **On flat ground:** a source makes a diamond of levels 7 down to 1, exactly, and nothing above or
+  below.
+- **On a ledge:** water goes towards the edge only, falls in a column at level 5 over the edge, and
+  spreads again at 7 at the bottom, away from the cliff.
+- **Draining:** taking the source away dries everything.
+- **New sources:** a gap between two sources in a trench becomes a source; over a hole it doesn't,
+  and falls instead.
+- Water stops at a wall, and washes a torch away.
+- Unloaded land stops it.
+- A pool of sources, woken, makes no change.
+- **Splitting the work:** a flow down steps and round pillars ends the same with 5 blocks a tick as
+  with no limit.

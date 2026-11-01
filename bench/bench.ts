@@ -23,6 +23,7 @@ import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, reachableChunks } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
+import { WaterFlow } from '../src/world/water';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -389,4 +390,106 @@ it('mobs', () => {
     `\nmobs: 24 for 60 s (${steps} steps a 60 fps frame): ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}; ` +
       `${searches} path searches, ${Math.round(walked)} blocks walked\n`,
   );
+});
+
+it('water', () => {
+  // Flowing water (world/water.ts) on generated land round the spawn, ticked until it settles: a
+  // source put on open ground, and the sea let into a cave through a shaft dug down from the
+  // seabed. Per tick: the simulation's time, then its changes made one at a time with
+  // World.setBlock (each with its own light update: what a batched update has to beat).
+  const world = new World(SEED);
+  for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) world.ensureColumn(dx, dz);
+  const top = (x: number, z: number) => {
+    let y = 255;
+    while (y > 0 && world.getBlock(x, y, z) === Block.Air) y--;
+    return y;
+  };
+  const near = (test: (x: number, z: number) => boolean): [number, number] | null => {
+    for (let r = 0; r < 90; r++)
+      for (let z = -r; z <= r; z++)
+        for (let x = -r; x <= r; x++) if (Math.max(Math.abs(x), Math.abs(z)) === r && test(x, z)) return [x, z];
+    return null;
+  };
+  /** Under the sea at (x, z): the seabed's top and the first air below it within 30 blocks. */
+  const caveUnder = (x: number, z: number): [number, number] | null => {
+    if (world.getBlock(x, 62, z) !== Block.Water) return null;
+    let y = 62;
+    while (y > 0 && world.getBlock(x, y, z) === Block.Water) y--;
+    for (let d = y - 1; d > Math.max(1, y - 30); d--) if (world.getBlock(x, d, z) === Block.Air) return [y, d];
+    return null;
+  };
+  const lines = [''];
+  const run = (label: string, start: (flow: WaterFlow) => void) => {
+    const flow = new WaterFlow();
+    start(flow);
+    const sim: number[] = [];
+    const apply: number[] = [];
+    let changed = 0;
+    let most = 0;
+    let stale = 0;
+    let ticks = 0;
+    for (; ticks < 400 && flow.pending; ticks++) {
+      const t0 = performance.now();
+      const changes = flow.tick(world);
+      const t1 = performance.now();
+      const chunks = new Set<unknown>();
+      for (const [x, y, z, b] of changes) for (const c of world.setBlock(x, y, z, b)) chunks.add(c);
+      sim.push(t1 - t0);
+      apply.push(performance.now() - t1);
+      changed += changes.length;
+      most = Math.max(most, changes.length);
+      stale = Math.max(stale, chunks.size);
+    }
+    lines.push(
+      `water (${label}): ${ticks} ticks${flow.pending ? ` (still going: ${flow.pending} woken)` : ' to settle'}, ${changed} changes, at most ${most} a tick and ${stale} chunks stale; ` +
+        `ms a tick: simulation median ${median(sim).toFixed(3)}, max ${Math.max(...sim).toFixed(3)}; one setBlock at a time median ${median(apply).toFixed(2)}, max ${Math.max(...apply).toFixed(2)}`,
+    );
+  };
+  const grass = near((x, z) => world.getBlock(x, top(x, z), z) === Block.Grass);
+  if (grass) {
+    const [x, z] = grass;
+    run(`a source on grass at ${x}, ${z}`, (flow) => {
+      world.setBlock(x, top(x, z) + 1, z, Block.Water);
+      flow.wake(x, top(x, z), z);
+    });
+  }
+  const shaft = near((x, z) => caveUnder(x, z) !== null);
+  if (shaft) {
+    const [x, z] = shaft;
+    const [bed, cave] = caveUnder(x, z)!;
+    run(`the sea into a cave at ${x}, ${z}, a shaft from ${bed} to ${cave}`, (flow) => {
+      for (let y = bed; y > cave; y--) {
+        world.setBlock(x, y, z, Block.Air);
+        flow.wake(x, y, z);
+      }
+    });
+  } else lines.push('water: no cave under the sea near the spawn');
+  // The worst case: a room 32 × 32 and 6 high carved under the seabed, then the 2 blocks of
+  // ceiling between it and the sea taken away at once (a thousand columns pouring in).
+  const bedAt = (x: number, z: number) => {
+    let y = 62;
+    while (y > 0 && world.getBlock(x, y, z) === Block.Water) y--;
+    return y;
+  };
+  const sea = near((x, z) => {
+    if (x + 32 > 127 || z + 32 > 127) return false;
+    for (let dz = 0; dz < 32; dz += 4) for (let dx = 0; dx < 32; dx += 4) if (world.getBlock(x + dx, 62, z + dz) !== Block.Water || top(x + dx, z + dz) !== 62) return false;
+    return bedAt(x, z) > 30;
+  });
+  if (sea) {
+    const [sx, sz] = sea;
+    let floor = 62;
+    for (let dz = 0; dz < 32; dz++) for (let dx = 0; dx < 32; dx++) floor = Math.min(floor, bedAt(sx + dx, sz + dz));
+    const roof = floor - 2;
+    for (let dz = 0; dz < 32; dz++) for (let dx = 0; dx < 32; dx++) for (let y = roof - 6; y < roof; y++) world.setBlock(sx + dx, y, sz + dz, Block.Air);
+    run(`a 32 × 32 room under the sea at ${sx}, ${sz} opened at once`, (flow) => {
+      for (let dz = 0; dz < 32; dz++)
+        for (let dx = 0; dx < 32; dx++)
+          for (let y = bedAt(sx + dx, sz + dz); y >= roof; y--) {
+            world.setBlock(sx + dx, y, sz + dz, Block.Air);
+            flow.wake(sx + dx, y, sz + dz);
+          }
+    });
+  } else lines.push('water: no open sea 32 × 32 near the spawn');
+  console.log(lines.join('\n') + '\n');
 });

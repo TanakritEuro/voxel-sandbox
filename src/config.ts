@@ -151,6 +151,11 @@ export const TUNING = {
     fogFar: 20,
     /** The surface texture drifts this fast (blocks a second), in two directions at once. */
     flow: 0.12,
+    /** Flowing water (`world/water.ts`): a tick this often (seconds), at most this many blocks looked at a tick. */
+    tickSeconds: 0.25,
+    maxPerTick: 4096,
+    /** Water on flat ground runs towards the nearest drop within this many blocks (at most 8). */
+    dropSearch: 4,
   },
   save: {
     /** Edited chunks are written this long after an edit (ms); at once when unloaded or when the page is hidden. */

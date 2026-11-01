@@ -128,7 +128,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   and the walk from the player's chunk that decides what to mesh and draw),
   `world.ts` (`Chunk`, `World`: get/set across chunks, columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
-  `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
+  `water.ts` (flowing water, a cellular automaton: `WaterFlow` wakes blocks round edits and ticks them,
+  falling, spreading towards the nearest drop, new sources between two, drying up; changes
+  returned for the caller to make; unloaded land a wall; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
   timing and crack stage).
