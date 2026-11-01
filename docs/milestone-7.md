@@ -455,3 +455,94 @@ main thread 2.1 ms, GPU 4.4 ms, mobs 0.30 ms a frame. That's the same as step 4.
 - Mobs are heard louder nearer, not at all beyond 24 blocks, and from their side (turning round
   swaps it).
 - A puff starts inside the mob's body and drifts up.
+
+## Step 6: measurements and the end of the milestone (2026-11-01)
+
+**Bench** (`npm run bench`, headless, Node):
+
+| Path searches (300 each) | found | ms median | p95 | max | places looked at, median / max |
+| --- | --- | --- | --- | --- | --- |
+| Spawn, mossback | 97 % | 0.076 | 0.58 | 14.1 | 22 / 2000 |
+| Spawn, crag goat | 96 % | 0.090 | 0.64 | 9.2 | 20 / 2000 |
+| Mountains, mossback | 83 % | 0.28 | 7.2 | 8.3 | 76 / 2000 |
+| Mountains, crag goat | 96 % | 0.20 | 3.6 | 9.5 | 43 / 2000 |
+
+- **24 mobs for a minute,** two steps a frame: 0.027 ms a frame at the median, 0.087 at p95, 1.0
+  at worst (a long path search). 168 searches.
+
+**Mountain probe** (seed 20261022, `?at=-368,400`, a slow spin at the horizon, 2560 × 1201),
+alternating runs. At the mountains all 24 mobs are crag goats.
+
+| | fps | GPU ms | main thread ms | draw calls | mob time |
+| --- | --- | --- | --- | --- | --- |
+| Radius 8, mobs | 102.6 | 5.2 | 1.5 | 100 | 0.10 ms |
+| Radius 8, `?mobs=0` (2 runs) | 106.3, 105.0 | 5.2, 5.2 | 3.5, 3.6 | 96, 94 | — |
+| Radius 16, mobs (2 runs) | 79.8, 76.6 | 7.2, 7.4 | 2.3, 2.4 | 226, 223 | 0.00–0.10 ms |
+| Radius 16, `?mobs=0` (2 runs) | 85.3, 78.5 | 7.5, 8.1 | 6.0, 6.9 | 219, 222 | — |
+
+- The mobs add about 5 draw calls (the goat's five boxes; at radius 16 the chunks' own count
+  varies as much) and no GPU time that shows.
+- The fps differences are within what runs of the same build differ by.
+- **Main thread odd one out:** it is lower *with* mobs in every pair, here and at the spawn in
+  step 4. That figure includes `renderer.render`, which waits for the GPU when its queue is full,
+  so it moves with where the waiting lands, not with our code. The mobs' own time is 0.0–0.1 ms.
+
+**`?autofly=20`:**
+
+| | frames | over 20 ms | over 33 ms | slowest | holes |
+| --- | --- | --- | --- | --- | --- |
+| Radius 8, mobs (2 runs) | 1,346, 1,386 | 83, 74 | 7, 0 | 150, 25 ms | none |
+| Radius 8, `?mobs=0` | 1,342 | 141 | 2 | 42 ms | 1 chunk, in 1 of 20 s |
+| Radius 8, before Milestone 7 (`981f423`) | 1,522 | 90 | 3 | 34 ms | none |
+| Radius 16, mobs | 1,058 | 321 | 11 | 50 ms | at most 17, in 6 of 20 s |
+| Radius 16, `?mobs=0` | 1,128 | 238 | 25 | 200 ms | at most 13, in 8 of 20 s |
+
+- **The laptop was slower today than at the end of Milestone 6** (1,998 frames and 5 over 20 ms
+  then). The build from before any mob code, flown today, did the same as the others: 1,522 frames,
+  90 over 20 ms. So it's the machine (perhaps power settings or on battery), not the mobs.
+- **One 150 ms frame** in the first flight with mobs. The second had none over 25 ms, and a 200 ms
+  frame came without mobs at radius 16, so it isn't from the mobs.
+- At radius 16 sprint flight outruns loading, with and without mobs.
+
+**Against the targets:**
+- **Mobs under 1 ms of main thread a frame at the cap:** yes. 0.0–0.3 ms in `?stats`, 0.027 ms
+  median and 1.0 ms worst in the bench.
+- **They don't move the fps:** yes, within run-to-run noise at radius 8 and 16.
+- **No frame over 20 ms flying at radius 8:** not met today, but not met by the build from before
+  the milestone either. It needs measuring again on the laptop as it was for Milestone 6.
+
+**Known limits:**
+- **Mossbacks outnumber the rest near the spawn,** which is mostly forest where only they live (23
+  of 24 there). Over a flight it evens out (13 mossbacks, 5 hoppers, 6 goats).
+- **A single path search can run past the 1 ms budget:** the budget is checked before each search,
+  and a failing search over 2000 places takes up to 9–14 ms headless. None showed as a long frame
+  in the flights.
+- Mobs aren't saved, as agreed: they appear again around you.
+
+## Playtest questions
+
+1. **Looks:** with `?showcase` (and out in the world), do the four read as what they are: the
+   mossback, the hopper, the crag goat and the dune beetle? Anything that looks wrong close up
+   (faces, horns, legs through the ground)?
+2. **Movement:**
+   - Do legs swing in step with walking, and hoppers hop rather than slide?
+   - Do goats climb where the others can't?
+   - Do they find their way round trees and up steps without getting stuck or walking into the
+     sea?
+3. **How many and where:** are there enough around you, or too many? Is seeing mostly mossbacks
+   near the spawn a problem? Do you see them pop in or out at the edge (24–64 blocks to appear,
+   96 to go)?
+4. **Hitting:**
+   - Does the click land where you aim?
+   - Is the knockback about right?
+   - Are three hits right, or does chasing a fleeing mob for the second and third get annoying?
+     (Or should hitting only scare them, as asked in the plan?)
+   - Does the puff look good?
+5. **Sounds** (I couldn't hear them):
+   - Do the calls sound like animals, and like each kind?
+   - Are they too frequent or too loud (one every 8–24 s each, heard to 24 blocks)?
+   - Can you tell which side a mob is on?
+   - The cry when hit, the hopper's landing, the puff's whoosh?
+6. **Night:** do they lie down when it gets dark and get up in the morning?
+7. **Frame rate:** any stutter near a lot of mobs? And was the laptop on battery or a power-saving
+   setting today (flights were slower than in Milestone 6 for every build)?

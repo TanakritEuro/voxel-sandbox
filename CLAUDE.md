@@ -26,9 +26,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 7 (mobs) in progress, plan approved (`docs/milestone-7.md`).
-Milestones 1–6 built (`docs/milestone-1.md` to `docs/milestone-6.md`), waiting for playtests
-(Milestone 6, 120 fps on a laptop GPU: chunks drawn in batched pages with multi-draw, faces
+Milestones 1–7 built (`docs/milestone-1.md` to `docs/milestone-7.md`), waiting for playtests
+(Milestone 7, mobs: four invented passive animals, each in its own biome, wandering by A*
+paths, grazing, resting at night, three hits and gone in a puff, with calls; Milestone 6, 120 fps on a laptop GPU: chunks drawn in batched pages with multi-draw, faces
 pointing away skipped, far columns at lower detail, leaves in their own pass so solid blocks
 never discard; antialiasing and render resolution in the settings)
 (Milestone 3's laptop measurement is in: inside the budget). Milestone 5 added settings, a sky with sun, moon, stars and clouds,
