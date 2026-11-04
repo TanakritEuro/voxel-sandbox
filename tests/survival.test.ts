@@ -7,6 +7,8 @@ import { HOTBAR_SLOTS, Inventory, SLOTS } from '../src/survival/inventory';
 import { ALL_ITEMS, isItem, Item, itemInfo, toolOf } from '../src/survival/items';
 import { harvest, heldTool, placeableIn } from '../src/survival/play';
 import { Mining } from '../src/world/mining';
+import { itemArt } from '../src/render/itemIcons';
+import { itemMesh } from '../src/render/heldBlock';
 import { Block, BLOCKS, delay, inverter, wire } from '../src/world/blocks';
 
 /** An inventory with these in it, in order. */
@@ -264,5 +266,47 @@ describe('breaking and placing in survival', () => {
     for (let i = 1; i <= 120 && broke < 0; i++) if (mining.update(at, true, 1 / 60)) broke = i / 60;
     expect(broke).toBeGreaterThanOrEqual(t - 1e-9);
     expect(broke).toBeLessThan(t + 1 / 30);
+  });
+});
+
+describe('item pictures', () => {
+  it('give every item that isn’t a block a 16 × 16 picture, the same each time, with something in it', () => {
+    for (const id of ALL_ITEMS) {
+      const art = itemArt(id);
+      if (id < Item.Stick) {
+        expect(art).toBe(null);
+        continue;
+      }
+      expect(art!.length).toBe(16 * 16 * 4);
+      let filled = 0;
+      for (let i = 3; i < art!.length; i += 4) if (art![i]) filled++;
+      expect(filled).toBeGreaterThan(10);
+      expect(itemArt(id)).toEqual(art);
+    }
+    // Tools of one kind differ by material.
+    expect(itemArt(Item.WoodPick)).not.toEqual(itemArt(Item.IronPick));
+  });
+
+  it('are held as a slab with only the faces that show', () => {
+    const art = new Uint8Array(16 * 16 * 4);
+    const fill = (x: number, y: number) => art.set([200, 100, 50, 255], (y * 16 + x) * 4);
+    fill(3, 3);
+    // One pixel: a box, 6 faces of 2 triangles.
+    expect(itemMesh(art).positions.length).toBe(6 * 6 * 3);
+    // Two side by side: the faces between them go (10 faces).
+    fill(4, 3);
+    const two = itemMesh(art);
+    expect(two.positions.length).toBe(10 * 6 * 3);
+    expect(two.colours.length).toBe(two.positions.length);
+    // Within the picture's square, a sixteenth thick.
+    for (let i = 0; i < two.positions.length; i += 3) {
+      expect(Math.abs(two.positions[i])).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(two.positions[i + 2])).toBeLessThanOrEqual(1 / 32 + 1e-9);
+    }
+    // A real tool: far fewer faces than six a pixel.
+    const pick = itemArt(Item.StonePick)!;
+    let pixels = 0;
+    for (let i = 3; i < pick.length; i += 4) if (pick[i]) pixels++;
+    expect(itemMesh(pick).positions.length / 18).toBeLessThan(pixels * 5);
   });
 });

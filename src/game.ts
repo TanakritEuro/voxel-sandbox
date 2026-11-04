@@ -17,9 +17,11 @@ import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type PlayerState, 
 import { isUnsavedUrl } from './save/worlds';
 import { Inventory } from './ui/inventory';
 import { KEYS, PauseMenu, SURVIVAL_KEYS } from './ui/pauseMenu';
+import { Backpack } from './ui/backpack';
+import { itemArt, itemIcons } from './render/itemIcons';
 import { digTime } from './survival/drops';
 import { HOTBAR_SLOTS, Inventory as SurvivalInventory } from './survival/inventory';
-import { isBlockItem, itemInfo } from './survival/items';
+import { isBlockItem, Item, itemInfo } from './survival/items';
 import { harvest, heldTool, placeableIn } from './survival/play';
 import { hash3 } from './math';
 import { ChunkRenderer } from './render/chunkRenderer';
@@ -167,6 +169,13 @@ const saver = await WorldSaver.open(store, record);
 let survival = modeOf(record) === 'survival' && !guest;
 const pack = SurvivalInventory.from(record.survival?.inventory);
 record.survival = { inventory: pack.slots };
+// `?kit` (an unsaved world only): something of everything to try, a tool of each kind and tier,
+// the metals and what crafting starts from.
+if (unsaved && !guest && params.has('kit')) {
+  for (const item of [Item.StonePick, Item.WoodAxe, Item.IronSpade, Block.Torch, Block.Planks, Item.WoodPick, Item.IronPick, Item.StoneAxe, Item.WoodSpade])
+    pack.add(item, isBlockItem(item) ? 16 : 1);
+  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6]] as const) pack.add(item, n);
+}
 /** Blocks broken in survival so far: with the place, what seeds a block's drops. */
 let gathered = 0;
 let time = timeHeld ? Number(timeParam) : record.time;
@@ -658,6 +667,29 @@ function closeInventory(): void {
   input.lock();
 }
 
+// Survival's inventory screen (E), with crafting.
+const itemIconUrls = itemIcons();
+/** An item's icon: a block's from the textures, anything else its own picture. */
+const iconOf = (item: number): string => (isBlockItem(item) ? icons[item] : (itemIconUrls.get(item) ?? ''));
+const backpack = new Backpack(document.body, pack, iconOf, {
+  changed: () => renderHotbar(),
+  lost: (s) => say(`No room for ${itemInfo(s.item).name.toLowerCase()}.`),
+});
+function openBackpack(): void {
+  backpack.show();
+  document.exitPointerLock();
+}
+function closeBackpack(): void {
+  backpack.hide();
+  input.lock();
+}
+/** Items' pictures, made once each, for holding them. */
+const arts = new Map<number, Uint8Array | null>();
+const artOf = (item: number): Uint8Array | null => {
+  if (!arts.has(item)) arts.set(item, itemArt(item));
+  return arts.get(item)!;
+};
+
 /** The block in the hand: the selected slot's (in survival, nothing if it isn't a block). */
 function heldBlock(): Block {
   return survival ? (placeableIn(pack, selected) ?? Block.Air) : hotbar[selected];
@@ -679,7 +711,7 @@ function renderHotbar(): void {
       const cls = `slot${i === selected ? ' selected' : ''}`;
       if (!s) return `<div class="${cls}"><em>${i + 1}</em></div>`;
       const info = itemInfo(s.item);
-      const look = isBlockItem(s.item) ? `<span style="background-image: url(${icons[s.item]})"></span>` : `<span class="item-name">${info.name}</span>`;
+      const look = `<span style="background-image: url(${iconOf(s.item)})"></span>`;
       const count = s.count > 1 ? `<b>${s.count}</b>` : '';
       const wear = info.tool ? `<i style="width: ${Math.round(100 * (1 - (s.wear ?? 0) / info.tool.wear))}%"></i>` : '';
       return `<div class="${cls}" title="${info.name}">${look}<em>${i + 1}</em>${count}${wear}</div>`;
@@ -702,6 +734,7 @@ function setMode(toSurvival: boolean): void {
   player.canFly = !toSurvival;
   mining.target = null;
   if (inventory.open) closeInventory();
+  if (backpack.open) closeBackpack();
   renderHotbar();
   void saver.saveRecord(playerState(), time);
 }
@@ -828,12 +861,16 @@ window.addEventListener('keydown', (e) => {
     saveSettings(settings);
     applySettings(settings);
   }
-  // E or Tab opens and closes the block picker (creative); Esc closes it too.
+  // E or Tab opens and closes the block picker (creative) or the inventory (survival); Esc closes them too.
   if (e.code === 'KeyE' || e.code === 'Tab') {
     e.preventDefault();
     if (inventory.open) closeInventory();
-    else if (input.locked && !survival) openInventory();
-  } else if (e.code === 'Escape' && inventory.open) closeInventory();
+    else if (backpack.open) closeBackpack();
+    else if (input.locked) (survival ? openBackpack : openInventory)();
+  } else if (e.code === 'Escape') {
+    if (inventory.open) closeInventory();
+    if (backpack.open) closeBackpack();
+  }
   const n = Number(e.key);
   if (n >= 1 && n <= hotbar.length) {
     selected = n - 1;
@@ -909,7 +946,7 @@ function togetherMenu(panel: HTMLElement, refresh: () => void): void {
 applySettings(settings);
 const paused = () => !input.locked && !autofly;
 // The picker frees the mouse too, without the pause menu.
-const showPause = () => (pauseMenu.visible = paused() && !inventory.open);
+const showPause = () => (pauseMenu.visible = paused() && !inventory.open && !backpack.open);
 document.addEventListener('pointerlockchange', showPause);
 showPause();
 
@@ -1027,7 +1064,12 @@ function frame(now: number): void {
   stats.gpuBegin();
   renderer.render(scene, camera);
   const eye = camera.position;
-  held.set(heldBlock(), world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)), sky.sunlight);
+  const eyeLight = world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
+  // A tool or a stick is held as its picture made solid; a block as a block.
+  const heldItem = survival ? pack.slots[selected]?.item : undefined;
+  const art = heldItem === undefined || isBlockItem(heldItem) ? null : artOf(heldItem);
+  if (art) held.setItem(heldItem!, art, brightness(eyeLight, daylightNow));
+  else held.set(heldBlock(), eyeLight, sky.sunlight);
   held.render(renderer, camera.aspect, !autofly);
   stats.gpuEnd();
   const work = performance.now() - start;

@@ -190,14 +190,16 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
   only the face directions that can point at the camera (`faceRanges`). `blockMaterial.ts` — the texture
   array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
-  textures. `sky.ts` — time of day to daylight, sunlight colour, sky
+  textures. `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
+  icons. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
   `clouds.ts` — the blocky cloud layer and its tiling pattern. `fog.ts` — fog colour and
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
   and the water texture's drift.
   `crack.ts` — the crack pattern and overlay. `particles.ts` — breaking and digging particles
   (simulation, pure; one InstancedMesh), and the puff of smoke a mob goes in. `heldBlock.ts` — the held block (a lone block meshed,
-  drawn in its own pass; bob, swing and switch motion, pure). `mobRenderer.ts` — the mobs (from a `MobView`: the manager, or a guest's mirror): each
+  drawn in its own pass; bob, swing and switch motion, pure), or a held item as its picture made a
+  slab (`itemMesh`). `mobRenderer.ts` — the mobs (from a `MobView`: the manager, or a guest's mirror): each
   kind's model posed, one InstancedMesh per box (an instance per copy per mob, so at most 19 draw
   calls), lit by the world's light and fogged, drawn between physics steps; its shader compiled
   at startup. `mobTextures.ts` — their 16 × 16 textures painted at startup, a face and its box's
@@ -261,7 +263,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   saved, remeshed in the workers), logic (a tick every 0.1 s, its changes made at once the same way;
   water washing a logic block away wakes it), HUD, frame loop, pause, autosave.
 - `src/ui/` — `worldList.ts` (play, new, rename, delete, settings, join a friend, why a game
-  ended), `pauseMenu.ts` (play, settings, save and quit or leave, keys, a part for playing together), `inventory.ts` (the block picker), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
+  ended), `pauseMenu.ts` (play, settings, save and quit or leave, keys, a part for playing together), `inventory.ts` (the block picker), `backpack.ts` (survival's inventory screen: slots, a stack
+  following the pointer, crafting), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3), with GPU time per frame (`render/gpuTimer.ts`). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `src/flood.ts` — `?flood`, the sea let into a
@@ -269,7 +272,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at`, `?autofly` and `?circuit`
-  play an unsaved world; `?survival` makes it a survival one), `?light` shows light as grey,
+  play an unsaved world; `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
+  tier and things to craft with), `?light` shows light as grey,
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).

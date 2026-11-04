@@ -330,3 +330,50 @@ A list, not a grid (to agree). The inventory screen shows every recipe:
   (in the hotbar and the hand), placed back into the hole, the slot empty again;
 - switching to creative in the pause menu brought back the creative hotbar and keys.
 - No console errors. Digging and placing were driven by mouse events sent from a script.
+
+## Step 3: the inventory screen, crafting, item icons and the held tool — built (2026-11-04)
+
+**What changed:**
+- **Item pictures** (`render/itemIcons.ts`): 16 × 16 pixel art for the 14 items that aren't blocks.
+  - Each is drawn from a mask (pick, axe, spade, stick, lump, ingot, gem), in a material's three
+    colours (wood, stone, iron, copper, coal, crystal) with a handle, and a little seeded speckle.
+  - `itemArt` is pure; `itemIcons` makes data URLs at startup.
+  - The hotbar shows them instead of the names step 2 used.
+- **The inventory screen** (`ui/backpack.ts`, E or Tab in survival; E, Tab or Esc close):
+  - the 27 slots above and the hotbar's 9 below, with icons, counts and wear;
+  - a click picks up a stack (it follows the pointer) and puts it down, merges or swaps; a right
+    click picks up half or puts down one; Shift and a click moves it to or from the hotbar;
+  - closing with a stack picked up puts it back (a line says if there was no room).
+  - **Crafting** beside it: every recipe, with its icon, what it makes and its cost
+    ("Planks × 3, Stick × 2"). Bright when it can be made; a click makes one, Shift and a click as
+    many as can be.
+  - The pause menu stays hidden while it's open, as for the picker.
+- **The held item** (`render/heldBlock.ts`, `setItem`): a tool, stick or metal is held as its
+  picture made solid.
+  - **`itemMesh`:** a box a pixel square and a sixteenth thick per filled pixel, keeping only the
+    faces that show, coloured by the pixels and shaded by side.
+  - Tilted like a tool held out, it bobs and swings as the block does, as bright as the light where
+    the eyes are.
+- **`?kit`** (an unsaved world only): a tool of each kind and tier, torches, planks, and things to
+  craft with, for looking and for the playtest.
+
+**Tests (2 new, 375 in all):**
+- **Pictures:** every item that isn't a block has a 16 × 16 picture with something in it, the same
+  each time, and tools differ by material; blocks have none.
+- **Held slab:** one pixel is a box of 6 faces; two side by side lose the 2 between them; it stays
+  within the square and a sixteenth thick; a pick has far fewer faces than six a pixel.
+- The screen is DOM, so it was tried in Chrome rather than tested: its moves are the inventory's,
+  tested in step 1.
+
+**Looked at in Chrome** (`?seed=7&survival&kit`):
+- **The hotbar:** the icons read clearly (each tool's kind and material, torch, planks), with
+  counts and wear bars.
+- **The held stone pick:** at first it reached nearly to the hotbar; it was made a fifth smaller.
+- **The inventory screen:**
+  - crafting torches turned a stick and a coal into 4 torches (16 to 20);
+  - the wood stack followed the pointer and went down in an empty slot, and while it was held the
+    planks recipes dimmed;
+  - a right click took half the stone (30 to 15 and 15);
+  - E closed it and caught the mouse again.
+- **The costs** first read "1 planks" and "2 stick"; they're now "Planks × 1", "Stick × 2".
+- No console errors.

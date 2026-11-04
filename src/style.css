@@ -91,7 +91,7 @@ body {
   font-style: normal;
 }
 
-/* Survival: how many, how worn, and an item without an icon of its own yet. */
+/* Survival: how many, and how worn. */
 .slot b {
   position: absolute;
   right: 3px;
@@ -107,13 +107,6 @@ body {
   height: 3px;
   max-width: calc(100% - 8px);
   background: #5fd35f;
-}
-
-.slot .item-name {
-  width: auto;
-  font-size: 9px;
-  line-height: 1.1;
-  text-align: center;
 }
 
 
@@ -394,6 +387,110 @@ body.menu-mode #hud {
   font-weight: 500;
   line-height: 1.2;
   text-align: center;
+}
+
+/* The survival inventory screen: slots, the stack picked up, crafting. */
+.menu-root.backpack {
+  background: rgba(8, 12, 18, 0.35);
+}
+
+.menu.backpack-panel {
+  width: auto;
+  max-width: calc(100vw - 32px);
+}
+
+.backpack-columns {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.backpack-left,
+.backpack-right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.backpack-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 44px);
+  gap: 4px;
+}
+
+.backpack-hotbar {
+  margin-top: 6px;
+}
+
+.menu button.slot {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.backpack-cursor {
+  position: fixed;
+  pointer-events: none;
+  z-index: 10;
+  width: 44px;
+  height: 44px;
+  border-color: transparent;
+}
+
+.backpack-cursor.hidden {
+  display: none;
+}
+
+.recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 300px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.menu button.recipe {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  text-align: left;
+  opacity: 0.4;
+}
+
+.menu button.recipe.can {
+  opacity: 1;
+}
+
+.recipe-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+}
+
+.recipe-words {
+  display: flex;
+  flex-direction: column;
+}
+
+.recipe-name {
+  font-size: 13px;
+}
+
+.recipe-cost {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.75;
 }
 
 /* Playing together: the pause menu's part, the code, why a game ended, lines on screen. */
