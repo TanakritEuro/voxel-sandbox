@@ -1,7 +1,8 @@
 // The pause menu: over the game whenever the mouse isn't captured (at the start, and after
 // Esc). Play captures it again; Settings opens the settings; quitting saves and goes back to
 // the world list (a guest leaves). Playing together has a part of its own (`together`: open to
-// friends, the code, who's in). The keys are listed under it.
+// friends, the code, who's in), and so does the world's mode (creative or survival, and switching).
+// The keys are listed under it.
 
 import type { Settings } from '../settings';
 import { button, el } from './dom';
@@ -9,7 +10,13 @@ import { settingsControls } from './settingsPanel';
 
 export const KEYS = [
   'WASD walk · Space jump / swim up · Shift crouch · tap Ctrl to sprint · F or Space twice to fly (Space / Shift up / down)',
-  'Hold left button to break · Right click place · 1–9 or wheel pick a block · Esc pause · F3 stats',
+  'Hold left button to break · Right click place · 1–9 or wheel pick a block · E blocks · Esc pause · F3 stats',
+];
+
+/** The keys in survival: no flying, and E for the inventory. */
+export const SURVIVAL_KEYS = [
+  'WASD walk · Space jump / swim up · Shift crouch · tap Ctrl to sprint',
+  'Hold left button to break · Right click place · 1–9 or wheel pick a slot · E inventory · Esc pause · F3 stats',
 ];
 
 export interface PauseEvents {
@@ -19,6 +26,10 @@ export interface PauseEvents {
   onSettings(settings: Settings): void;
   /** Draws the playing-together part into the menu, each time it's shown (`refresh` asks again). */
   together?(panel: HTMLElement, refresh: () => void): void;
+  /** Draws the world's mode, and switching it, into the menu each time it's shown. */
+  mode?(panel: HTMLElement, refresh: () => void): void;
+  /** The keys to list (`KEYS` if not given). */
+  keys?(): readonly string[];
 }
 
 export interface PauseOptions {
@@ -77,12 +88,13 @@ export class PauseMenu {
     const play = button(actions, 'Play', this.events.onPlay, 'menu-go');
     const settings = button(actions, 'Settings', () => this.showSettings());
     const quit = button(actions, quitLabel ?? (saved ? 'Save and quit to the world list' : 'Quit to the world list'), this.events.onQuit);
+    if (this.events.mode && !this.quitting_) this.events.mode(el(this.panel, 'div', 'menu-mode'), () => this.refresh());
     if (this.events.together && !this.quitting_) this.events.together(el(this.panel, 'div', 'menu-together'), () => this.refresh());
     if (this.quitting_) {
       play.disabled = settings.disabled = quit.disabled = true;
       quit.textContent = 'Saving…';
     }
-    for (const line of KEYS) el(this.panel, 'p', 'menu-help', line);
+    for (const line of this.events.keys?.() ?? KEYS) el(this.panel, 'p', 'menu-help', line);
   }
 
   private showSettings(): void {

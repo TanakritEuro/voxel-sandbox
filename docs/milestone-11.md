@@ -283,3 +283,50 @@ A list, not a grid (to agree). The inventory screen shows every recipe:
   - every tool, torch and logic block can be made.
 - My first test of merging set up two stacks with `add`, which merged them; the test now sets the
   slots directly.
+
+## Step 2: survival play — built (2026-11-04)
+
+**What changed:**
+- **The world's mode:**
+  - **Saved:** `WorldRecord.mode` ('creative' | 'survival') and `survival` (the inventory, the
+    record holding the inventory's own slots, so every save has it as it is). `modeOf` says creative
+    for records from before.
+  - **The new-world screen** asks: "Creative: every block, flying" or "Survival: gather, craft, take
+    care" (`ui/dom.ts`, `choice`). World cards say which.
+  - **The pause menu** says which and switches it (`mode` in `PauseEvents`), and lists the keys for
+    it: no flying in survival, E for the inventory.
+  - **Each mode keeps its own hotbar:** creative's nine blocks, survival's the inventory's first nine.
+  - `?survival` makes an unsaved world (`?seed=…`) a survival one, for looking and measuring.
+- **Breaking in survival** (`survival/play.ts`, `harvest`):
+  - a block's drops go into the inventory, seeded by the world's seed, the place and a count of
+    blocks broken;
+  - torches that go with it drop torches without wearing the tool;
+  - the tool held wears by one;
+  - a line on screen says when there's no room for something, or a tool wore out.
+- **Dig times:** `Mining.timeOf`, in survival `digTime` with the tool in the selected slot.
+- **Placing** takes the block from the selected slot (`placeableIn`); an empty slot or a stick
+  places nothing.
+- **No flying:** `Player.canFly`, false in survival, stops F and two presses of Space, and ends
+  flying loaded from creative.
+- **The hotbar in survival:** counts, a green bar for a tool's wear, and the name of an item that has
+  no icon yet (icons are step 3). The hand holds the selected slot's block, or nothing.
+- **E** does nothing in survival until step 3's inventory screen. A guest plays creative until step 5.
+
+**Tests (7 new, 373 in all):**
+- **Saving,** in memory and in IndexedDB: a survival world's mode and its inventory (a stack, a worn
+  tool) come back as saved; an old record and a new default are creative.
+- **The player:** with `canFly` false, F and two taps of Space don't fly, and flying stops.
+- **Breaking:**
+  - stone with a wooden pick goes in, wearing it;
+  - a torch that went with it doesn't wear it;
+  - by hand stone gives nothing;
+  - with no room it says so, and a worn-out spade is named and gone.
+- **Placing:** only blocks.
+- **Mining:** stone with a stone pick breaks at a quarter of its hardness.
+
+**Looked at in Chrome:**
+- the new-world screen with the mode choice, the choice switching;
+- `?seed=7&survival`: the pause menu's mode line and keys, an empty hotbar; grass dug into one dirt
+  (in the hotbar and the hand), placed back into the hole, the slot empty again;
+- switching to creative in the pause menu brought back the creative hotbar and keys.
+- No console errors. Digging and placing were driven by mouse events sent from a script.

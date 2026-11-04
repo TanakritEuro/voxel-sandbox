@@ -16,6 +16,8 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 export class Player {
   readonly body: Body;
   flying = false;
+  /** May fly (creative); in survival F and two presses of Space do nothing. */
+  canFly = true;
   /**
    * Sprinting, or flying fast: a tap of Ctrl starts it (holding Ctrl and pressing W would close
    * the tab: browsers keep Ctrl+W), another tap or no longer moving forward ends it.
@@ -53,10 +55,11 @@ export class Player {
   update(dt: number): void {
     const input = this.input;
     this.time += dt;
-    if (input.take('KeyF')) this.flying = !this.flying;
+    if (!this.canFly) this.flying = false;
+    if (input.take('KeyF') && this.canFly) this.flying = !this.flying;
     const space = input.take('Space');
     if (space) {
-      if (this.time - this.lastSpace < DOUBLE_TAP) {
+      if (this.time - this.lastSpace < DOUBLE_TAP && this.canFly) {
         this.flying = !this.flying;
         this.lastSpace = -Infinity;
       } else this.lastSpace = this.time;

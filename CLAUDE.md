@@ -152,13 +152,14 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
   `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
-  timing and crack stage).
+  timing (`timeOf`: in survival by the tool held) and crack stage).
 - `src/survival/` — survival worlds, pure: `items.ts` (items: placeable blocks by their ids, and
   `Item` from 256: sticks, coal, copper, iron, crystal, picks, axes and spades of wood, stone and
   iron; `itemInfo`, `toolOf`), `inventory.ts` (`Inventory`: 36 slots, the hotbar first; adding,
   spending, picking up and putting down, Shift moves, tools wearing out; `from` cleans what was
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
-  held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`).
+  held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`harvest`: a broken block's drops in and the
+  tool worn; `placeableIn`, `heldTool`).
 - `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,
   groups), `brain.ts` (a mob: idle, wander, flee, rest; following paths, jumping, getting
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
@@ -217,7 +218,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   and from which side a mob is: pure), `sound.ts` (Web Audio: a recipe per block material, mob
   voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
-  records and chunks, in IndexedDB or memory), `saver.ts` (`WorldSaver`: which chunks a world
+  records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, and `survival`: the
+  inventory), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -267,7 +269,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at`, `?autofly` and `?circuit`
-  play an unsaved world), `?light` shows light as grey,
+  play an unsaved world; `?survival` makes it a survival one), `?light` shows light as grey,
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).

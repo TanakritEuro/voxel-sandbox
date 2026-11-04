@@ -17,6 +17,25 @@ export function button(parent: HTMLElement, label: string, onClick: () => void, 
   return b;
 }
 
+/**
+ * A labelled choice of one of `options` (value and words) in `parent`, as buttons side by side,
+ * the chosen one marked. Returns the value chosen now.
+ */
+export function choice<T extends string>(parent: HTMLElement, label: string, options: readonly (readonly [T, string])[], value: T): () => T {
+  const row = el(parent, 'div', 'menu-field');
+  el(row, 'span', 'menu-label', label);
+  const buttons = el(row, 'div', 'menu-choice');
+  let chosen = value;
+  for (const [v, words] of options) {
+    const b = button(buttons, words, () => {
+      chosen = v;
+      for (const other of buttons.children) other.classList.toggle('selected', other === b);
+    });
+    b.classList.toggle('selected', v === value);
+  }
+  return () => chosen;
+}
+
 /** A labelled text field in `parent`; Enter runs `onEnter`, Escape `onEscape`. */
 export function field(parent: HTMLElement, label: string, value: string, placeholder: string, onEnter: () => void, onEscape: () => void): HTMLInputElement {
   const row = el(parent, 'label', 'menu-field');

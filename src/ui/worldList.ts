@@ -4,12 +4,12 @@
 // each world starts in a fresh page, workers and GPU memory included.
 
 import { TUNING } from '../config';
-import { IndexedDbStore, newWorldRecord, type WorldRecord, type WorldStore } from '../save/store';
+import { IndexedDbStore, modeOf, newWorldRecord, type WorldMode, type WorldRecord, type WorldStore } from '../save/store';
 import { ago, byLastPlayed, freeName, newWorldId, seedFromText } from '../save/worlds';
 import { cleanRoomCode } from '../net/roomCode';
 import { cleanName } from '../net/protocol';
 import { loadSettings, saveSettings } from '../settings';
-import { button, el, field } from './dom';
+import { button, choice, el, field } from './dom';
 import { settingsControls } from './settingsPanel';
 
 /** A random number from the browser's generator (seeds and ids of new worlds; not world code). */
@@ -81,7 +81,7 @@ class WorldList {
       card.classList.toggle('selected', w.id === this.selected);
       card.dataset.id = w.id;
       el(card, 'span', 'menu-card-name', w.name);
-      el(card, 'span', 'menu-card-sub', `seed ${w.seed} · played ${ago(w.played, Date.now())}`);
+      el(card, 'span', 'menu-card-sub', `${modeOf(w)} · seed ${w.seed} · played ${ago(w.played, Date.now())}`);
       card.addEventListener('dblclick', () => go(`?world=${encodeURIComponent(w.id)}`));
     }
     const actions = el(panel, 'div', 'menu-row');
@@ -128,18 +128,27 @@ class WorldList {
     for (const card of this.panel.querySelectorAll<HTMLElement>('.world-card')) card.classList.toggle('selected', card.dataset.id === id);
   }
 
-  /** A new world: a name and a seed (empty for a random one); made and played at once. */
+  /** A new world: a name, a seed (empty for a random one) and creative or survival; made and played at once. */
   private create(): void {
     const panel = this.reset('New world');
     const back = () => (this.worlds.length ? this.list() : undefined);
     const make = async () => {
       const name = nameInput.value.trim() || freeName('New world', this.worlds.map((w) => w.name));
       const id = newWorldId(new Set(this.worlds.map((w) => w.id)), random01);
-      await this.store.putWorld(newWorldRecord(id, name, seedFromText(seedInput.value, random32), TUNING.day.start));
+      await this.store.putWorld(newWorldRecord(id, name, seedFromText(seedInput.value, random32), TUNING.day.start, mode()));
       go(`?world=${encodeURIComponent(id)}`);
     };
     const nameInput = field(panel, 'Name', freeName('New world', this.worlds.map((w) => w.name)), '', () => void make(), back);
     const seedInput = field(panel, 'Seed', '', 'random (or a number, or any word)', () => void make(), back);
+    const mode = choice<WorldMode>(
+      panel,
+      'Mode',
+      [
+        ['creative', 'Creative: every block, flying'],
+        ['survival', 'Survival: gather, craft, take care'],
+      ],
+      'creative',
+    );
     const actions = el(panel, 'div', 'menu-row');
     button(actions, 'Create and play', () => void make(), 'menu-go');
     if (this.worlds.length) button(actions, 'Cancel', back);

@@ -5,6 +5,8 @@ import { canMake, make, RECIPES } from '../src/survival/crafting';
 import { digTime, dropsOf } from '../src/survival/drops';
 import { HOTBAR_SLOTS, Inventory, SLOTS } from '../src/survival/inventory';
 import { ALL_ITEMS, isItem, Item, itemInfo, toolOf } from '../src/survival/items';
+import { harvest, heldTool, placeableIn } from '../src/survival/play';
+import { Mining } from '../src/world/mining';
 import { Block, BLOCKS, delay, inverter, wire } from '../src/world/blocks';
 
 /** An inventory with these in it, in order. */
@@ -221,5 +223,46 @@ describe('crafting', () => {
     const made = new Set(RECIPES.map((r) => r.makes));
     for (const want of [Item.WoodPick, Item.StoneSpade, Item.IronAxe, Block.Torch, Block.Glass, Block.Wire, Block.Switch, Block.Button, Block.SignalLamp, Block.ChargedBlock, Block.Inverter, Block.Delay])
       expect(made.has(want)).toBe(true);
+  });
+});
+
+describe('breaking and placing in survival', () => {
+  it('puts what a block gives into the inventory and wears the tool held', () => {
+    const inv = holding([Item.WoodPick, 1], [Block.Planks, 3]);
+    expect(heldTool(inv, 0)?.kind).toBe('pick');
+    expect(heldTool(inv, 1)).toBeUndefined();
+    expect(harvest(inv, 0, Block.Stone, 0)).toEqual({ got: [[Block.Stone, 1]], noRoom: [], woreOut: null });
+    expect(inv.slots[0]!.wear).toBe(1);
+    // A torch that went with it: no wear.
+    expect(harvest(inv, 0, Block.WallTorchPosX, 0, false).got).toEqual([[Block.Torch, 1]]);
+    expect(inv.slots[0]!.wear).toBe(1);
+    // By hand, stone gives nothing.
+    expect(harvest(inv, 1, Block.Stone, 0).got).toEqual([]);
+  });
+
+  it('says what there was no room for, and which tool wore out', () => {
+    const inv = fullOf(Block.Sand);
+    inv.slots[4] = { item: Item.StoneSpade, count: 1, wear: 129 };
+    expect(harvest(inv, 4, Block.Dirt, 0)).toEqual({ got: [], noRoom: [[Block.Dirt, 1]], woreOut: Item.StoneSpade });
+    expect(inv.slots[4]).toBe(null);
+  });
+
+  it('places only blocks, one at a time', () => {
+    const inv = holding([Block.Torch, 2], [Item.Stick, 5]);
+    expect(placeableIn(inv, 0)).toBe(Block.Torch);
+    expect(placeableIn(inv, 1)).toBe(null);
+    expect(placeableIn(inv, 2)).toBe(null);
+  });
+
+  it('takes as long to break as it is told: by the tool held, in survival', () => {
+    const mining = new Mining();
+    const pick = toolOf(Item.StonePick);
+    mining.timeOf = (b) => digTime(b, pick);
+    const at = { x: 0, y: 0, z: 0, block: Block.Stone };
+    const t = BLOCKS[Block.Stone].hardness / 4;
+    let broke = -1;
+    for (let i = 1; i <= 120 && broke < 0; i++) if (mining.update(at, true, 1 / 60)) broke = i / 60;
+    expect(broke).toBeGreaterThanOrEqual(t - 1e-9);
+    expect(broke).toBeLessThan(t + 1 / 30);
   });
 });

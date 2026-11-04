@@ -1,4 +1,5 @@
-// Breaking a block takes time: hold the button on it for its `hardness` in seconds. Looking
+// Breaking a block takes time: hold the button on it for its `hardness` in seconds (or what
+// `timeOf` says: in survival, by the tool held). Looking
 // at another block or letting go starts again from nothing. After a block breaks there's a
 // short pause before the next one starts, so holding the button doesn't dig two at once.
 
@@ -20,6 +21,8 @@ export class Mining {
   target: MiningTarget | null = null;
   /** Seconds it has been held on the target. */
   held = 0;
+  /** Seconds a block takes to break. */
+  timeOf: (block: Block) => number = (block) => BLOCKS[block].hardness;
   private pause = 0;
 
   /**
@@ -39,7 +42,7 @@ export class Mining {
       this.held = 0;
     }
     this.held += dt;
-    if (this.held < BLOCKS[looking.block].hardness) return null;
+    if (this.held < this.timeOf(looking.block)) return null;
     const broken = this.target;
     this.target = null;
     this.held = 0;
@@ -50,7 +53,7 @@ export class Mining {
   /** 0 .. CRACK_STAGES - 1 while breaking, by how far along it is; -1 when not. */
   get stage(): number {
     if (!this.target) return -1;
-    const fraction = this.held / BLOCKS[this.target.block].hardness;
+    const fraction = this.held / this.timeOf(this.target.block);
     return Math.min(CRACK_STAGES - 1, Math.floor(fraction * CRACK_STAGES));
   }
 }

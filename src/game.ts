@@ -13,10 +13,15 @@ import { Input } from './input';
 import { Player } from './player';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import { WorldSaver } from './save/saver';
-import { IndexedDbStore, MemoryStore, newWorldRecord, type PlayerState, type WorldStore } from './save/store';
+import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type PlayerState, type WorldStore } from './save/store';
 import { isUnsavedUrl } from './save/worlds';
 import { Inventory } from './ui/inventory';
-import { PauseMenu } from './ui/pauseMenu';
+import { KEYS, PauseMenu, SURVIVAL_KEYS } from './ui/pauseMenu';
+import { digTime } from './survival/drops';
+import { HOTBAR_SLOTS, Inventory as SurvivalInventory } from './survival/inventory';
+import { isBlockItem, itemInfo } from './survival/items';
+import { harvest, heldTool, placeableIn } from './survival/play';
+import { hash3 } from './math';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
 import { Clouds } from './render/clouds';
@@ -152,11 +157,18 @@ const record =
   found ??
   (welcome
     ? newWorldRecord('guest', `${hostName}’s world`, welcome.seed, welcome.time)
-    : newWorldRecord('unsaved', 'Unsaved world', Number(params.get('seed') ?? TUNING.world.seed), TUNING.day.start));
+    : newWorldRecord('unsaved', 'Unsaved world', Number(params.get('seed') ?? TUNING.world.seed), TUNING.day.start, params.has('survival') ? 'survival' : 'creative'));
 // A guest starts where the host stands.
 if (welcome) record.player = { x: welcome.at[0], y: welcome.at[1], z: welcome.at[2], yaw: 0, pitch: 0, flying: false };
 record.played = Date.now();
 const saver = await WorldSaver.open(store, record);
+// Survival (`survival/`): what's gathered is what there is to build with. A guest plays creative
+// (survival together is to come). The inventory is the record's, so saved with it.
+let survival = modeOf(record) === 'survival' && !guest;
+const pack = SurvivalInventory.from(record.survival?.inventory);
+record.survival = { inventory: pack.slots };
+/** Blocks broken in survival so far: with the place, what seeds a block's drops. */
+let gathered = 0;
 let time = timeHeld ? Number(timeParam) : record.time;
 
 const world = new World(record.seed);
@@ -387,6 +399,7 @@ if (record.player) {
   input.pitch = record.player.pitch;
   player.flying = record.player.flying;
 }
+player.canFly = !survival;
 
 // Playing together (`net/`): this world opened to friends from the pause menu (the host), or a
 // friend's joined (`guest`). `?bot` opens it at once to a test guest in this page, over the test
@@ -507,7 +520,7 @@ function playTogether(now: number): void {
       crouching: player.crouching(),
       swimming: b.inWater,
       onGround: b.onGround,
-      held: hotbar[selected],
+      held: heldBlock(),
       swings,
       digging: mining.target?.block ?? 0,
     });
@@ -622,6 +635,8 @@ let selected = 0;
 let lastEdit: { ms: number; lightMs: number; chunks: number } | null = null;
 let target: RayHit | null = null;
 const mining = new Mining();
+// In survival a block takes as long as the tool held (or the hand) makes it.
+mining.timeOf = (block) => (survival ? digTime(block, heldTool(pack, selected)) : BLOCKS[block].hardness);
 
 /** The world's hotbar (kept in its record, so saved with it), and every block's icon. */
 const hotbar = hotbarFrom(record.hotbar);
@@ -643,12 +658,61 @@ function closeInventory(): void {
   input.lock();
 }
 
+/** The block in the hand: the selected slot's (in survival, nothing if it isn't a block). */
+function heldBlock(): Block {
+  return survival ? (placeableIn(pack, selected) ?? Block.Air) : hotbar[selected];
+}
+
 function renderHotbar(): void {
   inventory.refresh(selected, hotbar[selected]);
-  hotbarEl.innerHTML = hotbar.map(
-    (b, i) =>
-      `<div class="slot${i === selected ? ' selected' : ''}" title="${BLOCKS[b].name}"><span style="background-image: url(${icons[b]})"></span><em>${i + 1}</em></div>`,
-  ).join('');
+  if (!survival) {
+    hotbarEl.innerHTML = hotbar.map(
+      (b, i) =>
+        `<div class="slot${i === selected ? ' selected' : ''}" title="${BLOCKS[b].name}"><span style="background-image: url(${icons[b]})"></span><em>${i + 1}</em></div>`,
+    ).join('');
+    return;
+  }
+  // Survival: the inventory's first nine, with counts, and how worn a tool is.
+  hotbarEl.innerHTML = pack.slots
+    .slice(0, HOTBAR_SLOTS)
+    .map((s, i) => {
+      const cls = `slot${i === selected ? ' selected' : ''}`;
+      if (!s) return `<div class="${cls}"><em>${i + 1}</em></div>`;
+      const info = itemInfo(s.item);
+      const look = isBlockItem(s.item) ? `<span style="background-image: url(${icons[s.item]})"></span>` : `<span class="item-name">${info.name}</span>`;
+      const count = s.count > 1 ? `<b>${s.count}</b>` : '';
+      const wear = info.tool ? `<i style="width: ${Math.round(100 * (1 - (s.wear ?? 0) / info.tool.wear))}%"></i>` : '';
+      return `<div class="${cls}" title="${info.name}">${look}<em>${i + 1}</em>${count}${wear}</div>`;
+    })
+    .join('');
+}
+
+/** What block `block` at (x, y, z) gives in survival, into the inventory (`wear`: the tool held wears). */
+function gather(block: Block, x: number, y: number, z: number, wear = true): void {
+  const got = harvest(pack, selected, block, hash3(record.seed ^ gathered++, x, y, z), wear);
+  if (got.noRoom.length) say(`No room for ${got.noRoom.map(([item]) => itemInfo(item).name.toLowerCase()).join(', ')}.`);
+  if (got.woreOut !== null) say(`Your ${itemInfo(got.woreOut).name.toLowerCase()} wore out.`);
+  renderHotbar();
+}
+
+/** Creative or survival from now on, saved with the world; each keeps its own hotbar. */
+function setMode(toSurvival: boolean): void {
+  survival = toSurvival;
+  record.mode = toSurvival ? 'survival' : 'creative';
+  player.canFly = !toSurvival;
+  mining.target = null;
+  if (inventory.open) closeInventory();
+  renderHotbar();
+  void saver.saveRecord(playerState(), time);
+}
+
+/** The pause menu's part for the world's mode, and switching it. */
+function modeMenu(panel: HTMLElement, refresh: () => void): void {
+  el(panel, 'p', 'menu-help', survival ? 'Survival: you build with what you gather.' : 'Creative: every block, and flying.');
+  button(el(panel, 'div', 'menu-row'), survival ? 'Switch to creative' : 'Switch to survival', () => {
+    setMode(!survival);
+    refresh();
+  });
 }
 
 /**
@@ -706,8 +770,12 @@ function editing(dt: number): void {
     sound.play({ name: 'break', material: info.sound, gain: 1 });
     swing();
     particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
-    // Torches go with the block they stood on or hung from.
-    for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) edit(x, y, z, Block.Air);
+    if (survival) gather(broken.block, broken.x, broken.y, broken.z);
+    // Torches go with the block they stood on or hung from (in survival, into the inventory).
+    for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) {
+      if (survival) gather(world.getBlock(x, y, z), x, y, z, false);
+      edit(x, y, z, Block.Air);
+    }
   }
   if (input.take('Mouse2') && target) {
     // A switch, button or delay clicked is used (flipped, pressed, set to the next delay), not
@@ -735,7 +803,8 @@ function place(target: RayHit): void {
   const x = target.x + target.nx;
   const y = target.y + target.ny;
   const z = target.z + target.nz;
-  const selectedBlock = hotbar[selected];
+  const selectedBlock = survival ? placeableIn(pack, selected) : hotbar[selected];
+  if (selectedBlock === null) return;
   const block = isTorch(selectedBlock) ? torchFor(target.nx, target.ny, target.nz) : logicPlacement(selectedBlock, target.ny, input.yaw);
   if (block === null) return;
   const standing = isTorch(selectedBlock) || isThinLogic(selectedBlock);
@@ -746,6 +815,10 @@ function place(target: RayHit): void {
   edit(x, y, z, block);
   sound.play({ name: 'place', material: BLOCKS[block].sound, gain: 1 });
   swing();
+  if (survival) {
+    pack.takeOne(selected);
+    renderHotbar();
+  }
 }
 
 window.addEventListener('keydown', (e) => {
@@ -755,11 +828,11 @@ window.addEventListener('keydown', (e) => {
     saveSettings(settings);
     applySettings(settings);
   }
-  // E or Tab opens and closes the block picker; Esc closes it too.
+  // E or Tab opens and closes the block picker (creative); Esc closes it too.
   if (e.code === 'KeyE' || e.code === 'Tab') {
     e.preventDefault();
     if (inventory.open) closeInventory();
-    else if (input.locked) openInventory();
+    else if (input.locked && !survival) openInventory();
   } else if (e.code === 'Escape' && inventory.open) closeInventory();
   const n = Number(e.key);
   if (n >= 1 && n <= hotbar.length) {
@@ -782,6 +855,8 @@ const pauseMenu = new PauseMenu(
     onQuit: () => void quit(),
     onSettings: applySettings,
     together: togetherMenu,
+    ...(guest ? {} : { mode: modeMenu }),
+    keys: () => (survival ? SURVIVAL_KEYS : KEYS),
   },
 );
 
@@ -952,7 +1027,7 @@ function frame(now: number): void {
   stats.gpuBegin();
   renderer.render(scene, camera);
   const eye = camera.position;
-  held.set(hotbar[selected], world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)), sky.sunlight);
+  held.set(heldBlock(), world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)), sky.sunlight);
   held.render(renderer, camera.aspect, !autofly);
   stats.gpuEnd();
   const work = performance.now() - start;

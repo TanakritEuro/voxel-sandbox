@@ -80,6 +80,21 @@ describe('player', () => {
     expect(quick.player.flying).toBe(true);
   });
 
+  it("doesn't fly in survival: F and two taps of Space do nothing, and flying stops", () => {
+    const { input, player, frames } = setup();
+    player.canFly = false;
+    input.tap('KeyF');
+    frames(0.1);
+    input.tap('Space');
+    frames(0.05);
+    input.tap('Space');
+    frames(0.1);
+    expect(player.flying).toBe(false);
+    player.flying = true; // loaded flying, from creative
+    frames(0.02);
+    expect(player.flying).toBe(false);
+  });
+
   it('toggles flying on F, flies up on Space, and lands on Shift', () => {
     const { input, player, frames } = setup();
     frames(0.2);

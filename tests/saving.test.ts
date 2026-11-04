@@ -1,7 +1,9 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { WorldSaver } from '../src/save/saver';
-import { IndexedDbStore, MemoryStore, newWorldRecord, type WorldStore } from '../src/save/store';
+import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type WorldStore } from '../src/save/store';
+import { Inventory } from '../src/survival/inventory';
+import { Item } from '../src/survival/items';
 import { handleJob } from '../src/workers/jobs';
 import { Block } from '../src/world/blocks';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
@@ -73,6 +75,26 @@ describe.each([
     expect(record.player).toEqual(player);
     expect(record.time).toBe(0.62);
     expect(record.seed).toBe(SEED);
+  });
+
+  it("keeps a survival world's mode and inventory; a record from before survival is creative", async () => {
+    const store = await makeStore();
+    const record = newWorldRecord('s', 'Hard', SEED, 0.3, 'survival');
+    const saver = await WorldSaver.open(store, record);
+    // As the game keeps it: the inventory's slots in the record, changed in place.
+    const pack = new Inventory();
+    record.survival = { inventory: pack.slots };
+    pack.add(Block.Dirt, 20);
+    pack.add(Item.StonePick, 1);
+    pack.wearTool(1);
+    await saver.saveRecord({ x: 0, y: 70, z: 0, yaw: 0, pitch: 0, flying: false }, 0.3);
+    const back = (await store.getWorld('s'))!;
+    expect(modeOf(back)).toBe('survival');
+    expect(Inventory.from(back.survival?.inventory).toJSON()).toEqual(pack.toJSON());
+    const old = { ...newWorldRecord('o', 'Old', SEED, 0.3) };
+    delete old.mode;
+    expect(modeOf(old)).toBe('creative');
+    expect(modeOf(newWorldRecord('c', 'New', SEED, 0.3))).toBe('creative');
   });
 });
 

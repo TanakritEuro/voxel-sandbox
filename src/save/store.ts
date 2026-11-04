@@ -6,6 +6,16 @@
 // IndexedDB: database "voxel-sandbox", stores "worlds" (key: id) and "chunks" (key:
 // [world id, cx, cy, cz], value: the RLE bytes).
 
+import type { Stack } from '../survival/inventory';
+
+/** Creative (every block, flying) or survival (what you've gathered, `survival/`). */
+export type WorldMode = 'creative' | 'survival';
+
+/** A survival player's own: the inventory (cleaned by `Inventory.from` on load). */
+export interface SurvivalRecord {
+  inventory: (Stack | null)[];
+}
+
 export interface PlayerState {
   x: number;
   y: number;
@@ -28,6 +38,10 @@ export interface WorldRecord {
   time: number;
   /** The hotbar's nine blocks (`hotbarFrom` cleans it; missing in worlds from before the picker). */
   hotbar?: number[];
+  /** Missing in worlds from before survival: creative. */
+  mode?: WorldMode;
+  /** The survival inventory, kept apart from the creative hotbar; missing until first played in survival. */
+  survival?: SurvivalRecord;
 }
 
 /** A chunk's place and its RLE-encoded blocks. */
@@ -53,10 +67,13 @@ export interface WorldStore {
 }
 
 /** A world's first record: the player spawns near the origin, in the morning. */
-export function newWorldRecord(id: string, name: string, seed: number, time: number): WorldRecord {
+export function newWorldRecord(id: string, name: string, seed: number, time: number, mode: WorldMode = 'creative'): WorldRecord {
   const now = Date.now();
-  return { id, name, seed, created: now, played: now, player: null, time };
+  return { id, name, seed, created: now, played: now, player: null, time, mode };
 }
+
+/** A record's mode: creative unless it says survival (older worlds say nothing). */
+export const modeOf = (record: WorldRecord): WorldMode => (record.mode === 'survival' ? 'survival' : 'creative');
 
 const chunkId = (world: string, cx: number, cy: number, cz: number) => `${world}/${cx},${cy},${cz}`;
 

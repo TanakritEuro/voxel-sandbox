@@ -91,6 +91,31 @@ body {
   font-style: normal;
 }
 
+/* Survival: how many, how worn, and an item without an icon of its own yet. */
+.slot b {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 12px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.slot i {
+  position: absolute;
+  left: 4px;
+  bottom: 3px;
+  height: 3px;
+  max-width: calc(100% - 8px);
+  background: #5fd35f;
+}
+
+.slot .item-name {
+  width: auto;
+  font-size: 9px;
+  line-height: 1.1;
+  text-align: center;
+}
+
 
 #stats {
   position: absolute;
@@ -254,6 +279,18 @@ body.menu-mode #hud {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.menu-choice {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.menu .menu-choice button.selected {
+  background: #f0c419;
+  border-color: #f0c419;
+  color: #111;
 }
 
 .menu-label {
