@@ -19,6 +19,8 @@ export interface EngineCounters {
   mobs: string;
   /** Flowing water, as text (`game.ts`). */
   water: string;
+  /** Logic blocks, as text (`game.ts`). */
+  logic: string;
   /** Playing together, as text (`game.ts`). */
   net: string;
   queued: number;
@@ -152,6 +154,7 @@ export class Stats {
       `detail: ${c.levels[0]} columns full, ${c.levels[1]} half, ${c.levels[2]} quarter`,
       `mobs: ${c.mobs}`,
       `water: ${c.water}`,
+      `logic: ${c.logic}`,
       `net: ${c.net}`,
       `time ${c.time}`,
       `saving ${c.saving}`,

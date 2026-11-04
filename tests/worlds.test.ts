@@ -5,7 +5,7 @@ import { ago, byLastPlayed, freeName, isUnsavedUrl, newWorldId, seedFromText } f
 
 describe('worlds in the menus', () => {
   it('plays an unsaved world for ?seed, ?at and ?autofly, and saves otherwise', () => {
-    for (const q of ['?seed=5', '?at=1,2', '?autofly', '?autofly=10&stats']) expect(isUnsavedUrl(new URLSearchParams(q))).toBe(true);
+    for (const q of ['?seed=5', '?at=1,2', '?autofly', '?autofly=10&stats', '?circuit']) expect(isUnsavedUrl(new URLSearchParams(q))).toBe(true);
     for (const q of ['', '?world=w-1', '?stats&time=0.5', '?light']) expect(isUnsavedUrl(new URLSearchParams(q))).toBe(false);
   });
 

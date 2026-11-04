@@ -24,6 +24,8 @@ import { TUNING } from '../config';
 import { Block, delay, FACINGS, gateOf, inverter, wire, wirePower } from './blocks';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, WORLD_HEIGHT } from './coords';
 import type { BlockSource } from './physics';
+import { wakeColumnBlocks } from './wake';
+import type { World } from './world';
 
 /** The blocks, and which columns are loaded. */
 export interface LogicWorld extends BlockSource {
@@ -51,6 +53,21 @@ const FACING_STEP = FACINGS.map(([dx, dz]) => stepOf(dx, 0, dz));
 /** A source that is on: it powers wire beside or on it, lamps beside it, gates behind which it is. */
 const sourceOn = (b: Block) => b === Block.ChargedBlock || b === Block.SwitchOn || b === Block.ButtonOn;
 const isLamp = (b: Block) => b === Block.SignalLamp || b === Block.SignalLampOn;
+/** Logic blocks, by id. */
+const LOGIC = new Uint8Array(256);
+for (let b = Block.Wire; b <= Block.Delay + 31; b++) LOGIC[b] = 1;
+
+/** Is `b` a logic block (any of them, in any state)? */
+export const isLogic = (b: Block): boolean => LOGIC[b] === 1;
+
+/**
+ * Column (cx, cz) has just loaded: wake its logic blocks if it was read from the save (a circuit
+ * carries on: a delay's pulse on its way or a button's second isn't saved, so they settle), and
+ * those at the faces of the columns beside it. Returns how many.
+ */
+export function wakeLogicColumn(logic: LogicFlow, world: World, cx: number, cz: number, saved: boolean): number {
+  return wakeColumnBlocks(world, cx, cz, saved, LOGIC, (x, y, z) => logic.wake(x, y, z));
+}
 
 export class LogicFlow {
   /** Blocks to look round next tick, in the order they were woken. */

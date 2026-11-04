@@ -270,6 +270,22 @@ it('edits', () => {
       `  ${name.padEnd(34)} place ${median(place).toFixed(1)} ms (light ${median(placeLight).toFixed(2)}), remove ${median(remove).toFixed(1)} ms (light ${median(removeLight).toFixed(2)}), ${chunks} chunks`,
     );
   }
+  // A logic tick's light: 15 signal lamps two blocks apart along the surface, lit and then put
+  // out at once in one `setBlocks` (as a chaser does, in shade so their light shows).
+  const lamps = Array.from({ length: 15 }, (_, i) => [i * 2, g.height(i * 2, 40) + 1, 40] as const);
+  const set = (b: Block) => world.setBlocks(lamps.map(([x, y, z]) => [x, y, z, b] as const));
+  set(Block.SignalLamp);
+  const on: number[] = [];
+  const off: number[] = [];
+  for (let run = 0; run <= RUNS; run++) {
+    set(Block.SignalLampOn);
+    const a = world.lightMs;
+    set(Block.SignalLamp);
+    if (run === 0) continue;
+    on.push(a);
+    off.push(world.lightMs);
+  }
+  lines.push(`  ${'15 signal lamps at once, setBlocks'.padEnd(34)} on: light ${median(on).toFixed(2)} ms, off: light ${median(off).toFixed(2)} ms`);
   console.log(lines.join('\n') + '\n');
 });
 

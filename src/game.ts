@@ -52,6 +52,8 @@ import { Mining } from './world/mining';
 import { overlapsBlock } from './world/physics';
 import { raycast, type RayHit } from './world/raycast';
 import { WaterFlow, type WaterChange, type WaterWorld, wakeColumn } from './world/water';
+import { isLogic, LogicFlow, type LogicChange, wakeLogicColumn } from './world/logic';
+import { Circuit } from './circuit';
 import { World } from './world/world';
 
 const params = new URLSearchParams(location.search);
@@ -218,12 +220,29 @@ let waterClock = 0;
 /** For `?stats`: the last tick's changes and times, and the slowest since the line was last read. */
 let waterLast = { changes: 0, sim: 0, apply: 0 };
 let waterWorst = 0;
-// A column read from the save carries on flowing; one next to held-back water lets it through. On a
-// guest, the host's edits that came for a column meanwhile are made in it.
-loader.onColumnAdded = (cx, cz, saved) => (guest ? guest.columnAdded(cx, cz) : void wakeColumn(flow, world, cx, cz, saved));
+// Logic blocks (`world/logic.ts`): edits wake them too, and they tick every `TUNING.logic.tickSeconds`.
+const logic = new LogicFlow();
+let logicClock = 0;
+/** For `?stats`: the last tick that did something, and the slowest since the line was last read. */
+let logicLast = { changes: 0, wires: 0, sim: 0, apply: 0, light: 0 };
+let logicWorst = 0;
+// A column read from the save carries on flowing, and its circuits carry on; one next to held-back
+// water lets it through. On a guest, the host's edits that came for a column meanwhile are made in it.
+loader.onColumnAdded = (cx, cz, saved) => {
+  if (guest) return guest.columnAdded(cx, cz);
+  wakeColumn(flow, world, cx, cz, saved);
+  wakeLogicColumn(logic, world, cx, cz, saved);
+};
 
 /** Make a tick's changes (or `?flood`'s): the blocks and their light at once, then saving, and remeshing in the workers. */
 function applyWater(changes: WaterChange[]): void {
+  // Water washing a logic block away breaks its circuit.
+  for (const [x, y, z] of changes) if (isLogic(world.getBlock(x, y, z))) logic.wake(x, y, z);
+  applyChanges(changes);
+}
+
+/** Blocks set by a tick (water's or logic's), as `applyWater` says; shared with guests to be made the same way. */
+function applyChanges(changes: WaterChange[] | LogicChange[]): void {
   const stale = world.setBlocks(changes);
   host?.shareEdits(changes, 0, 0, true);
   const edited = new Set<string>();
@@ -299,6 +318,38 @@ function flowWater(dt: number): void {
   const sim = performance.now() - t0;
   if (changes.length) waterDue = { changes, sim };
   else waterLast = { changes: 0, sim, apply: 0 };
+}
+
+/**
+ * Once a frame (not while paused): a logic tick when one is due, its few changes made at once (a
+ * lamp's light with them), so a click shows on the next tick.
+ */
+function tickLogic(dt: number): void {
+  const T = TUNING.logic.tickSeconds;
+  logicClock += dt;
+  if (logicClock < T) return;
+  logicClock = Math.min(logicClock - T, T); // never more than one tick behind
+  if (!logic.pending) return;
+  const t0 = performance.now();
+  const cache = new BlockCache(world);
+  const changes = logic.tick({ getBlock: (x, y, z) => cache.getBlock(x, y, z), hasColumn: (cx, cz) => world.hasColumn(cx, cz) });
+  const t1 = performance.now();
+  if (changes.length) applyChanges(changes);
+  const t2 = performance.now();
+  logicWorst = Math.max(logicWorst, t2 - t0);
+  if (!changes.length) return;
+  logicLast = { changes: changes.length, wires: logic.wires, sim: t1 - t0, apply: t2 - t1, light: world.lightMs };
+  circuit?.tick(changes.length, t1 - t0, t2 - t1);
+}
+
+/** The logic line of `?stats`: what's waiting, the last tick that changed something, and the slowest tick since last read. */
+function logicLine(): string {
+  const l = logicLast;
+  const line =
+    `${logic.pending} waiting; last change ${l.changes} blocks, ${l.wires} wires, ${l.sim.toFixed(2)} ms working out, ` +
+    `${l.apply.toFixed(2)} ms making them (${l.light.toFixed(2)} light); slowest tick ${logicWorst.toFixed(2)} ms`;
+  logicWorst = 0;
+  return line;
 }
 
 /** The water line of `?stats`: blocks waiting, the last tick, and the slowest tick since last read. */
@@ -500,6 +551,7 @@ const stats = new Stats(
     levels: loader.levels,
     mobs: mobLine(),
     water: waterLine(),
+    logic: logicLine(),
     net: netLine(),
     mouse: { now: input.takeBiggestMove(), ever: input.biggestMoveEver, raw: input.raw, dropped: input.spikes.dropped },
     queued: loader.queued,
@@ -530,6 +582,27 @@ const flood = params.has('flood')
       stats.note = text;
       console.log(`[flood]\n${text}\n${JSON.stringify(report)}`);
     })
+  : null;
+// `?circuit`: a clock, a chaser and a big grid of wire built in the air, to measure the logic (`circuit.ts`).
+const circuit = params.has('circuit')
+  ? new Circuit(
+      (changes) => {
+        for (const [x, y, z, b] of changes) if (isLogic(b) || isLogic(world.getBlock(x, y, z))) logic.wake(x, y, z);
+        applyChanges(changes);
+      },
+      (x, y, z) => {
+        player.body.x = x;
+        player.body.y = y;
+        player.body.z = z;
+        player.body.vx = player.body.vy = player.body.vz = 0;
+        input.yaw = -Math.PI / 2;
+        input.pitch = -0.35;
+      },
+      (report, text) => {
+        stats.note = text;
+        console.log(`[circuit]\n${text}\n${JSON.stringify(report)}`);
+      },
+    )
   : null;
 
 // Outline around the block you're looking at.
@@ -587,8 +660,12 @@ function edit(x: number, y: number, z: number, block: Block, share = true): void
   const stale = world.setBlock(x, y, z, block);
   if (stale.length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
   for (const c of stale) loader.remesh(c.cx, c.cy, c.cz);
-  // The water round it may flow now (in, out, or on); a guest's is the host's to run.
-  if (stale.length && !guest) flow.wake(x, y, z);
+  // The water round it may flow now (in, out, or on), and the circuits round it change; a guest's
+  // are the host's to run.
+  if (stale.length && !guest) {
+    flow.wake(x, y, z);
+    logic.wake(x, y, z);
+  }
   if (stale.length && share) {
     host?.shareEdits([[x, y, z, block]]);
     guest?.edit(x, y, z, block);
@@ -814,8 +891,12 @@ function frame(now: number): void {
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 
-  if (!guest && worldRuns()) flowWater(dt);
+  if (!guest && worldRuns()) {
+    flowWater(dt);
+    tickLogic(dt);
+  }
   // `?flood=guest` waits for a guest to be in, to measure what the water sends.
+  circuit?.update(now, interval, player.body.x, player.body.y, player.body.z, player.waiting);
   flood?.update(now, interval, player.body.x, player.body.z, player.waiting || (params.get('flood') === 'guest' && (host?.players.length ?? 0) < 2));
   target = raycast(world, camera.position, dir, TUNING.edit.reach);
   // A mob nearer than the block looked at takes the left button instead: hit, not dug (and no

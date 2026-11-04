@@ -133,15 +133,17 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
   `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
-  `updateLight` after an edit, `updateLightAt` for many at once, shared `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
+  `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one;
+  `sameLight`: changes that can't change light skipped; shared `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
   and the walk from the player's chunk that decides what to mesh and draw),
   `world.ts` (`Chunk`, `World`: get/set across chunks (`setBlocks`: many, one light update), columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `water.ts` (flowing water, a cellular automaton: `WaterFlow` wakes blocks round edits and ticks them,
   falling, spreading towards the nearest drop, new sources between two, drying up; changes
-  returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
+  returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `wake.ts` (what moves on its own
+  woken when a column loads: in it if saved, on its neighbours' faces), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
   at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
-  buttons let go; changes returned for the caller to make; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
+  buttons let go; changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
   `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
@@ -237,19 +239,22 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/main.ts` — entry point: the world list, or the game for `?world=<id>` (or an unsaved
   world, or `?join=<code>` a friend's). `src/game.ts` — the game: opening the world (or joining
   a friend's: connected first, their seed and time, edited chunks from them; PeerJS loaded only
-  then), opening it to friends from the pause menu, editing (each edit wakes the water, and goes
+  then), opening it to friends from the pause menu, editing (each edit wakes the water and the logic, and goes
   to the others), playing together (states, the others drawn, a host's mobs, water and time to its
   guests, a guest's from its host; the world doesn't pause while together),
   flowing water (a tick every 0.25 s, its changes made the frame after: blocks and light at once,
-  saved, remeshed in the workers), HUD, frame loop, pause, autosave.
+  saved, remeshed in the workers), logic (a tick every 0.1 s, its changes made at once the same way;
+  water washing a logic block away wakes it), HUD, frame loop, pause, autosave.
 - `src/ui/` — `worldList.ts` (play, new, rename, delete, settings, join a friend, why a game
   ended), `pauseMenu.ts` (play, settings, save and quit or leave, keys, a part for playing together), `inventory.ts` (the block picker), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3), with GPU time per frame (`render/gpuTimer.ts`). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `src/flood.ts` — `?flood`, the sea let into a
-  32 × 32 room under it at once, reporting frame and water tick times. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at` and `?autofly` play
-  an unsaved world), `?light` shows light as grey,
+  32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a
+  clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
+  reporting frame and logic tick times. `?radius=12` overrides the view radius,
+  `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at`, `?autofly` and `?circuit`
+  play an unsaved world), `?light` shows light as grey,
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).

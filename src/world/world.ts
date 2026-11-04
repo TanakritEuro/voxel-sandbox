@@ -4,7 +4,7 @@
 import { Block } from './blocks';
 import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
 import { Generator, type GeneratorOptions } from './generate';
-import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, SUNLIT, unpackLight, updateLight, updateLightAt } from './light';
+import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, sameLight, SUNLIT, unpackLight, updateLight, updateLightAt } from './light';
 import { ALL_CONNECTED, chunkConnectivity } from './visibility';
 
 /**
@@ -160,12 +160,17 @@ export class World {
     const stale = new Set<Chunk>();
     const at: number[] = [];
     for (const [x, y, z, block] of changes) {
+      const was = this.getBlock(x, y, z);
       const s = this.setBlockOnly(x, y, z, block);
       if (!s.length) continue;
       for (const c of s) stale.add(c);
-      at.push(x, y, z);
+      // Only blocks that treat light differently change it (not a wire's power, say).
+      if (!sameLight(was, block)) at.push(x, y, z);
     }
-    if (!at.length) return [];
+    if (!at.length) {
+      this.lightMs = 0;
+      return [...stale];
+    }
     const t0 = performance.now();
     const lit = updateLightAt(this, at);
     this.lightMs = performance.now() - t0;

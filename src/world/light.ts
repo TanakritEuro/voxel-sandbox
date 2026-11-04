@@ -21,7 +21,7 @@
 // loaded, its light and its neighbours' within a block of it are final: the rule meshing
 // already waits for.
 
-import { BLOCKS } from './blocks';
+import { type Block, BLOCKS } from './blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from './coords';
 import type { Chunk, World } from './world';
 
@@ -56,6 +56,13 @@ BLOCKS.forEach((info, b) => {
   EMIT[b] = info.light;
 });
 const ANY_EMITTER = EMIT.some((l) => l > 0);
+
+/**
+ * Do blocks `a` and `b` treat light the same (opaque, what a step into them costs, what they give)?
+ * Then one changing to the other leaves every light value as it was: a wire's power, a switch
+ * flipped, a gate turned on.
+ */
+export const sameLight = (a: Block, b: Block): boolean => OPAQUE[a] === OPAQUE[b] && STEP[a] === STEP[b] && EMIT[a] === EMIT[b];
 
 const S = CHUNK_SIZE;
 const V = CHUNK_VOLUME;
@@ -193,6 +200,29 @@ function pack(start: number): PackedLight {
 
 // --- Across chunks (main thread) ---------------------------------------------------------
 
+/**
+ * The chunk the light last looked in, kept during an edit or a column's borders: most steps stay
+ * in one chunk, and `World.getChunk` builds a string key each time. Cleared when they end, as
+ * chunks come and go between them.
+ */
+let lastChunk: Chunk | undefined;
+let lastX = 0;
+let lastY = 0;
+let lastZ = 0;
+
+/** `world.getChunk`, through the chunk last looked in. */
+function chunkAt(world: World, cx: number, cy: number, cz: number): Chunk | undefined {
+  if (lastChunk && cx === lastX && cy === lastY && cz === lastZ) return lastChunk;
+  const chunk = world.getChunk(cx, cy, cz);
+  if (chunk) {
+    lastChunk = chunk;
+    lastX = cx;
+    lastY = cy;
+    lastZ = cz;
+  }
+  return chunk;
+}
+
 /** Blocks queued to spread, as world (x, y, z) triples. */
 let worldQueue = new Int32Array(3 << 12);
 let worldTail = 0;
@@ -256,7 +286,7 @@ function changedChunks(world: World, edits: Map<Chunk, Map<number, number>>): Se
 /** Block (x, y, z) gets light from a neighbour with `level` on one channel, if more than it has. Returns 1 if raised. */
 function stepWorld(world: World, x: number, y: number, z: number, level: number, shift: number, down: boolean): number {
   if (y < 0 || y >= HEIGHT) return 0;
-  const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
+  const chunk = chunkAt(world, x >> 5, y >> 5, z >> 5);
   if (!chunk) return 0;
   const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
   const b = chunk.blocks[i];
@@ -275,7 +305,10 @@ function spreadWorld(world: World, shift: number): number {
     const x = worldQueue[head];
     const y = worldQueue[head + 1];
     const z = worldQueue[head + 2];
-    const level = (world.getLight(x, y, z) >> shift) & 15;
+    if (y < 0 || y >= HEIGHT) continue;
+    const chunk = chunkAt(world, x >> 5, y >> 5, z >> 5);
+    if (!chunk) continue;
+    const level = (chunk.light[localIndex(x & (S - 1), y & (S - 1), z & (S - 1))] >> shift) & 15;
     if (level <= 1) continue;
     raised +=
       stepWorld(world, x + 1, y, z, level, shift, false) +
@@ -303,6 +336,7 @@ const SIDES = [
  * number of blocks whose light went up.
  */
 export function lightBorders(world: World, cx: number, cz: number): number {
+  lastChunk = undefined;
   let raised = 0;
   for (const shift of [SUN, BLOCK_LIGHT]) {
     for (const [dx, dz] of SIDES) {
@@ -336,6 +370,7 @@ export function lightBorders(world: World, cx: number, cz: number): number {
     }
     raised += spreadWorld(world, shift);
   }
+  lastChunk = undefined;
   return raised;
 }
 
@@ -364,7 +399,7 @@ function pushRemove(x: number, y: number, z: number, level: number): void {
  */
 function unlight(world: World, x: number, y: number, z: number, level: number, shift: number, down: boolean): void {
   if (y < 0 || y >= HEIGHT) return;
-  const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
+  const chunk = chunkAt(world, x >> 5, y >> 5, z >> 5);
   if (!chunk) return;
   const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
   const own = (chunk.light[i] >> shift) & 15;
@@ -425,12 +460,13 @@ export function updateLight(world: World, x: number, y: number, z: number): Set<
 export function updateLightAt(world: World, at: readonly number[]): Set<Chunk> {
   const edits = new Map<Chunk, Map<number, number>>();
   touched = edits;
+  lastChunk = undefined;
   for (const shift of [SUN, BLOCK_LIGHT]) {
     // Take away what the blocks had, and what came from it.
     for (let n = 0; n < at.length; n += 3) {
       const [x, y, z] = [at[n], at[n + 1], at[n + 2]];
       if (y < 0 || y >= HEIGHT) continue;
-      const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
+      const chunk = chunkAt(world, x >> 5, y >> 5, z >> 5);
       if (!chunk) continue;
       const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
       const had = (chunk.light[i] >> shift) & 15;
@@ -445,7 +481,7 @@ export function updateLightAt(world: World, at: readonly number[]): Set<Chunk> {
     for (let n = 0; n < at.length; n += 3) {
       const [x, y, z] = [at[n], at[n + 1], at[n + 2]];
       if (y < 0 || y >= HEIGHT) continue;
-      const chunk = world.getChunk(x >> 5, y >> 5, z >> 5);
+      const chunk = chunkAt(world, x >> 5, y >> 5, z >> 5);
       if (!chunk) continue;
       const i = localIndex(x & (S - 1), y & (S - 1), z & (S - 1));
       const b = chunk.blocks[i];
@@ -467,5 +503,6 @@ export function updateLightAt(world: World, at: readonly number[]): Set<Chunk> {
     spreadWorld(world, shift);
   }
   touched = null;
+  lastChunk = undefined;
   return changedChunks(world, edits);
 }

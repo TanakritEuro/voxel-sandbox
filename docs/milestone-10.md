@@ -272,3 +272,76 @@ All the moving parts are copper, to go with the copper ore already in the ground
   - My first expectation here was wrong (a lamp I thought lit sits where the signal has faded out).
     The two runs agreed; the expectation was corrected, and a lit lamp and a delay that turns on
     were added.
+
+## Step 3: in the game — built (2026-11-04)
+
+**What changed:**
+- **Ticks** (`game.ts`): every 0.1 s while the world runs (on the host or alone), a `LogicFlow` tick
+  over a `BlockCache`, its changes made at once: `World.setBlocks` (blocks and light in one update),
+  saved, remeshed in the workers, and sent to guests as the water's are (made there the same way; the
+  rest of playing together is step 4).
+  - Water's changes and logic's go through one `applyChanges`.
+  - Unlike the water's, a tick's changes aren't put off to the next frame: there are few of them and
+    working them out is quick, so a click shows on the next tick.
+- **Waking:**
+  - every edit wakes the logic round it, as it wakes the water (a switch used, a wire placed or
+    broken, the block a gate reads);
+  - water flowing into a thin logic block (they're open to it, as torches are) wakes it, so its
+    circuit loses it;
+  - a column loading wakes its logic blocks if it was read from the save, and those on the faces of
+    the columns beside it (`wakeLogicColumn`). The water's column wake is now shared
+    (`world/wake.ts`, `wakeColumnBlocks`), each with its own table of ids.
+  - A delay's pulse on its way, or a button's second, isn't saved: they settle on load.
+- **`?stats`:** a logic line: what's waiting, the last tick that changed something (blocks, wires
+  worked out, ms working out and making them, the light's share) and the slowest tick since last read.
+- **`?circuit`** (`circuit.ts`, an unsaved world): once the land is in, a stone board 104 × 40 is laid
+  8 blocks above the player, the air above it cleared, and the player stood on its end looking along
+  it. On it: the bench's clock and 50-stage chaser, and a 32 × 32 wire grid with a lamp at each
+  corner, its switch flipped every second. For 20 s it counts frames and ticks, then reports.
+
+**Measured in Chrome** (`?seed=7&circuit&mobs=0`, 20 s, about 1,190 frames and 199 ticks, 7,880 changes):
+
+| | frames over 20 ms | slowest frame | slowest tick, working out | slowest tick, making the changes |
+| --- | --- | --- | --- | --- |
+| First try | 2 | 100.1 ms | 2.9 ms | 28.5 ms |
+| Light skipped where nothing can change it | 0 | 17.1 ms | 2.1 ms | 18.8 ms |
+| And the light's chunk lookups cached (two runs) | 1, then 0 | 33.4, then 17.1 ms | 2.2, 2.1 ms | 5.8, 5.3 ms |
+
+- **Working the logic out was never the problem.** The grid's 1,024 wires take 1.1 ms in Chrome, under
+  the plan's 2 ms, so its network search stays on Maps.
+- **The light was.** Making a tick's changes was almost all light:
+  - **Wire changing power, a switch flipped, a gate turned on** were relit like any block, though light
+    can't change: the blocks treat it the same. `World.setBlocks` now skips the light for those
+    (`sameLight`: opaque, step cost and glow all equal). The grid's flip stopped costing 28 ms.
+  - **Lamps** do change it: about 11 ms a tick in Chrome for the chaser's, which turns about 15 on or off. The light's
+    breadth-first search looked up the chunk for every block it stepped into through
+    `World.getChunk`, which builds a string key. It now keeps the last chunk (most steps stay in
+    it), cleared at the end of each edit or column.
+  - The first try's 100 ms frame was the board being built (21,000 blocks), counted by mistake; the
+    report now skips those frames, as `?flood` does.
+- **The one 33 ms frame** in the third run came with no tick near it (the slowest was 8 ms in all),
+  and didn't come back in the fourth.
+
+**Bench** (`npm run bench`, `edits`, light only, medians; a new line for 15 lamps at once):
+
+| | before | after |
+| --- | --- | --- |
+| 15 signal lamps lit at once (`setBlocks`) | 7.23 ms | 2.19 ms |
+| put out at once | 5.24 ms | 2.35 ms |
+| A torch at a chunk corner, surface: placed / taken away | 1.91 / 1.63 ms | 1.08 / 0.91 ms |
+| A torch near a chunk corner in a cave | 1.01 / 0.95 ms | 0.65 / 0.51 ms |
+
+- So every edit's light got quicker, not only the logic's.
+- Water's bench is the same within noise (its changes mostly do change light).
+
+**Tests (3 new, 346 in all):**
+- **Saved and loaded:** a clock across a chunk border, saved mid-blink and loaded into a new world,
+  is woken by its columns and still blinks, its lamp lit about half the time and giving light.
+- **Waking on load:** a generated column wakes nothing of its own; a wire on a neighbour's face looking
+  into it is woken, one further in isn't.
+- **Light:** a wire changing power is remeshed but leaves the light exactly as it was; a lamp lighting
+  changes it.
+- The world-list rule test also has `?circuit` playing an unsaved world.
+
+**Not checked here:** clicking a switch in the game (it's an edit, so it wakes the logic as any edit
+does). That's for the playtest at the end.
