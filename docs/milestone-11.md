@@ -471,3 +471,64 @@ ledge, so a 4-block fall measured 3.99. A fall now starts where the feet last st
 - **Names are the key:** two guests with one name share one inventory. A host can't see or clear
   what's kept.
 - **A host trusts its guests' inventories,** as friends.
+
+## Step 6: measurements, and the end of the milestone (2026-11-04)
+
+**The held item** (counted from `itemMesh`): a tool or material in the hand is one mesh, one draw
+call, of 164 triangles (a stick) to 368 (a pick); a held block is 10–12. Too small to show in a
+frame's time.
+
+**Survival against creative,** Chrome on your laptop, radius 8, `?seed=7&stats&mobs=0&time=0.5`
+(`&survival&kit` for survival), standing at the spawn, then looking down and holding the button
+(digging grass and the dirt under it). Two loads each, alternating; `?stats` read every 2 s:
+
+| | main thread ms, average (max) standing | GPU ms standing | main thread ms digging, average (max) |
+| --- | --- | --- | --- |
+| Creative (2 runs) | 1.7–1.9 (3.0), 2.2–2.3 (3.3) | 8.6, 8.0 | 2.1 (15.5) |
+| Survival (2 runs) | 2.2–2.3 (3.0), 2.0–2.1 (3.5) | 8.0, 8.0 | 2.3–2.6 (15.5) |
+
+- **No difference beyond the noise between loads:** survival's first run was 0.4 ms over creative's
+  first, and creative's second the same over survival's second. What survival adds a frame is
+  small: a health step, 27 block reads for cactus, and a comparison of what the HUD shows. The
+  hotbar and HUD are redrawn only when what they show changes.
+- **Digging:** the frames where a block breaks reach 15.5 ms in both modes. That is the edit's
+  remeshing on the main thread, as since Milestone 4; survival adds the drop, a hotbar redraw and a
+  sound. 60 fps throughout, no frame over 20 ms while measuring.
+- **Measuring needed a second go:** Chrome refused to capture the mouse ("The root document of this
+  element is not valid for pointer lock") until you'd seen to the window; then it worked at once.
+
+**The plan's targets:** no per-frame cost worth measuring beyond the HUD: met. The rest of survival
+is feel: dig times, damage and crafting costs are for the playtest.
+
+**Known limits:**
+- **No items lying on the ground:** drops go straight into the inventory; with no room they're gone
+  (a line says so). Nothing can be thrown away, but blocks can be placed.
+- **No hunger, no hostile mobs, no smelting:** ores give their metal; glass is crafted from sand and
+  coal.
+- **No water in survival:** it can't be picked up (no bucket), so it can't be placed.
+- **The animals give nothing** when they go in a puff.
+- **Together:** a guest's refused edit isn't put right in its inventory; two guests with one name
+  share one; the host trusts guests' inventories (step 5).
+- **A guest joins where the host stands,** so for a moment its eyes can be inside the host's figure.
+
+## Playtest questions
+
+1. **Starting out:** make a survival world. Is it clear what to do first (wood, planks, sticks, a
+   wooden pick)? Is anything missing to get going?
+2. **Digging:** do dig times feel right by hand, with the wrong tool and with the right one? Is
+   stone by hand (7.5 s, nothing) too harsh, or fair?
+3. **Tools wearing out:** are 60, 130 and 250 blocks about right? Is the wear bar easy to read?
+4. **Ores:** can you find coal, copper, iron and crystal? Is it clear why an ore gave nothing?
+5. **The inventory screen (E):** are picking up, splitting (right click) and Shift-moving easy? Does
+   the stack following the pointer feel right?
+6. **Crafting:** is the list easy to find your way in? Are the costs sensible (torches, glass, the
+   logic blocks)?
+7. **The held tool:** does it look right in the hand, walking and digging?
+8. **Health:** do falls hurt as you'd expect (stepping off 4 blocks costs a point; a jump adds its height)? Is 10 s of air
+   about right? Is the cactus too harsh? Does healing feel too fast or slow?
+9. **Dying:** is the death screen clear, and is starting at the spawn with everything kept the right
+   amount of forgiveness?
+10. **Sounds:** the hurt grunt and the pickup blip: right, too loud, annoying?
+11. **Switching modes** in the pause menu: useful, or too easy a way out?
+12. **Together:** host a survival world and have a friend play. Do they keep their things when they
+   leave and come back under the same name?

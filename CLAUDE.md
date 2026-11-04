@@ -26,9 +26,12 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 11 (survival basics) in progress, plan approved (`docs/milestone-11.md`).
-Milestones 1–10 built (`docs/milestone-1.md` to `docs/milestone-10.md`), waiting for playtests
-(Milestone 10, logic blocks: copper wire carrying a signal 15 blocks, switches, buttons, signal
+Milestones 1–11 built (`docs/milestone-1.md` to `docs/milestone-11.md`), waiting for playtests
+(Milestone 11, survival basics: a world is creative or survival; in survival broken blocks drop into a
+36-slot inventory, placing uses them, picks, axes and spades of wood, stone and iron dig faster and
+wear out, stone and ores need a pick of their tier, crafting from a list (E), health with falls,
+drowning, cactus and healing, dying back at the spawn with everything kept; together, the host's mode
+for all and guests' inventories kept by name; Milestone 10, logic blocks: copper wire carrying a signal 15 blocks, switches, buttons, signal
 lamps that light the world, charged blocks, inverters and delays of 1–4 ticks facing the way they're
 placed; ticked 10 times a second by the host, only what changed looked at, saved and carrying on
 after loading, guests' clicks made by the host; Milestone 9, multiplayer over PeerJS: a world opened to up to three friends from the pause menu
