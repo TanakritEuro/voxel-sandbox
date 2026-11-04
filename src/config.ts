@@ -104,6 +104,19 @@ export const TUNING = {
     maxPerTick: 4096,
     buttonTicks: 10,
   },
+  /** Survival worlds (`survival/`). */
+  survival: {
+    /** Most of one item a slot holds (a tool: one). */
+    stack: 64,
+    /** Dig speed by tier (0 the hand, then wood, stone, iron): the right tool divides a block's hardness by it. */
+    toolSpeed: [1, 2, 4, 6] as const,
+    /** Blocks a tool breaks before it's worn out, by tier. */
+    toolWear: [0, 60, 130, 250] as const,
+    /** A block that needs a better pick than the one held takes this many times its hardness, and drops nothing. */
+    withoutPick: 3,
+    /** One in this many leaves drops a stick. */
+    leafStick: 8,
+  },
   /** Playing together (`net/`). */
   net: {
     /** Each player's state is sent this often (a second). */

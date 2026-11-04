@@ -1,6 +1,9 @@
 # Milestone 11: survival basics
 
-**Plan, to check.**
+**Plan approved (2026-11-04)** as proposed: drops straight into the inventory, no hunger or hostile
+mobs, no smelting, crafting from a list, tools wearing out, dying keeping the inventory, the mode
+chosen with the world and switchable from the pause menu, guests' inventories kept by the host, and
+the items and recipes listed.
 
 **Goal.** A world can be played for survival, not only built in:
 - blocks you break go into your inventory, and you build with what you have;
@@ -225,3 +228,58 @@ A list, not a grid (to agree). The inventory screen shows every recipe:
   are creative.
 - **Guests' inventories are kept by the host,** by name, so rejoining gives them back.
 - **The items and recipes** above: Stick, Coal, Copper, Iron, Crystal, three tools in three tiers.
+
+## Step 1: items, inventory, drops and crafting, headless — built (2026-11-04)
+
+**What changed** (new `src/survival/`, pure; numbers in `TUNING.survival`):
+- **`items.ts`:**
+  - every placeable block is an item of its id;
+  - `Item` from 256: stick, coal, copper, iron, crystal, then pick, axe and spade in wood, stone and
+    iron (ids 256–269);
+  - `itemInfo` (name, stack size, tool), `toolOf`, `isItem`, `ALL_ITEMS`.
+  - Tools: speed 2, 4, 6 and wear 60, 130, 250 by tier.
+- **`inventory.ts`, `Inventory`:** 36 slots, the hotbar the first 9.
+  - `add` fills stacks already there first, then empty slots from the hotbar on, returning what
+    didn't fit.
+  - `spend` takes from the last slots first, so the hotbar keeps what's in it longest. Also
+    `count`, `has` and `fits`, and `takeOne` for placing.
+  - `wearTool` counts a tool's blocks; at its wear it's gone.
+  - For the screen: `pick` (all or half), `put` (all or one: into an empty slot, merged up to 64,
+    or swapped) and `shiftMove` (between the hotbar and the rest, merging first).
+  - `toJSON` and `from`, which leaves out anything that isn't an item, a count off the stack, or a
+    wear past the tool's.
+- **`drops.ts`:**
+  - `dropsOf(block, tool, roll)`: blocks give themselves as placed (a lit lamp a lamp, powered wire
+    wire, a gate in any state the gate); grass dirt; ores their metal; leaves a stick when the roll is
+    under 1/8; glass nothing.
+  - **`pickTier`:** stone, sandstone and coal need a pick of wood or better; copper and iron
+    stone; crystal iron. Without one they give nothing.
+  - **`digTime`:** the hardness divided by the speed of the right tool (`rightTool`: a pick for
+    stone, ores and lamps, an axe for wood and planks, a spade for earth). Three times the hardness
+    without the pick a block needs, or with too low a tier.
+- **`crafting.ts`:** the plan's 24 recipes (planks from either wood, each tool in each tier).
+  - `canMake`: the cost is there, and what's made fits once the cost is spent.
+  - `make(…, times)`: Infinity for Shift.
+
+**Tests (17 new, 366 in all,** `tests/survival.test.ts`):
+- **Items:** what is one, names, tools one to a slot.
+- **Inventory:**
+  - adding (merging, the order of slots, what doesn't fit);
+  - tools not stacking and wearing out at 60;
+  - picking half, putting one, merging up to 64, swapping;
+  - Shift moves, spending from the end, placing one at a time;
+  - saving round trip, and a broken save cleaned.
+- **Drops:**
+  - grass and the spade;
+  - stone by hand three times as long and nothing, with a wooden pick half the time and stone;
+  - each ore's tier;
+  - 8,000 seeded rolls of leaves give 900–1,100 sticks;
+  - blocks back as placed;
+  - only items ever dropped.
+- **Crafting:**
+  - each recipe spends exactly its cost;
+  - Shift makes 10 times from 10 wood;
+  - nothing is made when it wouldn't fit;
+  - every tool, torch and logic block can be made.
+- My first test of merging set up two stacks with `add`, which merged them; the test now sets the
+  slots directly.
