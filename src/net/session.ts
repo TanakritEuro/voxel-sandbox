@@ -14,6 +14,7 @@
 // the column is added. A column being made while the edit arrived (asked for, or generating)
 // would miss it otherwise; for one the host's answer already had, making it again changes nothing.
 
+import type { WorldMode } from '../save/store';
 import type { ChunkSaves } from '../chunkLoader';
 import { TUNING } from '../config';
 import type { MobSound } from '../mobs/mobs';
@@ -45,6 +46,12 @@ export interface HostWorld {
   blockAt(x: number, y: number, z: number): number;
   /** Player `player` hit mob `id`: the game checks it's in reach and makes the hit. */
   hitMob(player: number, id: number): void;
+  /** The world's mode now. */
+  mode(): WorldMode;
+  /** The survival state kept for a guest called `name`, or null. */
+  kept(name: string): Record<string, unknown> | null;
+  /** Keep `survival` for a guest called `name` (cleaned by the game). */
+  keep(name: string, survival: Record<string, unknown>): void;
 }
 
 /** What a guest's game gives its session, once the world is made. */
@@ -116,6 +123,11 @@ export class HostSession {
     return out;
   }
 
+  /** The world's mode changed: every guest plays it from now on. */
+  shareMode(mode: WorldMode): void {
+    for (const link of this.guests.values()) link.send({ type: 'mode', mode });
+  }
+
   /** The host's own blocks set (its edits, `water`: a tick of flowing water): to every guest. */
   shareEdits(changes: readonly BlockChange[], from = 0, seq = 0, water = false): void {
     if (!changes.length || !this.guests.size) return;
@@ -180,6 +192,8 @@ export class HostSession {
         players: this.players,
         at: this.world.position(),
         edited: this.world.editedColumns(),
+        mode: this.world.mode(),
+        kept: this.world.kept(m.name),
       });
       for (const [other, l] of this.guests) if (other !== id) l.send({ type: 'joined', player });
       this.onEvent(`${m.name} joined.`);
@@ -219,6 +233,11 @@ export class HostSession {
       case 'hit':
         this.world.hitMob(id, m.id);
         break;
+      case 'kept': {
+        const who = this.players.find((p) => p.id === id);
+        if (who) this.world.keep(who.name, m.survival);
+        break;
+      }
       case 'state': {
         // Theirs, whatever number they put on it; on to the others as theirs.
         let remote = this.remotes.get(id);
@@ -314,6 +333,8 @@ export class GuestSession {
   time = 0;
   /** The time of day was heard (every few seconds). */
   onTime: (time: number) => void = () => {};
+  /** The host switched the world's mode. */
+  onMode: (mode: WorldMode) => void = () => {};
   /** Recent round trips and the offsets they gave. */
   private readonly samples: { rtt: number; offset: number }[] = [];
   /** Something to tell the player (someone joined, left). */
@@ -388,6 +409,11 @@ export class GuestSession {
     this.link.send({ type: 'state', id: this.you, data: packState({ ...state, time: this.clock() }) }, 'frames');
   }
 
+  /** This player's survival state, for the host to keep (and give back next time it joins under this name). */
+  keep(survival: Record<string, unknown>): void {
+    if (!this.closed) this.link.send({ type: 'kept', survival });
+  }
+
   /** This player hit mob `id`: the host makes the hit (the knockback, the flash and any puff come back with the mobs). */
   hit(id: number): void {
     if (!this.closed) this.link.send({ type: 'hit', id });
@@ -458,6 +484,9 @@ export class GuestSession {
       case 'time':
         this.time = m.time;
         this.onTime(m.time);
+        break;
+      case 'mode':
+        this.onMode(m.mode);
         break;
       case 'joined':
         this.players = [...this.players.filter((p) => p.id !== m.player.id), m.player].sort((a, b) => a.id - b.id);

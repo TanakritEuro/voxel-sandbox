@@ -134,6 +134,8 @@ export const TUNING = {
   net: {
     /** Each player's state is sent this often (a second). */
     stateRate: 20,
+    /** A guest's survival state goes to the host at most this often (s), when it has changed. */
+    keptEvery: 2,
     /** Others are drawn this far behind their newest state (s), so there's usually one either side to draw between. */
     behind: 0.1,
     /** Past their newest state they're guessed on for at most this long (s), then held. */

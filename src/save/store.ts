@@ -43,6 +43,8 @@ export interface WorldRecord {
   mode?: WorldMode;
   /** The survival inventory, kept apart from the creative hotbar; missing until first played in survival. */
   survival?: SurvivalRecord;
+  /** Guests' survival states, by name, kept by the host for when they come back. */
+  guests?: Record<string, SurvivalRecord>;
 }
 
 /** A chunk's place and its RLE-encoded blocks. */

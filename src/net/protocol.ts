@@ -6,12 +6,16 @@
 // generates the land itself from the seed, so both must make exactly the same land.
 // Mismatched versions are turned away.
 
+import type { WorldMode } from '../save/store';
 import { BLOCKS } from '../world/blocks';
 import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/coords';
 import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackState } from './playerState';
 
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
+
+/** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
+const KEPT_LENGTH = 8192;
 
 /** Players in a game at most: the host and three guests. */
 export const MAX_PLAYERS = 4;
@@ -29,10 +33,25 @@ export type Message =
   | { type: 'hello'; version: number; name: string }
   /**
    * Host → guest: you're in. Your player number, the world's seed and time of day, who's in
-   * (you included), where the host is standing (you start near them), and the columns with edited
-   * chunks, as (cx, cz) pairs one after another.
+   * (you included), where the host is standing (you start near them), the columns with edited
+   * chunks, as (cx, cz) pairs one after another, the world's mode, and your survival state as the
+   * host kept it last time you played here under this name (null if none; cleaned when used).
    */
-  | { type: 'welcome'; you: number; seed: number; time: number; players: PlayerInfo[]; at: [number, number, number]; edited: number[] }
+  | {
+      type: 'welcome';
+      you: number;
+      seed: number;
+      time: number;
+      players: PlayerInfo[];
+      at: [number, number, number];
+      edited: number[];
+      mode: WorldMode;
+      kept: Record<string, unknown> | null;
+    }
+  /** Host → guests: the world's mode changed. */
+  | { type: 'mode'; mode: WorldMode }
+  /** Guest → host: this player's survival state (inventory and health), to keep for next time. */
+  | { type: 'kept'; survival: Record<string, unknown> }
   /** Host → guest: not let in (full, or another version), and why. */
   | { type: 'reject'; reason: string }
   /** Host → guests: someone came in, or went. */
@@ -130,6 +149,9 @@ export function checkChunk(data: Uint8Array): Uint8Array | null {
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+const isMode = (v: unknown): v is WorldMode => v === 'creative' || v === 'survival';
+/** A survival state small enough to keep (what's in it is cleaned where it's used). */
+const isKept = (v: unknown): v is Record<string, unknown> => isObject(v) && !Array.isArray(v) && JSON.stringify(v).length <= KEPT_LENGTH;
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isString = (v: unknown, max = 200): v is string => typeof v === 'string' && v.length <= max;
 const isCount = (v: unknown, lo: number, hi: number): v is number => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
@@ -166,6 +188,7 @@ export function parseMessage(raw: unknown): Message | null {
       if (players.some((p) => p === null) || new Set(players.map((p) => p!.id)).size !== players.length || !players.some((p) => p!.id === raw.you)) return null;
       if (!Array.isArray(raw.at) || raw.at.length !== 3 || !raw.at.every(isNumber)) return null;
       if (!Array.isArray(raw.edited) || raw.edited.length % 2 !== 0 || raw.edited.length > 2 * 65536 || !raw.edited.every(isChunkCoord)) return null;
+      if (!isMode(raw.mode) || (raw.kept !== null && !isKept(raw.kept))) return null;
       return {
         type: 'welcome',
         you: raw.you,
@@ -174,6 +197,8 @@ export function parseMessage(raw: unknown): Message | null {
         players: players as PlayerInfo[],
         at: raw.at as [number, number, number],
         edited: raw.edited as number[],
+        mode: raw.mode,
+        kept: raw.kept,
       };
     }
     case 'reject':
@@ -207,6 +232,10 @@ export function parseMessage(raw: unknown): Message | null {
       return isCount(raw.seq, 1, 0x7fffffff) && isBlockPlace(raw.x, raw.y, raw.z) && isBlockId(raw.block)
         ? { type: 'edit', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number, block: raw.block }
         : null;
+    case 'mode':
+      return isMode(raw.mode) ? { type: 'mode', mode: raw.mode } : null;
+    case 'kept':
+      return isKept(raw.survival) ? { type: 'kept', survival: raw.survival } : null;
     case 'use':
       return isCount(raw.seq, 1, 0x7fffffff) && isBlockPlace(raw.x, raw.y, raw.z) ? { type: 'use', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number } : null;
     case 'edits':

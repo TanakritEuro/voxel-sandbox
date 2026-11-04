@@ -15,6 +15,7 @@ import { Block, BLOCKS, delay, FACINGS, inverter, isTorch, useBlock } from '../w
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
 import { createBody, overlapsBlock } from '../world/physics';
 import type { World } from '../world/world';
+import type { WorldMode } from '../save/store';
 import type { PlayerState } from './playerState';
 import type { HostWorld } from './session';
 
@@ -27,6 +28,10 @@ export interface HostGame {
   edit(x: number, y: number, z: number, block: Block): void;
   /** Player `player` hit mob `id`: check it's in reach, and make the hit. */
   hitMob(player: number, id: number): void;
+  /** The world's mode, and guests' survival states kept by name (`HostWorld`'s). */
+  mode(): WorldMode;
+  kept(name: string): Record<string, unknown> | null;
+  keep(name: string, survival: Record<string, unknown>): void;
 }
 
 /**
@@ -99,5 +104,8 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
     },
     blockAt: (x, y, z) => world.getBlock(x, y, z),
     hitMob: (player, id) => game.hitMob(player, id),
+    mode: () => game.mode(),
+    kept: (name) => game.kept(name),
+    keep: (name, survival) => game.keep(name, survival),
   };
 }

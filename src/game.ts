@@ -13,7 +13,7 @@ import { Input } from './input';
 import { Player } from './player';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import { WorldSaver } from './save/saver';
-import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type PlayerState, type WorldStore } from './save/store';
+import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type PlayerState, type SurvivalRecord, type WorldStore } from './save/store';
 import { isUnsavedUrl } from './save/worlds';
 import { Inventory } from './ui/inventory';
 import { KEYS, PauseMenu, SURVIVAL_KEYS } from './ui/pauseMenu';
@@ -163,11 +163,17 @@ const record =
     : newWorldRecord('unsaved', 'Unsaved world', Number(params.get('seed') ?? TUNING.world.seed), TUNING.day.start, params.has('survival') ? 'survival' : 'creative'));
 // A guest starts where the host stands.
 if (welcome) record.player = { x: welcome.at[0], y: welcome.at[1], z: welcome.at[2], yaw: 0, pitch: 0, flying: false };
+// A guest plays the host's mode, with what the host kept for this name last time (cleaned below,
+// by `Inventory.from` and `Health.from`, like a saved one).
+if (welcome) {
+  record.mode = welcome.mode;
+  if (welcome.kept) record.survival = welcome.kept as unknown as SurvivalRecord;
+}
 record.played = Date.now();
 const saver = await WorldSaver.open(store, record);
-// Survival (`survival/`): what's gathered is what there is to build with. A guest plays creative
-// (survival together is to come). The inventory is the record's, so saved with it.
-let survival = modeOf(record) === 'survival' && !guest;
+// Survival (`survival/`): what's gathered is what there is to build with. The inventory is the
+// record's, so saved with it (a guest's, kept by the host).
+let survival = modeOf(record) === 'survival';
 const pack = SurvivalInventory.from(record.survival?.inventory);
 const health = Health.from(record.survival?.health);
 const survivalRecord = { inventory: pack.slots, health: health.toJSON() };
@@ -436,6 +442,9 @@ if (guest) {
   guest.onTime = (t) => {
     if (!timeHeld) time = t;
   };
+  // The host switched the world's mode: everyone plays it.
+  guest.onMode = (mode) => setMode(mode === 'survival');
+  setInterval(sendKept, TUNING.net.keptEvery * 1000);
   guest.onMobSounds = (sounds) => {
     const p = camera.position;
     for (const s of sounds) {
@@ -460,6 +469,15 @@ function openToFriends(room: Room): HostSession {
       allowed: (id, x, y, z, block): boolean => editAllowed(session.states().get(id), session.states().values(), x, y, z, block),
       edit: (x, y, z, block) => guestEdit(x, y, z, block),
       hitMob: (id, mobId) => guestHit(id, mobId),
+      mode: () => modeOf(record),
+      kept: (name) => {
+        const k = record.guests?.[name];
+        return k ? { ...k } : null;
+      },
+      // A guest's state, cleaned as a saved one is, kept in this world's record by name.
+      keep: (name, s) => {
+        (record.guests ??= {})[name] = { inventory: SurvivalInventory.from(s.inventory).toJSON(), health: Health.from(s.health).toJSON() };
+      },
     }),
     settings.name,
     () => performance.now() / 1000,
@@ -745,6 +763,7 @@ function setMode(toSurvival: boolean): void {
   if (backpack.open) closeBackpack();
   renderHotbar();
   renderVitals();
+  host?.shareMode(record.mode);
   void saveRecord();
 }
 
@@ -1196,6 +1215,19 @@ function playerState(): PlayerState {
   return { x, y, z, yaw: input.yaw, pitch: input.pitch, flying: player.flying };
 }
 
+/** What a guest last sent the host of its survival state (as JSON), so it's sent only when it changes. */
+let keptSent = '';
+
+/** A guest's survival state to the host, if it changed, for it to keep (and give back next time). */
+function sendKept(): void {
+  if (!guest || !survival) return;
+  const state = { inventory: pack.toJSON(), health: health.toJSON() };
+  const json = JSON.stringify(state);
+  if (json === keptSent) return;
+  keptSent = json;
+  guest.keep(state);
+}
+
 /** The record saved: where the player is, the time, and in it the survival inventory and health as they are. */
 function saveRecord(): Promise<void> {
   survivalRecord.health = health.toJSON();
@@ -1217,6 +1249,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => {
   saveAll();
   // Tell the others at once, rather than leaving them to notice the silence.
+  sendKept();
   guest?.leave();
   host?.close('The host left.');
 });
@@ -1224,6 +1257,7 @@ window.addEventListener('pagehide', () => {
 /** Write everything, then back to the world list (a guest just leaves; a host's friends are sent home). */
 async function quit(): Promise<void> {
   if (guest) {
+    sendKept();
     guest.leave();
     location.href = location.pathname;
     return;

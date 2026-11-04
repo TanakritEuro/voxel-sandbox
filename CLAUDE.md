@@ -221,8 +221,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   and from which side a mob is: pure), `sound.ts` (Web Audio: a recipe per block material, mob
   voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
-  records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, and `survival`: the
-  inventory), `saver.ts` (`WorldSaver`: which chunks a world
+  records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
+  inventory and health) and `guests` (guests' survival states by name)), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -234,13 +234,14 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (2), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (3), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
-  blocks;
+  blocks; the world's mode in the welcome and when it changes, guests' survival states kept by name
+  and given back;
   `GuestSession`: the welcome, `RemoteSaves` (the loader's `ChunkSaves`: edited chunks from the
   host), edits and uses (a switch, a button, a delay clicked) asked of the host and the host's made
-  in its order, blocks kept for columns not here
+  in its order, its survival state sent to keep, blocks kept for columns not here
   yet; states relayed, the host's clock learned from the quickest pings; pure, the clock passed in),
   `hostWorld.ts` (the host's world and saver as its session sees them; `settable`: logic blocks only as
   placed, `editAllowed`: reach and not inside anyone; a use made on the block as the host has it), `playerState.ts` (a player's state packed in 80 bytes),

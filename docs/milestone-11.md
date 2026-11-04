@@ -424,3 +424,50 @@ ledge, so a 4-block fall measured 3.99. A fall now starts where the feet last st
 - the death screen said "You ran out of air";
 - Start again put the player back at the spawn, full, with the mouse caught and the inventory kept.
 - No console errors. Sounds can't be heard from here; they're for the playtest.
+
+## Step 5: together — built (2026-11-04)
+
+**What changed** (`PROTOCOL` 3):
+- **The host's mode is everyone's:**
+  - the welcome carries it, and a guest plays it;
+  - when the host switches it in the pause menu, a new `mode` message makes every guest switch too;
+  - guests can't switch it themselves.
+- **Guests' survival states are kept by the host, by name:**
+  - **Kept:** a guest sends its inventory and health (`kept`) every 2 s when they've changed
+    (`TUNING.net.keptEvery`), and once more as it leaves.
+  - **Stored:** the host cleans each one as it would a save (`Inventory.from`, `Health.from`) and
+    keeps it in its world record under `guests`, saved with the world.
+  - **Given back:** the welcome carries what was kept for the name the guest joins with (null the
+    first time), and the guest starts with it.
+  - **Checked on arrival:** a mode is one of the two, and a kept state must be an object of at most
+    8 KB of JSON.
+- **Each player's game does its own survival:** drops, dig times, wear, damage and dying. A guest
+  that dies starts again at the world's spawn, which is the same for everyone.
+- The host still checks a guest's edits as before (reach, not inside anyone, settable blocks), but
+  not whether the guest had the block.
+
+**Tests (1 new, 384 in all):**
+- **Over the loopback network:** a guest gets the host's survival mode and nothing kept the first
+  time; it hears the host switch to creative. What it sends is kept under its name. Gone and back
+  under the same name, it's in the welcome; a guest with another name gets nothing.
+- **Messages** (added to the protocol test): welcomes with a mode and a kept state or none, `mode` and
+  `kept` come through. Turned away: an unknown mode, a kept state that's a list or over 8 KB, `kept`
+  with nothing.
+
+**Tried in Chrome, over the real PeerJS server, in two tabs:**
+- a survival world (`?seed=7&survival&kit`) opened to friends as Host;
+- Pim joined from the world list: survival, an empty hotbar, full health;
+- Pim dug a block of dirt and left after 3 s; joining again, the dirt was in the hotbar;
+- the host switched to creative, and Pim's game went creative at once (the creative hotbar, no
+  health);
+- no console errors on either.
+- Once, paused just after joining, the bottom of Pim's view was red; playing, it was gone. Most
+  likely Pim's eyes were inside the host's red figure: a guest joins where the host stands, as since
+  Milestone 9.
+
+**Known limits:**
+- **A guest's refused edit isn't undone in its inventory:** a block broken out of reach still gave
+  its drop, and a block placed and refused is gone. Reach is checked on both sides, so it's rare.
+- **Names are the key:** two guests with one name share one inventory. A host can't see or clear
+  what's kept.
+- **A host trusts its guests' inventories,** as friends.

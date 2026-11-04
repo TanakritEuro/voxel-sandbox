@@ -4,7 +4,7 @@ import { Network } from '../src/net/loopback';
 import { PROTOCOL } from '../src/net/protocol';
 import { GuestSession, HostSession } from '../src/net/session';
 import { WorldSaver } from '../src/save/saver';
-import { MemoryStore, newWorldRecord } from '../src/save/store';
+import { MemoryStore, newWorldRecord, type WorldMode } from '../src/save/store';
 import { handleJob } from '../src/workers/jobs';
 import { Block, gateOf, useBlock } from '../src/world/blocks';
 import { LogicFlow } from '../src/world/logic';
@@ -49,6 +49,9 @@ async function makeHost(env: Env) {
   for (const [cx, cz] of COLUMNS) world.ensureColumn(cx, cz);
   const saver = await WorldSaver.open(new MemoryStore(), newWorldRecord('w', 'World', SEED, 0.3));
   const allow = { ok: true };
+  // The world's mode and guests' kept states, as the game holds them.
+  const mode = { value: 'creative' as WorldMode };
+  const kept = new Map<string, Record<string, unknown>>();
   // Its logic, woken by every edit as the game's is.
   const logic = new LogicFlow();
   const edit = (x: number, y: number, z: number, b: Block) => {
@@ -58,7 +61,16 @@ async function makeHost(env: Env) {
   const room = env.net.room('ABCD');
   const session = new HostSession(
     room,
-    hostWorld(world, saver, { time: () => 0.3, position: () => [1.5, 80, 2.5], allowed: () => allow.ok, edit, hitMob: () => {} }),
+    hostWorld(world, saver, {
+      time: () => 0.3,
+      position: () => [1.5, 80, 2.5],
+      allowed: () => allow.ok,
+      edit,
+      hitMob: () => {},
+      mode: () => mode.value,
+      kept: (name) => kept.get(name) ?? null,
+      keep: (name, s) => void kept.set(name, s),
+    }),
     'Host',
     env.now,
   );
@@ -73,7 +85,7 @@ async function makeHost(env: Env) {
     world.setBlocks(changes);
     session.shareEdits(changes, 0, 0, true);
   };
-  return { world, saver, session, room, allow, hostEdit, tick };
+  return { world, saver, session, room, allow, hostEdit, tick, mode, kept };
 }
 
 async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, name: string) {
@@ -361,5 +373,35 @@ describe('logic over the network', () => {
     expect(a.session.unanswered).toBe(0);
     expect([host.world.getBlock(6, Y, 0), host.world.getBlock(0, Y, 0), host.world.getBlock(3, Y, 0)]).toEqual([Block.SignalLamp, Block.Switch, Block.Wire]);
     expect(difference(host.world, a.world)).toBe(null);
+  });
+});
+
+describe('survival over the network', () => {
+  it("gives a guest the host's mode, follows the host switching it, and keeps a guest's state by name for when it comes back", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    host.mode.value = 'survival';
+    const a = await makeGuest(env, host, 'Pim');
+    expect(a.welcome.mode).toBe('survival');
+    expect(a.welcome.kept).toBe(null); // first time here
+    // The host switches: the guest hears.
+    const heard: WorldMode[] = [];
+    a.session.onMode = (m) => heard.push(m);
+    host.session.shareMode('creative');
+    await env.pump(0.3);
+    expect(heard).toEqual(['creative']);
+    host.mode.value = 'survival';
+    // What the guest sends is kept under its name.
+    const state = { inventory: [{ item: 3, count: 12 }, null, { item: 262, count: 1, wear: 4 }], health: { health: 13, air: 10 } };
+    a.session.keep(state);
+    await env.pump(0.3);
+    expect(host.kept.get('Pim')).toEqual(state);
+    // Gone, and back under the same name: it's in the welcome. Someone else gets nothing.
+    a.session.leave();
+    await env.pump(0.3);
+    const again = await makeGuest(env, host, 'Pim');
+    expect(again.welcome.kept).toEqual(state);
+    const other = await makeGuest(env, host, 'Aroon');
+    expect(other.welcome.kept).toBe(null);
   });
 });

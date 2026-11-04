@@ -113,6 +113,9 @@ describe('states over the network', () => {
     columnChunks: async () => [],
     edit: () => true,
     use: () => true,
+    mode: () => 'creative',
+    kept: () => null,
+    keep: () => {},
     blockAt: () => Block.Air,
     hitMob: () => {},
   };
