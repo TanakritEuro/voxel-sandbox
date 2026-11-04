@@ -714,7 +714,11 @@ function editing(dt: number): void {
     // built against; with Shift held it's built against as usual.
     const used = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight') ? null : useBlock(target.block);
     if (used !== null) {
-      if (used !== target.block) edit(target.x, target.y, target.z, used);
+      // A guest shows it at once and asks the host to use the block as the host has it.
+      if (used !== target.block) {
+        edit(target.x, target.y, target.z, used, !guest);
+        guest?.use(target.x, target.y, target.z);
+      }
       sound.play({ name: 'place', material: BLOCKS[target.block].sound, gain: 0.6 });
       swing();
     } else place(target);

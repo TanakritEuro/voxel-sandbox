@@ -6,7 +6,8 @@ import { GuestSession, HostSession } from '../src/net/session';
 import { WorldSaver } from '../src/save/saver';
 import { MemoryStore, newWorldRecord } from '../src/save/store';
 import { handleJob } from '../src/workers/jobs';
-import { Block } from '../src/world/blocks';
+import { Block, gateOf, useBlock } from '../src/world/blocks';
+import { LogicFlow } from '../src/world/logic';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
 import { World } from '../src/world/world';
 
@@ -48,8 +49,11 @@ async function makeHost(env: Env) {
   for (const [cx, cz] of COLUMNS) world.ensureColumn(cx, cz);
   const saver = await WorldSaver.open(new MemoryStore(), newWorldRecord('w', 'World', SEED, 0.3));
   const allow = { ok: true };
+  // Its logic, woken by every edit as the game's is.
+  const logic = new LogicFlow();
   const edit = (x: number, y: number, z: number, b: Block) => {
     if (world.setBlock(x, y, z, b).length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
+    logic.wake(x, y, z);
   };
   const room = env.net.room('ABCD');
   const session = new HostSession(
@@ -63,7 +67,13 @@ async function makeHost(env: Env) {
     edit(x, y, z, b);
     session.shareEdits([[x, y, z, b]]);
   };
-  return { world, saver, session, room, allow, hostEdit };
+  /** A logic tick, its changes made and shared as the game does (as flowing water's are). */
+  const tick = () => {
+    const changes = logic.tick(world);
+    world.setBlocks(changes);
+    session.shareEdits(changes, 0, 0, true);
+  };
+  return { world, saver, session, room, allow, hostEdit, tick };
 }
 
 async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, name: string) {
@@ -85,7 +95,12 @@ async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, n
     world.setBlock(x, y, z, b);
     session.edit(x, y, z, b);
   };
-  return { session, world, welcome, load, guestEdit };
+  /** The guest's own click on a switch, button or delay, as the game makes it: shown at once, then the host asked to use it. */
+  const guestUse = (x: number, y: number, z: number) => {
+    world.setBlock(x, y, z, useBlock(world.getBlock(x, y, z))!);
+    session.use(x, y, z);
+  };
+  return { session, world, welcome, load, guestEdit, guestUse };
 }
 
 /** The first chunk (and place in it) where two worlds differ in blocks or light over COLUMNS, or null. */
@@ -260,5 +275,91 @@ describe('the world over the network', () => {
     await env.pump(0.5);
     expect(g.session.rtt).toBeGreaterThan(0.09);
     expect(g.session.rtt).toBeLessThan(0.13);
+  });
+});
+
+describe('logic over the network', () => {
+  /**
+   * On a stone ledge in the air at y 100, x 0 to 8, z 0: a switch at x 0, wire 1–5, a lamp at 6;
+   * and a delay at (4, 1) facing +x with nothing behind it, to be set. A host and two guests, every
+   * column loaded.
+   */
+  const Y = 100;
+  async function circuit(env: Env) {
+    const host = await makeHost(env);
+    for (let x = 0; x <= 8; x++) host.hostEdit(x, Y - 1, 0, Block.Stone);
+    host.hostEdit(0, Y, 0, Block.Switch);
+    for (let x = 1; x <= 5; x++) host.hostEdit(x, Y, 0, Block.Wire);
+    host.hostEdit(6, Y, 0, Block.SignalLamp);
+    host.hostEdit(5, Y, 1, Block.Stone);
+    host.hostEdit(4, Y, 1, Block.Delay); // facing +x, set to 1
+    for (let t = 0; t < 5; t++) host.tick();
+    const a = await makeGuest(env, host, 'A');
+    const b = await makeGuest(env, host, 'B');
+    for (const g of [a, b]) for (const [cx, cz] of COLUMNS) await g.load(cx, cz);
+    /** Ticks on the host, the network running between them. */
+    const run = async (ticks: number) => {
+      for (let t = 0; t < ticks; t++) {
+        host.tick();
+        await env.pump(0.1);
+      }
+      await env.pump(0.3);
+    };
+    return { host, a, b, run };
+  }
+
+  it("runs on the host: a guest's switch lights the host's lamp, and every guest sees it, light and all", async () => {
+    const env = setup();
+    const { host, a, b, run } = await circuit(env);
+    expect(difference(host.world, a.world)).toBe(null);
+    a.guestUse(0, Y, 0);
+    expect(a.world.getBlock(0, Y, 0)).toBe(Block.SwitchOn); // at once on A's screen
+    await env.pump(0.3);
+    expect(a.session.unanswered).toBe(0);
+    expect(host.world.getBlock(0, Y, 0)).toBe(Block.SwitchOn);
+    await run(3);
+    expect(host.world.getBlock(6, Y, 0)).toBe(Block.SignalLampOn);
+    for (const w of [a.world, b.world]) expect(difference(host.world, w)).toBe(null);
+    // Off again, by B.
+    b.guestUse(0, Y, 0);
+    await run(3);
+    expect(host.world.getBlock(6, Y, 0)).toBe(Block.SignalLamp);
+    for (const w of [a.world, b.world]) expect(difference(host.world, w)).toBe(null);
+  });
+
+  it('uses the block as the host has it: two guests flipping a switch at once end with it as it was, the same everywhere', async () => {
+    const env = setup(0.05, 0.04);
+    const { host, a, b, run } = await circuit(env);
+    a.guestUse(0, Y, 0);
+    b.guestUse(0, Y, 0);
+    // Each sees it on at once; the host flips it twice.
+    expect([a.world.getBlock(0, Y, 0), b.world.getBlock(0, Y, 0)]).toEqual([Block.SwitchOn, Block.SwitchOn]);
+    await run(4);
+    expect(host.world.getBlock(0, Y, 0)).toBe(Block.Switch);
+    for (const w of [a.world, b.world]) expect(difference(host.world, w)).toBe(null);
+    // A delay set on twice at once goes on two settings.
+    a.guestUse(4, Y, 1);
+    b.guestUse(4, Y, 1);
+    await run(1);
+    expect(gateOf(host.world.getBlock(4, Y, 1))!.setting).toBe(3);
+    for (const w of [a.world, b.world]) expect(difference(host.world, w)).toBe(null);
+  });
+
+  it("refuses a use out of reach or of a block that isn't one to use, and a guest's edit setting a state, putting them back", async () => {
+    const env = setup();
+    const { host, a, run } = await circuit(env);
+    host.allow.ok = false;
+    a.guestUse(0, Y, 0);
+    await run(2);
+    expect(a.world.getBlock(0, Y, 0)).toBe(Block.Switch);
+    host.allow.ok = true;
+    // A lamp isn't used; asked anyway (a guest's game wouldn't), it's refused.
+    a.session.use(6, Y, 0);
+    // Lit, powered or on: the signals' to set, not a guest's.
+    for (const [x, b] of [[6, Block.SignalLampOn], [0, Block.SwitchOn], [3, Block.Wire + 12]] as const) a.guestEdit(x, Y, 0, b);
+    await run(2);
+    expect(a.session.unanswered).toBe(0);
+    expect([host.world.getBlock(6, Y, 0), host.world.getBlock(0, Y, 0), host.world.getBlock(3, Y, 0)]).toEqual([Block.SignalLamp, Block.Switch, Block.Wire]);
+    expect(difference(host.world, a.world)).toBe(null);
   });
 });

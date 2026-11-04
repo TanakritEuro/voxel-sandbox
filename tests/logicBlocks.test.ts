@@ -97,12 +97,9 @@ describe('logic blocks', () => {
     expect(torchesHeldBy(world, 6, 40, 5)).toEqual([[6, 41, 5]]);
   });
 
-  it("may be set by a guest as placed or used, but powered wire is the signals' to set", () => {
-    expect(settable(inverter(3, false))).toBe(true);
-    expect(settable(Block.SwitchOn)).toBe(true);
-    expect(settable(delay(1, 4, false))).toBe(true);
-    expect(settable(Block.Wire)).toBe(true);
-    expect(settable(wire(5))).toBe(false);
+  it("may be set by a guest as placed, but other states are the signals' to set or come of using a block", () => {
+    for (const b of [Block.Wire, Block.Switch, Block.Button, Block.SignalLamp, Block.ChargedBlock, inverter(3, false), delay(2, 1, false)]) expect(settable(b)).toBe(true);
+    for (const b of [wire(5), Block.SwitchOn, Block.ButtonOn, Block.SignalLampOn, inverter(3, true), delay(1, 4, false), delay(0, 1, true)]) expect(settable(b)).toBe(false);
     expect(settable(BLOCKS.length)).toBe(false);
   });
 });

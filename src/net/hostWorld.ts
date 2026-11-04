@@ -2,15 +2,16 @@
 //
 // A column's edited chunks come from memory when the column is loaded (so edits not yet written
 // are in them), else from the save. A guest's edit is made if it's a block a player can set (air,
-// a block from the picker, a torch on a wall) in a column the host has loaded, and the game allows
-// it (`editAllowed`: within reach of where the player was last heard, and a solid block not inside
-// anyone).
+// a block from the picker, a torch on a wall, a gate facing any way) in a column the host has
+// loaded, and the game allows it (`editAllowed`: within reach of where the player was last heard,
+// and a solid block not inside anyone). A guest's use of a block (a switch, a button, a delay) is
+// made on the block as the host has it, if it's one to use and within reach.
 
 import { TUNING } from '../config';
 import { encodeRle } from '../save/rle';
 import type { WorldSaver } from '../save/saver';
 import type { SavedChunk } from '../workers/protocol';
-import { Block, BLOCKS, isTorch } from '../world/blocks';
+import { Block, BLOCKS, delay, FACINGS, inverter, isTorch, useBlock } from '../world/blocks';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
 import { createBody, overlapsBlock } from '../world/physics';
 import type { World } from '../world/world';
@@ -44,16 +45,20 @@ export function editAllowed(who: PlayerState | undefined, everyone: Iterable<Pla
   return true;
 }
 
+/** Gates as placed: off, facing any way (a delay set to 1). */
+const PLACED_GATES = new Set<number>(FACINGS.flatMap((_, f) => [inverter(f, false), delay(f, 1, false)]));
+
 /**
  * A block a player can set: air (breaking), one from the picker, a torch (on a floor or a wall), or
- * a logic block as placed or used (a gate's facing, a switch flipped), but not wire with power in it
- * (that is the signals' to set).
+ * a gate as placed (facing the way the player looks). Not a logic block in any other state (wire
+ * with power in it, a switch on, a lamp lit, a gate on): those are the signals' to set, or come of
+ * using a block (`use`).
  */
 export const settable = (block: number): boolean =>
   block === Block.Air ||
   BLOCKS[block]?.pickable === true ||
   (BLOCKS[block] !== undefined && isTorch(block as Block)) ||
-  (block > Block.Wire + 15 && block < BLOCKS.length);
+  PLACED_GATES.has(block);
 
 export function hostWorld(world: World, saver: WorldSaver, game: HostGame): HostWorld {
   return {
@@ -82,6 +87,14 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
       if (!settable(block) || !world.hasColumn(toChunk(x), toChunk(z))) return false;
       if (!game.allowed(player, x, y, z, block as Block)) return false;
       if (world.getBlock(x, y, z) !== block) game.edit(x, y, z, block as Block);
+      return true;
+    },
+    use: (player, x, y, z) => {
+      if (!world.hasColumn(toChunk(x), toChunk(z))) return false;
+      const was = world.getBlock(x, y, z);
+      const used = useBlock(was);
+      if (used === null || !game.allowed(player, x, y, z, was)) return false;
+      if (used !== was) game.edit(x, y, z, used);
       return true;
     },
     blockAt: (x, y, z) => world.getBlock(x, y, z),

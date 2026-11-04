@@ -40,6 +40,8 @@ export interface HostWorld {
   columnChunks(cx: number, cz: number): Promise<SavedChunk[]>;
   /** Player `player` asks for a block: make the edit if it's allowed, and say whether it was. */
   edit(player: number, x: number, y: number, z: number, block: number): boolean;
+  /** Player `player` uses block (x, y, z) (`useBlock`): make it if it's allowed, and say whether it was. */
+  use(player: number, x: number, y: number, z: number): boolean;
   blockAt(x: number, y: number, z: number): number;
   /** Player `player` hit mob `id`: the game checks it's in reach and makes the hit. */
   hitMob(player: number, id: number): void;
@@ -203,6 +205,12 @@ export class HostSession {
         break;
       case 'edit':
         if (this.world.edit(id, m.x, m.y, m.z, m.block)) this.shareEdits([[m.x, m.y, m.z, m.block]], id, m.seq);
+        else link.send({ type: 'refused', seq: m.seq, x: m.x, y: m.y, z: m.z, block: this.world.blockAt(m.x, m.y, m.z) });
+        break;
+      case 'use':
+        // What the click made of the block as the host has it (a switch the host or someone else has
+        // just flipped flips back, say), for everyone.
+        if (this.world.use(id, m.x, m.y, m.z)) this.shareEdits([[m.x, m.y, m.z, this.world.blockAt(m.x, m.y, m.z)]], id, m.seq);
         else link.send({ type: 'refused', seq: m.seq, x: m.x, y: m.y, z: m.z, block: this.world.blockAt(m.x, m.y, m.z) });
         break;
       case 'ping':
@@ -391,6 +399,17 @@ export class GuestSession {
     const seq = ++this.seq;
     this.pending.set(seq, [x, y, z]);
     this.link.send({ type: 'edit', seq, x, y, z, block });
+  }
+
+  /**
+   * This player used a block (what it makes of it shows already): ask the host to use it. The host
+   * answers with the block as it made it, which this player then has.
+   */
+  use(x: number, y: number, z: number): void {
+    if (this.closed) return;
+    const seq = ++this.seq;
+    this.pending.set(seq, [x, y, z]);
+    this.link.send({ type: 'use', seq, x, y, z });
   }
 
   /** Edits sent that the host hasn't answered yet. */

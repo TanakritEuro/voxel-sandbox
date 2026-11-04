@@ -135,6 +135,7 @@ describe('what the host runs, for its guests', () => {
       editedColumns: () => [],
       columnChunks: async () => [],
       edit: () => true,
+      use: () => true,
       blockAt: () => Block.Air,
       hitMob: (player, id) => hits.push([player, id]),
     };

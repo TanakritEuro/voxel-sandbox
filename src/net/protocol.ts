@@ -11,7 +11,7 @@ import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/c
 import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackState } from './playerState';
 
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 
 /** Players in a game at most: the host and three guests. */
 export const MAX_PLAYERS = 4;
@@ -49,6 +49,11 @@ export type Message =
   | { type: 'column'; cx: number; cz: number; chunks: { cy: number; data: ArrayBuffer }[] }
   /** Guest → host: please set this block (numbered by the guest, so the answer can be matched). */
   | { type: 'edit'; seq: number; x: number; y: number; z: number; block: number }
+  /**
+   * Guest → host: please use this block (flip a switch, press a button, set a delay on), as the host
+   * has it; numbered as edits are, and answered the same way.
+   */
+  | { type: 'use'; seq: number; x: number; y: number; z: number }
   /**
    * Host → guests: blocks set, packed by `packEdits`. `from` is the player whose edit it was (0 the
    * host, also for flowing water) and `seq` their number for it (0 if none). `water`: a tick of
@@ -202,6 +207,8 @@ export function parseMessage(raw: unknown): Message | null {
       return isCount(raw.seq, 1, 0x7fffffff) && isBlockPlace(raw.x, raw.y, raw.z) && isBlockId(raw.block)
         ? { type: 'edit', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number, block: raw.block }
         : null;
+    case 'use':
+      return isCount(raw.seq, 1, 0x7fffffff) && isBlockPlace(raw.x, raw.y, raw.z) ? { type: 'use', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number } : null;
     case 'edits':
       return isCount(raw.from, 0, MAX_PLAYERS - 1) &&
         isCount(raw.seq, 0, 0x7fffffff) &&

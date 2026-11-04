@@ -345,3 +345,42 @@ All the moving parts are copper, to go with the copper ore already in the ground
 
 **Not checked here:** clicking a switch in the game (it's an edit, so it wakes the logic as any edit
 does). That's for the playtest at the end.
+
+## Step 4: together — built (2026-11-04)
+
+**What changed:**
+- **The host runs the logic:** guests tick none of their own. The host's ticks reach guests as
+  flowing water's do (step 3): made at once, light and all, and remeshed in the workers.
+- **A guest's click is a new `use` message** (`PROTOCOL` 2): "use this block", with no state in it.
+  - The guest shows what the click makes at once, as with edits, numbered the same way.
+  - The host makes `useBlock` of the block **as it has it**, if it's one to use and within reach
+    (`editAllowed`), and shares the result as the guest's. So two guests flipping one switch at once
+    flip it twice, and each ends with the host's switch, not their own guess.
+  - Refused (out of reach, or not a block to use), it's put back on the guest's screen.
+- **Guests' edits place logic blocks only as placed** (`settable`):
+  - wire unpowered, a switch or button off, a lamp dark, a charged block, a gate off facing any way
+    (a delay set to 1);
+  - not a switch on, a lamp lit, powered wire or a gate on, which step 1 let through. Those are the
+    signals' to set, or come of a use.
+
+**Tests (3 new, 349 in all), a host and two guests over the loopback network:**
+- **A guest's switch:** on A's screen at once; on the host; the host's lamp lit a few ticks later.
+  Both guests then match the host block for block and in light. Off again by the other guest, the same.
+- **Two at once:** both guests flip one switch together: the host flips it twice, so it's off,
+  everywhere. Both set a delay on together: it goes on two settings, everywhere.
+- **Refused:** a use out of reach is put back; a use of a lamp is refused; a guest's edits lighting a
+  lamp, turning a switch on and powering wire are all refused. The guest ends as the host.
+- The step-1 test of what guests may set now checks the states they may not.
+- These also cover the real link: each message is checked by the sessions, whatever carries it.
+
+**Measured in Chrome** (`?seed=7&circuit&mobs=0&bot`: the circuit with a test guest in the page):
+- **Frames:** in 20 s, no frame over 20 ms; slowest 17.2 ms.
+- **Ticks:** the slowest was 2.1 ms working out and 6.2 ms making its changes, as alone.
+- **To the guest:**
+  - 5.6–8 KB/s for the chaser and clock;
+  - 13.5–15 KB/s round the grid's flips (1,024 wires at 16 bytes, once a second);
+  - with the bot's own messages, 38–56 a second.
+- So under the 50 KB/s budget even for this circuit.
+
+**Not tried here:** a real guest clicking a switch in a second browser. The plumbing is the
+edits', which Milestone 9 tried over PeerJS, and the tests run it end to end. That's for the playtest.
