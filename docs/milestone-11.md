@@ -257,7 +257,7 @@ A list, not a grid (to agree). The inventory screen shows every recipe:
   - **`digTime`:** the hardness divided by the speed of the right tool (`rightTool`: a pick for
     stone, ores and lamps, an axe for wood and planks, a spade for earth). Three times the hardness
     without the pick a block needs, or with too low a tier.
-- **`crafting.ts`:** the plan's 24 recipes (planks from either wood, each tool in each tier).
+- **`crafting.ts`:** the plan's 23 recipes (planks from either wood, each tool in each tier).
   - `canMake`: the cost is there, and what's made fits once the cost is spent.
   - `make(…, times)`: Infinity for Shift.
 
