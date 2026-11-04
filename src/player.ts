@@ -97,6 +97,16 @@ export class Player {
     this.placeCamera(this.clock.alpha);
   }
 
+  /** Put the feet at (x, y, z) at once, standing still (starting again after dying). */
+  moveTo(x: number, y: number, z: number): void {
+    const b = this.body;
+    b.x = x;
+    b.y = y;
+    b.z = z;
+    b.vx = b.vy = b.vz = 0;
+    this.keepPosition();
+  }
+
   /** Fly straight along the facing at full flying speed, through anything. For `?autofly`. */
   autopilot(dt: number, forward: number): void {
     this.waiting = false; // flies through anything, loaded or not

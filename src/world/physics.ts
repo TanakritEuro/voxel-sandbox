@@ -230,6 +230,18 @@ function stayOnEdge(body: Body, dx: number, dz: number, world: BlockSource): [nu
   return [dx, dz];
 }
 
+/**
+ * Is a block of kind `block` within `margin` of the body's box: beside it, under or over it (a
+ * cactus felt)? The box's corners count too, a little generously.
+ */
+export function touches(body: Body, world: BlockSource, block: Block, margin = 0.05): boolean {
+  const w = body.halfWidth + margin;
+  for (let y = Math.floor(body.y - margin); y <= Math.floor(body.y + body.height + margin); y++)
+    for (let z = Math.floor(body.z - w); z <= Math.floor(body.z + w); z++)
+      for (let x = Math.floor(body.x - w); x <= Math.floor(body.x + w); x++) if (world.getBlock(x, y, z) === block) return true;
+  return false;
+}
+
 /** Would a block at (x, y, z) overlap the body's box? Touching isn't overlapping. For placing blocks. */
 export function overlapsBlock(body: Body, x: number, y: number, z: number): boolean {
   return (

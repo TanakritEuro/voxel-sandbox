@@ -377,3 +377,50 @@ A list, not a grid (to agree). The inventory screen shows every recipe:
   - E closed it and caught the mouse again.
 - **The costs** first read "1 planks" and "2 stick"; they're now "Planks × 1", "Stick × 2".
 - No console errors.
+
+## Step 4: health — built (2026-11-04)
+
+**What changed:**
+- **`survival/health.ts`, `Health`:** stepped every frame in survival with how the body is (feet
+  height, on the ground, in water, flying, eyes under water, touching a cactus). Numbers are in
+  `TUNING.survival`.
+  - **Falls:** the highest the feet were since they last stood (on the ground, in water or flying),
+    against where they land: a point a block past 3. Water breaks a fall.
+  - **Air:** 10 s with the eyes under water, then a point a second. It comes back five times as fast
+    above.
+  - **Cactus:** a point on touching one, then every half second (`touches` in `world/physics.ts`:
+    the block within 0.05 of the body's box).
+  - **Healing:** a point every 4 s from 5 s after the last hurt, not while dead.
+  - It says what hurt last, for the death screen.
+  - Saved with the inventory (`survival.health`). Loading dead or broken is full health; while dead
+    the player is saved at the spawn.
+- **HUD:** 10 pips over the hotbar (a half pip for an odd point), and air bubbles while short of air.
+  They are drawn again only when what they show changes. A red flash when hurt.
+- **Dying:** the death screen ("You died", why, "Everything you carried is still with you", Start
+  again). The mouse is freed and the pause menu stays hidden. Starting again puts the player at the
+  spawn with full health (`Player.moveTo`).
+- **Sounds** (synthesised, `audio/sound.ts`): hurt, a low thump with a quick falling grunt; picking
+  something up, a soft rising blip.
+
+**One fix on the way:** the falls through the physics came out a point short (4 blocks cost nothing,
+10 cost 6). The highest point was first taken a frame into the fall, already a little below the
+ledge, so a 4-block fall measured 3.99. A fall now starts where the feet last stood.
+
+**Tests (8 new, 383 in all,** `tests/health.test.ts`, and saving):
+- **Falls,** a body dropped through the real physics at its fixed step, health stepped at 60 frames
+  a second: 1 and 3 blocks cost nothing, 4 cost 1, 10 cost 7; 10 blocks into water nothing.
+- **Drowning:** nothing for 10 s under water, then 5 points in the next 5.2 s; air full again
+  after 2 s above.
+- **Cactus:** a point at once, then one at half a second.
+- **Healing:** hurt to 19, back to 20 between 8.9 and 9.1 s later, and no further.
+- **Death** at 0, no healing while dead, full after a reset.
+- **Saving:** health round trip; dead or broken loads full; health in a saved survival world.
+- **Touching:** a cactus 0.05 away beside, or under the feet, is felt; one 0.2 away or a block off
+  isn't.
+
+**Looked at in Chrome** (`?seed=7&survival&kit`):
+- the pips over the hotbar;
+- walked into the sea: bubbles going down, then health draining (4½ pips left at one look);
+- the death screen said "You ran out of air";
+- Start again put the player back at the spawn, full, with the mouse caught and the inventory kept.
+- No console errors. Sounds can't be heard from here; they're for the playtest.

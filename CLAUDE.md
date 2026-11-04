@@ -121,7 +121,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
-  wear, without a pick, sticks from leaves), net.
+  wear, without a pick, sticks from leaves, health, falls, air, cactus, healing), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id:
@@ -151,7 +151,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   buttons let go; changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
-  `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs), `mining.ts` (break
+  `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs; `touches`: a kind of block against the box, for cactus), `mining.ts` (break
   timing (`timeOf`: in survival by the tool held) and crack stage).
 - `src/survival/` — survival worlds, pure: `items.ts` (items: placeable blocks by their ids, and
   `Item` from 256: sticks, coal, copper, iron, crystal, picks, axes and spades of wood, stone and
@@ -159,7 +159,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   spending, picking up and putting down, Shift moves, tools wearing out; `from` cleans what was
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
   held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`harvest`: a broken block's drops in and the
-  tool worn; `placeableIn`, `heldTool`).
+  tool worn; `placeableIn`, `heldTool`), `health.ts` (`Health`: falls from where the feet last stood,
+  air and drowning, cactus, healing, death; stepped a frame at a time with how the body is).
 - `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,
   groups), `brain.ts` (a mob: idle, wander, flee, rest; following paths, jumping, getting
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:

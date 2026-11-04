@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { WorldSaver } from '../src/save/saver';
 import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type WorldStore } from '../src/save/store';
+import { Health } from '../src/survival/health';
 import { Inventory } from '../src/survival/inventory';
 import { Item } from '../src/survival/items';
 import { handleJob } from '../src/workers/jobs';
@@ -77,13 +78,13 @@ describe.each([
     expect(record.seed).toBe(SEED);
   });
 
-  it("keeps a survival world's mode and inventory; a record from before survival is creative", async () => {
+  it("keeps a survival world's mode, inventory and health; a record from before survival is creative", async () => {
     const store = await makeStore();
     const record = newWorldRecord('s', 'Hard', SEED, 0.3, 'survival');
     const saver = await WorldSaver.open(store, record);
     // As the game keeps it: the inventory's slots in the record, changed in place.
     const pack = new Inventory();
-    record.survival = { inventory: pack.slots };
+    record.survival = { inventory: pack.slots, health: { health: 7, air: 4.5 } };
     pack.add(Block.Dirt, 20);
     pack.add(Item.StonePick, 1);
     pack.wearTool(1);
@@ -91,6 +92,7 @@ describe.each([
     const back = (await store.getWorld('s'))!;
     expect(modeOf(back)).toBe('survival');
     expect(Inventory.from(back.survival?.inventory).toJSON()).toEqual(pack.toJSON());
+    expect(Health.from(back.survival?.health).toJSON()).toEqual({ health: 7, air: 4.5 });
     const old = { ...newWorldRecord('o', 'Old', SEED, 0.3) };
     delete old.mode;
     expect(modeOf(old)).toBe('creative');

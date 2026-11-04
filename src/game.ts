@@ -23,6 +23,7 @@ import { digTime } from './survival/drops';
 import { HOTBAR_SLOTS, Inventory as SurvivalInventory } from './survival/inventory';
 import { isBlockItem, Item, itemInfo } from './survival/items';
 import { harvest, heldTool, placeableIn } from './survival/play';
+import { Health } from './survival/health';
 import { hash3 } from './math';
 import { ChunkRenderer } from './render/chunkRenderer';
 import { CrackOverlay } from './render/crack';
@@ -56,7 +57,7 @@ import { Block, BLOCKS, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchF
 import { torchesHeldBy } from './world/torches';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
-import { overlapsBlock } from './world/physics';
+import { overlapsBlock, touches } from './world/physics';
 import { raycast, type RayHit } from './world/raycast';
 import { WaterFlow, type WaterChange, type WaterWorld, wakeColumn } from './world/water';
 import { isLogic, LogicFlow, type LogicChange, wakeLogicColumn } from './world/logic';
@@ -168,7 +169,11 @@ const saver = await WorldSaver.open(store, record);
 // (survival together is to come). The inventory is the record's, so saved with it.
 let survival = modeOf(record) === 'survival' && !guest;
 const pack = SurvivalInventory.from(record.survival?.inventory);
-record.survival = { inventory: pack.slots };
+const health = Health.from(record.survival?.health);
+const survivalRecord = { inventory: pack.slots, health: health.toJSON() };
+record.survival = survivalRecord;
+/** Died, and not started again yet (the death screen is up). */
+let dead = false;
 // `?kit` (an unsaved world only): something of everything to try, a tool of each kind and tier,
 // the metals and what crafting starts from.
 if (unsaved && !guest && params.has('kit')) {
@@ -396,12 +401,14 @@ function columnsLoaded(x: number, z: number): boolean {
 // or near `?at=x,z`.
 const [atX, atZ] = (params.get('at') ?? '0,0').split(',').map((v) => Math.floor(Number(v)) || 0);
 const spawn = world.generator.findLand(atX, atZ ?? 0);
+/** Where a new player stands, and a survival player starts again. */
+const spawnFeet = { x: spawn.x + 0.5, y: world.generator.height(spawn.x, spawn.z) + 1, z: spawn.z + 0.5 };
 const player = new Player(
   camera,
   input,
   world,
   columnsLoaded,
-  record.player ?? { x: spawn.x + 0.5, y: world.generator.height(spawn.x, spawn.z) + 1, z: spawn.z + 0.5 },
+  record.player ?? spawnFeet,
 );
 if (record.player) {
   input.yaw = record.player.yaw;
@@ -656,7 +663,7 @@ const icons = blockIcons();
 const inventory = new Inventory(document.body, icons, (block) => {
   hotbar[selected] = block;
   renderHotbar();
-  void saver.saveRecord(playerState(), time);
+  void saveRecord();
 });
 function openInventory(): void {
   inventory.show(selected, hotbar[selected]);
@@ -722,6 +729,7 @@ function renderHotbar(): void {
 /** What block `block` at (x, y, z) gives in survival, into the inventory (`wear`: the tool held wears). */
 function gather(block: Block, x: number, y: number, z: number, wear = true): void {
   const got = harvest(pack, selected, block, hash3(record.seed ^ gathered++, x, y, z), wear);
+  if (got.got.length) sound.play({ name: 'pickup', gain: 1 });
   if (got.noRoom.length) say(`No room for ${got.noRoom.map(([item]) => itemInfo(item).name.toLowerCase()).join(', ')}.`);
   if (got.woreOut !== null) say(`Your ${itemInfo(got.woreOut).name.toLowerCase()} wore out.`);
   renderHotbar();
@@ -736,7 +744,86 @@ function setMode(toSurvival: boolean): void {
   if (inventory.open) closeInventory();
   if (backpack.open) closeBackpack();
   renderHotbar();
-  void saver.saveRecord(playerState(), time);
+  renderVitals();
+  void saveRecord();
+}
+
+// Health (survival): pips over the hotbar, bubbles under water, a red flash when hurt, and a screen
+// to start again after dying (back at the spawn, with everything still carried).
+const vitalsEl = el(document.body, 'div', 'vitals hidden');
+const hurtEl = el(document.body, 'div', 'hurt-flash');
+const deathRoot = el(document.body, 'div', 'menu-root death hidden');
+const deathPanel = el(deathRoot, 'div', 'menu');
+el(deathPanel, 'div', 'menu-title', 'You died');
+const deathWhy = el(deathPanel, 'p', 'menu-help');
+el(deathPanel, 'p', 'menu-help', 'Everything you carried is still with you.');
+button(el(deathPanel, 'div', 'menu-row'), 'Start again', () => startAgain(), 'menu-go');
+const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.' } as const;
+/** What the HUD shows now, so it's redrawn only when that changes. */
+let vitalsShown = '';
+
+function renderVitals(): void {
+  const S = TUNING.survival;
+  const bubbles = health.air < S.air ? Math.ceil((health.air / S.air) * 10) : -1;
+  const key = survival ? `${health.health},${bubbles}` : '';
+  if (key === vitalsShown) return;
+  vitalsShown = key;
+  vitalsEl.classList.toggle('hidden', !survival);
+  if (!survival) return;
+  let html = '<div class="pips">';
+  for (let i = 0; i < S.maxHealth / 2; i++) {
+    const left = health.health - i * 2;
+    html += `<span class="pip${left >= 2 ? ' full' : left === 1 ? ' half' : ''}"></span>`;
+  }
+  html += '</div>';
+  if (bubbles >= 0) {
+    html += '<div class="bubbles">';
+    for (let i = 0; i < 10; i++) html += `<span class="bubble${i < bubbles ? ' full' : ''}"></span>`;
+    html += '</div>';
+  }
+  vitalsEl.innerHTML = html;
+}
+
+/** Once a frame while playing in survival: hurt, healed or out of air by how the body is. */
+function live(dt: number): void {
+  if (dead || player.waiting) return;
+  const b = player.body;
+  const lost = health.step(dt, {
+    y: b.y,
+    onGround: b.onGround,
+    inWater: b.inWater,
+    flying: player.flying,
+    eyeInWater: player.eyeInWater,
+    touchingCactus: touches(b, world, Block.Cactus),
+  });
+  if (lost) {
+    sound.play({ name: 'hurt', gain: Math.min(1, 0.6 + lost * 0.1) });
+    hurtEl.classList.remove('on');
+    void hurtEl.offsetWidth; // start the flash again
+    hurtEl.classList.add('on');
+  }
+  renderVitals();
+  if (health.dead) die();
+}
+
+function die(): void {
+  dead = true;
+  mining.target = null;
+  if (backpack.open) backpack.hide();
+  deathWhy.textContent = health.cause ? CAUSES[health.cause] : '';
+  deathRoot.classList.remove('hidden');
+  document.exitPointerLock();
+  void saveRecord();
+}
+
+function startAgain(): void {
+  dead = false;
+  deathRoot.classList.add('hidden');
+  health.reset();
+  player.moveTo(spawnFeet.x, spawnFeet.y, spawnFeet.z);
+  renderVitals();
+  input.lock();
+  void saveRecord();
 }
 
 /** The pause menu's part for the world's mode, and switching it. */
@@ -946,7 +1033,7 @@ function togetherMenu(panel: HTMLElement, refresh: () => void): void {
 applySettings(settings);
 const paused = () => !input.locked && !autofly;
 // The picker frees the mouse too, without the pause menu.
-const showPause = () => (pauseMenu.visible = paused() && !inventory.open && !backpack.open);
+const showPause = () => (pauseMenu.visible = paused() && !inventory.open && !backpack.open && !dead);
 document.addEventListener('pointerlockchange', showPause);
 showPause();
 
@@ -969,6 +1056,7 @@ function frame(now: number): void {
   if (autofly?.active) autofly.update(now, dt, interval);
   else if (!paused()) {
     player.update(dt);
+    if (survival) live(dt);
     // Footsteps, landing, splashing and digging, from how the player moved this frame.
     const b = player.body;
     const moved = Math.hypot(b.x - lastFeet.x, b.z - lastFeet.z);
@@ -1102,20 +1190,26 @@ function applySettings(s: Settings): void {
 
 // --- Saving ----------------------------------------------------------------------------------
 
-/** Where the player is, to come back to. */
+/** Where the player is, to come back to (dead: where they'll start again). */
 function playerState(): PlayerState {
-  const { x, y, z } = player.body;
+  const { x, y, z } = dead ? spawnFeet : player.body;
   return { x, y, z, yaw: input.yaw, pitch: input.pitch, flying: player.flying };
+}
+
+/** The record saved: where the player is, the time, and in it the survival inventory and health as they are. */
+function saveRecord(): Promise<void> {
+  survivalRecord.health = health.toJSON();
+  return saver.saveRecord(playerState(), time);
 }
 
 // Edited chunks go within TUNING.save.delayMs of an edit (`saver.edited`); where the player is
 // and the time, every TUNING.save.recordIntervalMs; everything when the page is hidden or left.
 setInterval(() => {
-  if (!autofly?.active) void saver.saveRecord(playerState(), time);
+  if (!autofly?.active) void saveRecord();
 }, TUNING.save.recordIntervalMs);
 function saveAll(): void {
   void saver.writeDirty();
-  void saver.saveRecord(playerState(), time);
+  void saveRecord();
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') saveAll();
@@ -1137,7 +1231,7 @@ async function quit(): Promise<void> {
   closeToFriends();
   pauseMenu.quitting();
   await saver.writeDirty();
-  await saver.saveRecord(playerState(), time);
+  await saveRecord();
   location.href = location.pathname;
 }
 
@@ -1152,6 +1246,7 @@ async function openStore(): Promise<WorldStore> {
 }
 
 renderHotbar();
+renderVitals();
 // `?bot` (`?bot=3`: up to three): open to the test guests now that everything is made.
 if (network) {
   const room = network.room('BOT1');

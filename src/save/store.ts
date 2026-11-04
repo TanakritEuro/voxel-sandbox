@@ -11,9 +11,10 @@ import type { Stack } from '../survival/inventory';
 /** Creative (every block, flying) or survival (what you've gathered, `survival/`). */
 export type WorldMode = 'creative' | 'survival';
 
-/** A survival player's own: the inventory (cleaned by `Inventory.from` on load). */
+/** A survival player's own: the inventory and health (cleaned by `Inventory.from` and `Health.from` on load). */
 export interface SurvivalRecord {
   inventory: (Stack | null)[];
+  health?: { health: number; air: number };
 }
 
 export interface PlayerState {

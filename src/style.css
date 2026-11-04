@@ -389,6 +389,82 @@ body.menu-mode #hud {
   text-align: center;
 }
 
+/* Survival health: pips over the hotbar (a pip for two points), air bubbles under water, a red flash. */
+.vitals {
+  position: absolute;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.vitals.hidden {
+  display: none;
+}
+
+.pips,
+.bubbles {
+  display: flex;
+  gap: 3px;
+}
+
+.pip {
+  width: 14px;
+  height: 12px;
+  border-radius: 3px;
+  border: 2px solid rgba(0, 0, 0, 0.55);
+  background: rgba(40, 10, 10, 0.55);
+}
+
+.pip.full {
+  background: #e0393e;
+}
+
+.pip.half {
+  background: linear-gradient(90deg, #e0393e 50%, rgba(40, 10, 10, 0.55) 50%);
+}
+
+.bubble {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  opacity: 0.25;
+}
+
+.bubble.full {
+  background: #9fdcff;
+  opacity: 1;
+}
+
+.hurt-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(200, 20, 20, 0.35);
+  opacity: 0;
+  transition: opacity 0.35s ease-out;
+}
+
+.hurt-flash.on {
+  opacity: 1;
+  transition: none;
+  animation: hurt-fade 0.35s ease-out forwards;
+}
+
+@keyframes hurt-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+.menu-root.death {
+  background: rgba(90, 0, 0, 0.45);
+}
+
 /* The survival inventory screen: slots, the stack picked up, crafting. */
 .menu-root.backpack {
   background: rgba(8, 12, 18, 0.35);

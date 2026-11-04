@@ -116,6 +116,19 @@ export const TUNING = {
     withoutPick: 3,
     /** One in this many leaves drops a stick. */
     leafStick: 8,
+    /** Health (points; the HUD shows a pip for two). */
+    maxHealth: 20,
+    /** A fall up to this many blocks costs nothing; a point a block beyond. */
+    safeFall: 3,
+    /** Seconds of air under water, how fast it comes back above (seconds a second), then a point every `drownEvery` s. */
+    air: 10,
+    airBack: 5,
+    drownEvery: 1,
+    /** A point every this many seconds touching a cactus. */
+    cactusEvery: 0.5,
+    /** Healing: from this long after the last hurt (s), a point every `healEvery` s. */
+    healDelay: 5,
+    healEvery: 4,
   },
   /** Playing together (`net/`). */
   net: {

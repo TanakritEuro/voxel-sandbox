@@ -12,6 +12,9 @@
 // groans low, a hopper chirps twice, a crag goat bleats, a dune beetle chitters; hurt, the call
 // comes higher and shorter over a thump. A hopper lands with a soft thump; a mob that's gone
 // leaves a rising whoosh of noise. Each is panned to the side it came from.
+//
+// In survival, being hurt is a low thump with a quick falling grunt; picking something up a soft
+// rising blip.
 
 import { MobKind } from '../mobs/kinds';
 import type { MobVoice } from '../mobs/mobs';
@@ -112,6 +115,14 @@ export class Sound {
         break;
       case 'mob':
         this.mob(e.kind, e.voice, e.gain, e.pan);
+        break;
+      case 'hurt':
+        this.thump(110, 0.18, e.gain * 0.8);
+        this.glide('sawtooth', 320, 150, 0.14, e.gain * 0.12, 900);
+        this.material('dirt', e.gain * 0.5, 1.2, 0);
+        break;
+      case 'pickup':
+        this.glide('triangle', 620, 1050, 0.07, e.gain * 0.18, 4000);
         break;
     }
   }
@@ -235,6 +246,28 @@ export class Sound {
   }
 
   /** A low thump: a sine sliding down an octave (to `out`, or the master). */
+  /** A tone gliding from `from` to `to` Hz over `decay` s, through a low-pass at `cutoff`. */
+  private glide(type: OscillatorType, from: number, to: number, decay: number, gain: number, cutoff: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = type;
+    const k = vary(0.05);
+    o.frequency.setValueAtTime(from * k, t);
+    o.frequency.exponentialRampToValueAtTime(to * k, t + decay);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = cutoff;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.001, t + decay);
+    o.connect(f).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + decay + 0.02);
+  }
+
   private thump(frequency: number, decay: number, gain: number, out?: AudioNode): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
