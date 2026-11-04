@@ -26,9 +26,11 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 10 (logic blocks) in progress, plan approved (`docs/milestone-10.md`).
-Milestones 1–9 built (`docs/milestone-1.md` to `docs/milestone-9.md`), waiting for playtests
-(Milestone 9, multiplayer over PeerJS: a world opened to up to three friends from the pause menu
+Milestones 1–10 built (`docs/milestone-1.md` to `docs/milestone-10.md`), waiting for playtests
+(Milestone 10, logic blocks: copper wire carrying a signal 15 blocks, switches, buttons, signal
+lamps that light the world, charged blocks, inverters and delays of 1–4 ticks facing the way they're
+placed; ticked 10 times a second by the host, only what changed looked at, saved and carrying on
+after loading, guests' clicks made by the host; Milestone 9, multiplayer over PeerJS: a world opened to up to three friends from the pause menu
 with a four-letter code, joined from the world list; the host's browser owns the world, guests
 generate the land from the seed and get edited chunks, edits checked and shared by the host,
 players drawn as blocky figures with names, the host's water, mobs and time shared; Milestone 8, flowing water: a cellular automaton woken by edits, falling, spreading in eighths
@@ -133,7 +135,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
   `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
-  `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one;
+  `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one
+  and the blocks written kept in reused arrays;
   `sameLight`: changes that can't change light skipped; shared `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
   and the walk from the player's chunk that decides what to mesh and draw),
   `world.ts` (`Chunk`, `World`: get/set across chunks (`setBlocks`: many, one light update), columns, light and stale chunks on edit,

@@ -384,3 +384,78 @@ does). That's for the playtest at the end.
 
 **Not tried here:** a real guest clicking a switch in a second browser. The plumbing is the
 edits', which Milestone 9 tried over PeerJS, and the tests run it end to end. That's for the playtest.
+
+## Step 5: measurements, and the end of the milestone (2026-11-04)
+
+**Light, once more.** With the chunk lookups cached (step 3), the light's other big cost was its
+record of which blocks it wrote: a `Map` per chunk, an entry per block. Switching it off showed it was
+half the light's time. It's now a `Uint8Array` per chunk marking the blocks written, with their
+places and old light in plain arrays. The arrays are reused, cleared block by block, and found
+through the last chunk written. It records exactly what it did, so light and remeshing are
+unchanged (the light, world and mesher tests pass as before).
+
+**Bench** (`npm run bench`, `edits`, light only, medians):
+
+| | before step 3 | after step 3 | now |
+| --- | --- | --- | --- |
+| 15 signal lamps lit at once (`setBlocks`) | 7.23 ms | 2.19 ms | 1.52 ms |
+| put out at once | 5.24 ms | 2.35 ms | 1.43 ms |
+| A torch at a chunk corner, surface: placed / taken away | 1.91 / 1.63 ms | 1.08 / 0.91 ms | 0.68 / 0.68 ms |
+| A torch near a chunk corner in a cave | 1.01 / 0.95 ms | 0.65 / 0.51 ms | 0.45 / 0.44 ms |
+
+**Chrome, radius 8** (your laptop, `?seed=7&circuit&mobs=0`: the clock, the 50-stage chaser and the
+1,024-wire grid in view, the grid switched every second). 20 s, from a second after building:
+
+| | frames | over 20 ms | slowest frame | slowest tick: working out / making the changes |
+| --- | --- | --- | --- | --- |
+| End of step 3 | 1,171 | 0 | 17.1 ms | 2.1 / 5.3 ms |
+| With a test guest (step 4) | 1,194 | 0 | 17.2 ms | 2.1 / 6.2 ms |
+| Now (two runs) | 1,195, 1,201 | 0, 0 | 17.1, 17.1 ms | 1.9 / 4.6, 2.1 / 6.0 ms |
+
+- **Typical ticks:**
+  - the chaser's (30–34 changes) take 0.2–0.4 ms to work out and 2.1–2.9 ms to make, nearly all of
+    that the lamps' light;
+  - the grid's flip (1,056 wires) takes 1.5 ms to work out.
+- **The plan's targets:**
+  - **No frame over 20 ms: met.**
+  - **A busy tick under 2 ms: met for working the logic out** (2.1 ms at worst, for 1,024 wires at
+    once), **not for making its changes.** Lamps changing light cost about 0.1 ms each in the bench and
+    more in the game, so a tick of 15 lamps takes 2–6 ms. It falls on one frame in six, and frames
+    stayed under 17.2 ms. A much bigger lamp display could go over; the next step would be spreading
+    a tick's light over two frames, as the water's changes are.
+- **The occasional 33 ms frame** seen in step 3 was Chrome, not the logic. Chrome's long-frame
+  timings showed it: the click that captures the mouse took over 200 ms, then a frame of half a second
+  with no script in it while Chrome showed its notice. The circuit is built as the game unpauses,
+  so this fell inside its report. The report now starts a second after building. Run alone, the same
+  world had no frame over 20 ms in 30 s.
+
+**Known limits:**
+- **Wires are flat:** no climbing a step. Signals change level only through a charged block under
+  wire.
+- **No pressure plates,** and nothing reads mobs or players.
+- **Only lamps change light,** at about 0.1 ms each (more in the game) a tick: a wall of hundreds
+  blinking at once would cost frames.
+- **What's on its way isn't saved:** a delay's pulse partway, a button's second. They settle when
+  the world is loaded again.
+- **Circuits stop at unloaded land,** as water does: a wire into a column that isn't loaded ends
+  there, and carries on when it loads.
+- **The host runs every circuit.** A guest's click waits a round trip for the host's answer (shown
+  at once, put right if the host disagrees).
+
+## Playtest questions
+
+1. **Placing:** build a switch, wire and a lamp from the picker (E). Is it clear where each goes
+   (on tops only), and that wire joins its neighbours on one level?
+2. **Using:** right click a switch, a button and a delay. Does each do what you expect? Is Shift and
+   right click to build against them easy to find?
+3. **Gates:** place an inverter and a delay. Can you tell from the top which way they face, and does
+   facing the way you look feel right?
+4. **Timing:** is a button's second long enough? Delays of 1–4 ticks (0.1–0.4 s): a useful range?
+   Does a clock (an inverter feeding itself through a delay) blink at a pace you'd want?
+5. **Reach:** are 15 blocks of wire enough, and does the wire's glow show its strength fading?
+6. **Lamps:** are they bright enough to light a room at night, and do they switch quickly?
+7. **Saving:** leave a clock running, save and quit, come back. Does it carry on?
+8. **Water:** let water run over a circuit. Washing it away is expected; is it a nuisance?
+9. **Together:** host, and have a friend flip your switches. Do both of you see the same, quickly?
+10. **`?circuit`:** does the chaser look right, and is the game smooth with it running?
+11. **What's missing:** a pressure plate, wires up steps, a block that reads a lamp?

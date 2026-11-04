@@ -238,12 +238,24 @@ function pushWorld(x: number, y: number, z: number): void {
   worldQueue[worldTail++] = z;
 }
 
+/** A chunk's blocks whose light an edit wrote: which (`seen`), and the packed light each had before the first write. */
+interface Touched {
+  /** 1 for each block written; from `spareSeen`, and cleared back to 0 before it goes back. */
+  seen: Uint8Array;
+  at: number[];
+  before: number[];
+}
+/** `Touched.seen` arrays to reuse, all 0. */
+const spareSeen: Uint8Array[] = [];
+
 /**
- * During an edit (`updateLight`): per chunk, the blocks whose light was written, with the
- * packed light each had before the first write; null otherwise. Light taken away is often
- * put back as it was, so what changed is only known at the end.
+ * During an edit (`updateLight`): per chunk, the blocks whose light was written; null otherwise.
+ * Light taken away is often put back as it was, so what changed is only known at the end. The
+ * chunk last written and its record are kept, as most writes follow one another in one chunk.
  */
-let touched: Map<Chunk, Map<number, number>> | null = null;
+let touched: Map<Chunk, Touched> | null = null;
+let touchedChunk: Chunk | null = null;
+let touchedLast: Touched | null = null;
 const EDGE_LOW = [0, -1];
 const EDGE_HIGH = [0, 1];
 const MIDDLE = [0];
@@ -252,19 +264,34 @@ const MIDDLE = [0];
 function setLevel(chunk: Chunk, i: number, shift: number, level: number): void {
   const before = chunk.light[i];
   if (touched) {
-    let blocks = touched.get(chunk);
-    if (!blocks) touched.set(chunk, (blocks = new Map()));
-    if (!blocks.has(i)) blocks.set(i, before);
+    let t: Touched | null | undefined = touchedLast;
+    if (touchedChunk !== chunk || !t) {
+      t = touched.get(chunk);
+      if (!t) touched.set(chunk, (t = { seen: spareSeen.pop() ?? new Uint8Array(V), at: [], before: [] }));
+      touchedChunk = chunk;
+      touchedLast = t;
+    }
+    if (!t.seen[i]) {
+      t.seen[i] = 1;
+      t.at.push(i);
+      t.before.push(before);
+    }
   }
   chunk.ownLight()[i] = (before & ~(15 << shift)) | (level << shift);
 }
 
-/** The chunks with a block whose light differs from before the edit, and the neighbours that pad such a block. */
-function changedChunks(world: World, edits: Map<Chunk, Map<number, number>>): Set<Chunk> {
+/**
+ * The chunks with a block whose light differs from before the edit, and the neighbours that pad
+ * such a block. Gives the edit's `seen` arrays back, cleared.
+ */
+function changedChunks(world: World, edits: Map<Chunk, Touched>): Set<Chunk> {
   const out = new Set<Chunk>();
-  for (const [chunk, blocks] of edits) {
-    for (const [i, before] of blocks) {
-      if (chunk.light[i] === before) continue;
+  for (const [chunk, { seen, at, before }] of edits) {
+    for (const i of at) seen[i] = 0;
+    spareSeen.push(seen);
+    for (let n = 0; n < at.length; n++) {
+      const i = at[n];
+      if (chunk.light[i] === before[n]) continue;
       out.add(chunk);
       // At a chunk's edge the block is in its neighbours' padding too (up to 7 of them at a corner).
       const lx = i & (S - 1);
@@ -458,8 +485,9 @@ export function updateLight(world: World, x: number, y: number, z: number): Set<
  * light changed, with the neighbours that pad the changed blocks.
  */
 export function updateLightAt(world: World, at: readonly number[]): Set<Chunk> {
-  const edits = new Map<Chunk, Map<number, number>>();
+  const edits = new Map<Chunk, Touched>();
   touched = edits;
+  touchedChunk = touchedLast = null;
   lastChunk = undefined;
   for (const shift of [SUN, BLOCK_LIGHT]) {
     // Take away what the blocks had, and what came from it.
@@ -503,6 +531,7 @@ export function updateLightAt(world: World, at: readonly number[]): Set<Chunk> {
     spreadWorld(world, shift);
   }
   touched = null;
+  touchedChunk = touchedLast = null;
   lastChunk = undefined;
   return changedChunks(world, edits);
 }

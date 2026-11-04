@@ -5,8 +5,10 @@
 // - a chaser: 50 delays of 1 passing the clock's pulse along +x, a lamp beside the wire after each;
 // - a 32 × 32 grid of wire fed by a switch that `update` flips every second (the worst case: a
 //   network of 1,024 wires worked out at once), a lamp at each corner.
-// For 20 s from the building (whose own frames aren't counted) it counts frames and logic ticks,
-// then reports to the console and the `?stats` overlay, as `?flood` does.
+// For 20 s, from a second after the building, it counts frames and logic ticks, then reports to the
+// console and the `?stats` overlay, as `?flood` does. The building happens as the game unpauses, so
+// that second keeps out the building's own frames and the browser's when it captures the mouse
+// (half a second, once).
 
 import { LONG_FRAME_MS } from './stats';
 import { Block, delay, inverter } from './world/blocks';
@@ -26,6 +28,8 @@ export interface CircuitReport {
   buildMs: number;
 }
 
+/** Not counted after the building (ms). */
+const SETTLE = 1000;
 const LONG = 104;
 const WIDE = 40;
 
@@ -39,8 +43,6 @@ export class Circuit {
   private y = 0;
   private z0 = 0;
   private report: CircuitReport | null = null;
-  /** Frames left not to count after the building. */
-  private skip = 0;
 
   constructor(
     /** Make these changes as the game does (blocks, light, remeshing, saving), waking the logic round them. */
@@ -59,24 +61,19 @@ export class Circuit {
       this.report = { frames: 0, over20: 0, maxFrame: 0, ticks: 0, changes: 0, maxSim: 0, maxApply: 0, buildMs: performance.now() - t0 };
       this.phase = 'running';
       this.since = this.flipped = now;
-      this.skip = 2;
       return;
     }
     if (this.phase !== 'running') {
       if (now - this.flipped > 1000) this.flip(now);
       return;
     }
-    // The frames that carried the building.
-    if (this.skip > 0) {
-      this.skip--;
-      return;
-    }
+    if (now - this.flipped > 1000) this.flip(now);
+    if (now - this.since < SETTLE) return;
     const r = this.report!;
     r.frames++;
     if (interval > LONG_FRAME_MS) r.over20++;
     r.maxFrame = Math.max(r.maxFrame, interval);
-    if (now - this.flipped > 1000) this.flip(now);
-    if (now - this.since > 20000) {
+    if (now - this.since > SETTLE + 20000) {
       this.phase = 'done';
       const text =
         `circuit: 20 s, ${r.frames} frames, ${r.over20} over 20 ms, slowest ${r.maxFrame.toFixed(1)} ms; ` +
@@ -89,7 +86,7 @@ export class Circuit {
   /** A logic tick that changed something happened (while running, it counts). */
   tick(changes: number, simMs: number, applyMs: number): void {
     const r = this.report;
-    if (this.phase !== 'running' || !r) return;
+    if (this.phase !== 'running' || !r || performance.now() - this.since < SETTLE) return;
     r.ticks++;
     r.changes += changes;
     r.maxSim = Math.max(r.maxSim, simMs);
