@@ -18,8 +18,8 @@
 // a hopper lands with a soft thump, a hit one cries out, and the hit that takes the last of its
 // health sends it off in a puff.
 //
-// Hostile kinds (the gloamer; only when asked, in survival) come apart from the animals: a few
-// times a second one may appear 24–48 blocks from a player, standing where it's dark (sunlight by
+// Hostile kinds (the gloamer; only when asked, in survival) come apart from the animals: every
+// couple of seconds one may appear 24–36 blocks from a player, standing where it's dark (sunlight by
 // the daylight, or block light, at most its kind's `darkness`: the surface at night, caves at any
 // hour, never by a torch), at most `most` for each player. Out on the surface by day it fades into
 // a puff. It hunts the players given as prey (`brain.ts`), and its hits are kept for the game to
@@ -133,7 +133,7 @@ export class MobManager {
     }
     this.untilHostile -= dt;
     if (this.untilHostile <= 0 && prey.length) {
-      this.untilHostile = TUNING.mobs.spawnInterval;
+      this.untilHostile = TUNING.mobs.hostileInterval;
       this.trySpawnHostile(prey[Math.floor(this.rng() * prey.length)], prey, daylight);
     }
     if (dt > 0) this.fade(daylight);

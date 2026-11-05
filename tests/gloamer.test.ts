@@ -39,7 +39,7 @@ const top = (x: number, z: number) => {
 };
 
 describe('the gloamer', () => {
-  it('hunts a player it sees, reaching them and hitting once a second; at night too, never resting', () => {
+  it('hunts a player it sees, reaching them and hitting every so often; at night too, never resting', () => {
     const player = { x: 10.5, y: 1, z: 0.5 };
     const { mob, hits, firstHit } = chase([0, 0], player, 8);
     expect(mob.state).toBe('hunt');
@@ -47,9 +47,9 @@ describe('the gloamer', () => {
     // 10 blocks at 4.8 a second, less reach: there in under 3 s.
     expect(firstHit).toBeLessThan(3);
     expect(Math.hypot(mob.body.x - player.x, mob.body.z - player.z)).toBeLessThan(1.6);
-    // Once a second from then on.
-    expect(hits.length).toBeGreaterThanOrEqual(Math.floor(8 - firstHit));
-    expect(hits.length).toBeLessThanOrEqual(Math.ceil(8 - firstHit) + 1);
+    // Once every `every` s from then on.
+    expect(hits.length).toBeGreaterThanOrEqual(Math.floor((8 - firstHit) / H.every));
+    expect(hits.length).toBeLessThanOrEqual(Math.ceil((8 - firstHit) / H.every) + 1);
     expect(hits.every((t) => t === 0)).toBe(true);
   });
 
@@ -101,7 +101,7 @@ describe('the gloamer', () => {
     expect(g.state).not.toBe('flee');
   });
 
-  it('appears only in the dark, 24–48 blocks from a player, at most 4 for each', () => {
+  it('appears only in the dark, 24–36 blocks from a player, at most 3 for each', () => {
     const lightAt = (x: number, y: number, z: number, daylight: number) => {
       const l = world.getLight(x, y, z);
       return Math.max(Math.round((l >> 4) * daylight), l & 15);

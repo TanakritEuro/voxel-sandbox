@@ -7,8 +7,9 @@
 //   flee    after a hit: knocked back, then runs from where the hit came from for a few seconds;
 //   rest    at night: lies down and stays put until morning.
 //   hunt    a hostile kind (`KindInfo.hostile`) that sees a player within its sight: paths to them,
-//           asking for the way again every second or when they've moved off, and hits them once a
-//           second when within reach. It never rests or flees; a hit knocks it back a little.
+//           asking for the way again every second or when they've moved off, and hits them every
+//           so often (its kind's `hostile.every`) when within reach. It never rests or flees; a
+//           hit knocks it back a little.
 //
 // Following a path: steer at the next waypoint's middle, jump when it's higher, on to the next
 // within `arrive`. No closer to it for `stuckSeconds` (a block placed in the way, another mob):
@@ -150,7 +151,7 @@ function gapTo(mob: Mob, p: Prey): number {
 /**
  * A hostile mob's hunting, before it moves: the nearest player within sight becomes its target
  * (none: it goes back to wandering); it asks for a way to them every second, or when they've moved
- * off from where it was going; within reach it stands, faces them and hits once a second. Returns
+ * off from where it was going; within reach it stands, faces them and hits every `hostile.every` s. Returns
  * the speed it should go along its path, or a straight line to run if it has no way.
  */
 function hunt(mob: Mob, ctx: MobContext, dt: number): { speed: number; straight: [number, number] | null } {

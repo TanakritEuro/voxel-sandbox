@@ -480,3 +480,32 @@ gloamers gathered to their cap of 4, then 10 s):
 - No console errors after the fix.
 - **It's fierce:** four striking 3 points a second each is up to 12 points a second once they're
   round you. That's the plan's numbers; it's the first thing to ask in the playtest.
+
+## Step 4, softened (2026-11-05)
+
+You asked for the gloamer to be softened before going on.
+
+| | as built in step 4 | now |
+| --- | --- | --- |
+| A hit | 3 points | 2 points |
+| How often it hits | every 1 s | every 1.25 s |
+| At most for each player | 4 | 3 |
+| A try at one appearing | 4 a second (as the animals) | every 2 s (`TUNING.mobs.hostileInterval`) |
+| The most a second, all round you | 12 points | 4.8 points |
+| One alone, from full health | 7 s | 12.5 s |
+
+**Measured:**
+- **Chrome** (`?seed=7&survival&kit&time=0`, standing still, not fighting):
+  - two appeared in the first 3 s and a third by 9 s;
+  - health 20, 18, 14, 10, 2, 0: dead at about 16 s, where before it was about 9 s;
+  - no console errors.
+- **Bench** (`gloamers`): three round a still player hit 20 times in 10 s (40 points), where four hit
+  12 times (36 points) before.
+  - Once all three have reached a player who does nothing, it's about as deadly as before: before,
+    not all four reached the player in the 10 s.
+  - The difference is in how slowly they gather and how much less each can do: a player who
+    fights (an axe sees one off in 3 hits) or runs (a sprint is faster) has far longer.
+- Frames: median 0.023 ms, worst 0.30.
+
+**Whether it's still too fierce** is for the playtest. The numbers are in one place,
+`KINDS[MobKind.Gloamer].hostile` and `TUNING.mobs.hostileInterval`.

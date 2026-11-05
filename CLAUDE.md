@@ -173,7 +173,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   fed, death; stepped a frame at a time with how the body is).
 - `src/mobs/` — `kinds.ts` (the four animals and the gloamer: size, speeds, climb and drop, biomes, ground,
   groups, health in points; `hostile`: sight, reach, hit, darkness to appear in, sun to fade in, how many), `brain.ts` (a mob: idle, wander, flee, rest, and hunt for hostile kinds (paths to the
-  nearest prey, hitting at reach once a second); following paths, jumping, getting
+  nearest prey, hitting at reach every so often); following paths, jumping, getting
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
   spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
   or with the column, a cap, stepping at the fixed rate with a per-frame path search budget;

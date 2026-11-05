@@ -323,6 +323,8 @@ export const TUNING = {
     wake: 0.4,
     /** A try at spawning a group this often (seconds), this far from the player (blocks, across). */
     spawnInterval: 0.25,
+    /** A try at a hostile mob this often (seconds): they gather slowly. */
+    hostileInterval: 2,
     spawnDistance: [24, 64] as [number, number],
     /** Gone beyond this (blocks, across) or when its column unloads. */
     despawnDistance: 96,

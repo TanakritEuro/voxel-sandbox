@@ -145,7 +145,9 @@ export const KINDS: readonly KindInfo[] = [
     group: [1, 1],
     health: 8,
     // It sees further than it appears, so it comes for a player from where it appears.
-    hostile: { sight: 32, reach: 0.9, damage: 3, push: 5, every: 1, darkness: 4, fadeSun: 12, most: 4, distance: [24, 36] },
+    // Softened after the first try (3 points every second, 4 a player, killed a player in 9 s):
+    // up to 4.8 points a second with all three round you, one alone about 12 s to kill you.
+    hostile: { sight: 32, reach: 0.9, damage: 2, push: 5, every: 1.25, darkness: 4, fadeSun: 12, most: 3, distance: [24, 36] },
   },
 ];
 
