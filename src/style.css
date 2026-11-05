@@ -518,8 +518,53 @@ body.menu-mode #hud {
   border-color: transparent;
 }
 
-.backpack-cursor.hidden {
+.backpack-cursor.hidden,
+.backpack-right.hidden {
   display: none;
+}
+
+/* A furnace on the inventory screen: what to smelt over its flame and fuel, an arrow to what's made. */
+.furnace-works {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 10px 0;
+}
+
+.furnace-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.furnace-flame {
+  width: 14px;
+  height: 20px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.furnace-flame div {
+  width: 100%;
+  background: linear-gradient(#fff0c0, #ffa848);
+}
+
+.furnace-arrow {
+  width: 56px;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.furnace-arrow div {
+  height: 100%;
+  background: #f0c419;
 }
 
 .recipe-list {

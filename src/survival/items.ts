@@ -21,6 +21,8 @@ export enum Item {
   IronPick,
   IronAxe,
   IronSpade,
+  RawCopper,
+  RawIron,
 }
 
 /** What a tool digs: a pick stone and ores, an axe wood, a spade earth. */
@@ -65,6 +67,8 @@ const ITEMS: readonly ItemInfo[] = [
       ['Iron', 3],
     ] as const
   ).flatMap(([what, tier]) => [tool(`${what} pick`, 'pick', tier), tool(`${what} axe`, 'axe', tier), tool(`${what} spade`, 'spade', tier)]),
+  material('Raw copper'),
+  material('Raw iron'),
 ];
 
 const PLACEABLE_SET = new Set<number>(PLACEABLE);

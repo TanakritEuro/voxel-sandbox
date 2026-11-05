@@ -11,7 +11,7 @@ import { TUNING } from '../config';
 import { encodeRle } from '../save/rle';
 import type { WorldSaver } from '../save/saver';
 import type { SavedChunk } from '../workers/protocol';
-import { Block, BLOCKS, delay, FACINGS, inverter, isTorch, useBlock } from '../world/blocks';
+import { Block, BLOCKS, delay, FACINGS, furnace, inverter, isTorch, useBlock } from '../world/blocks';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
 import { createBody, overlapsBlock } from '../world/physics';
 import type { World } from '../world/world';
@@ -51,7 +51,7 @@ export function editAllowed(who: PlayerState | undefined, everyone: Iterable<Pla
 }
 
 /** Gates as placed: off, facing any way (a delay set to 1). */
-const PLACED_GATES = new Set<number>(FACINGS.flatMap((_, f) => [inverter(f, false), delay(f, 1, false)]));
+const PLACED_GATES = new Set<number>(FACINGS.flatMap((_, f) => [inverter(f, false), delay(f, 1, false), furnace(f, false)]));
 
 /**
  * A block a player can set: air (breaking), one from the picker, a torch (on a floor or a wall), or

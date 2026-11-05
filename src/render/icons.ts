@@ -48,7 +48,7 @@ export function blockIcons(pixels: Uint8Array = makeTextures()): string[] {
     ctx.imageSmoothingEnabled = false;
     for (const { map, shade, face } of FACES) {
       ctx.setTransform(...map);
-      ctx.drawImage(layer(face === 'top' ? info.textures.top : info.textures.side), 0, 0);
+      ctx.drawImage(layer(face === 'top' ? info.textures.top : info.front && shade > 0.3 ? info.front.texture : info.textures.side), 0, 0);
       if (shade) {
         // Darken only where the texture is (leaves and glass keep their holes).
         ctx.globalCompositeOperation = 'source-atop';

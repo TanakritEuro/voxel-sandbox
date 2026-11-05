@@ -129,6 +129,8 @@ export const TUNING = {
     /** Healing: from this long after the last hurt (s), a point every `healEvery` s. */
     healDelay: 5,
     healEvery: 4,
+    /** Seconds a furnace takes to smelt one item (`survival/furnace.ts`); fuel is counted in these. */
+    smeltSeconds: 5,
     /** Items on the ground (`survival/ground.ts`). */
     ground: {
       /** Physics step (s); an item at rest sleeps, looking at the block under it this often (s). */

@@ -26,6 +26,8 @@ const COPPER = palette(0xd0703a, 0x8a4520, 0xf3a668);
 const COAL = palette(0x2e2e30, 0x161617, 0x5a5a5e);
 const CRYSTAL = palette(0x7fdcec, 0x2f8fa8, 0xe2fcff);
 const HANDLE = palette(0x8a6238, 0x5a3d20, 0xa87c4c);
+const RAW_COPPER = palette(0xb5683c, 0x6b6560, 0xe0925a);
+const RAW_IRON = palette(0xb8a898, 0x6b6560, 0xe3d6c8);
 
 // Masks, row 0 at the top: '.' empty, m/d/l the material's main, dark and light, h a handle.
 const PICK = [
@@ -160,6 +162,8 @@ const ART: Record<number, [string[], Palette]> = {
   [Item.IronPick]: [PICK, IRON],
   [Item.IronAxe]: [AXE, IRON],
   [Item.IronSpade]: [SPADE, IRON],
+  [Item.RawCopper]: [LUMP, RAW_COPPER],
+  [Item.RawIron]: [LUMP, RAW_IRON],
 };
 
 /** Item `item`'s picture: 16 × 16 RGBA, row 0 at the top, transparent where empty; null for a block (it has its own icon). */

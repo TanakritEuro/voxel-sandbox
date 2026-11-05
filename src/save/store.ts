@@ -43,6 +43,8 @@ export interface WorldRecord {
   mode?: WorldMode;
   /** The survival inventory, kept apart from the creative hotbar; missing until first played in survival. */
   survival?: SurvivalRecord;
+  /** Furnaces' contents by place ("x,y,z"), cleaned by `Furnaces.from`; missing until a furnace has something in it. */
+  furnaces?: Record<string, unknown>;
   /** Guests' survival states, by name, kept by the host for when they come back. */
   guests?: Record<string, SurvivalRecord>;
 }

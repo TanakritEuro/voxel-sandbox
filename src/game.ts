@@ -24,6 +24,7 @@ import { HOTBAR_SLOTS, Inventory as SurvivalInventory } from './survival/invento
 import { isBlockItem, Item, itemInfo } from './survival/items';
 import { breakWith, heldTool, placeableIn } from './survival/play';
 import { type GroundItem, GroundItems } from './survival/ground';
+import { type Furnace, Furnaces } from './survival/furnace';
 import { Health } from './survival/health';
 import { hash3 } from './math';
 import { ChunkRenderer } from './render/chunkRenderer';
@@ -55,7 +56,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { Block, BLOCKS, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { Block, BLOCKS, furnace, furnaceOf, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
@@ -187,12 +188,14 @@ let dead = false;
 if (unsaved && !guest && params.has('kit')) {
   for (const item of [Item.StonePick, Item.WoodAxe, Item.IronSpade, Block.Torch, Block.Planks, Item.WoodPick, Item.IronPick, Item.StoneAxe, Item.WoodSpade])
     pack.add(item, isBlockItem(item) ? 16 : 1);
-  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6]] as const) pack.add(item, n);
+  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6]] as const) pack.add(item, n);
 }
 /** Blocks broken in survival so far: with the place, what seeds a block's drops. */
 let gathered = 0;
 /** What lies on the ground: dropped by blocks broken in survival, and thrown (`survival/ground.ts`). */
 const ground = new GroundItems();
+/** Furnaces' contents by place (`survival/furnace.ts`), saved with the record. */
+const furnaces = Furnaces.from(record.furnaces);
 let time = timeHeld ? Number(timeParam) : record.time;
 
 const world = new World(record.seed);
@@ -507,8 +510,12 @@ function closeToFriends(): void {
   pauseMenu.refresh();
 }
 
-/** While playing together the world goes on when this player pauses: water, mobs and time. */
-const worldRuns = () => !paused() || host !== null || guest !== null;
+/**
+ * The world goes on (water, mobs, time, furnaces) except in the pause menu playing alone: an
+ * inventory screen or the picker leaves it going, so a furnace burns as you watch, and playing
+ * together it never stops.
+ */
+const worldRuns = () => !paused() || host !== null || guest !== null || backpack.open || inventory.open;
 /** Arm swings so far (digging hits, breaks, places), for the others to see. */
 let swings = 0;
 let lastStateSent = Number.NEGATIVE_INFINITY;
@@ -708,9 +715,35 @@ const backpack = new Backpack(document.body, pack, iconOf, {
   changed: () => renderHotbar(),
   lost: (s) => dropAtFeet(s),
 });
-function openBackpack(): void {
-  backpack.show();
+/** The inventory screen, with crafting, or with `furnace` (opened from one). */
+function openBackpack(furnace: Furnace | null = null): void {
+  backpack.show(furnace);
   input.unlock();
+}
+
+/**
+ * Once a frame (not on a guest): every furnace in loaded land burns and smelts, and its block is lit
+ * or put out to match, all at once as a tick of water is (light in one update, remeshed in the
+ * workers). A furnace kept where there's no furnace block any more is forgotten.
+ */
+function tickFurnaces(dt: number): void {
+  const gone: [number, number, number][] = [];
+  const changes: LogicChange[] = [];
+  for (const [x, y, z, f] of furnaces.entries()) {
+    if (!world.hasColumn(toChunk(x), toChunk(z))) continue;
+    const block = furnaceOf(world.getBlock(x, y, z));
+    if (!block) {
+      gone.push([x, y, z]);
+      continue;
+    }
+    f.step(dt);
+    if (block.lit !== f.lit) changes.push([x, y, z, furnace(block.facing, f.lit)]);
+  }
+  if (changes.length) applyChanges(changes);
+  for (const [x, y, z] of gone) {
+    if (backpack.showing === furnaces.get(x, y, z)) closeBackpack();
+    furnaces.remove(x, y, z);
+  }
 }
 function closeBackpack(): void {
   backpack.hide();
@@ -957,6 +990,12 @@ function editing(dt: number): void {
     swing();
     particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
     if (survival) gather(broken.block, broken.x, broken.y, broken.z);
+    // A furnace broken: what's in it drops too (in survival), and it's forgotten.
+    const kept = furnaceOf(broken.block) ? furnaces.remove(broken.x, broken.y, broken.z) : undefined;
+    if (kept) {
+      if (backpack.showing === kept) closeBackpack();
+      if (survival) for (const s of kept.contents()) ground.drop(broken.x + 0.5, broken.y + 0.5, broken.z + 0.5, s, (Math.random() - 0.5) * 2, TUNING.survival.ground.hop, (Math.random() - 0.5) * 2);
+    }
     // Torches go with the block they stood on or hung from (in survival, into the inventory).
     for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) {
       if (survival) gather(world.getBlock(x, y, z), x, y, z, false);
@@ -966,8 +1005,11 @@ function editing(dt: number): void {
   if (input.take('Mouse2') && target) {
     // A switch, button or delay clicked is used (flipped, pressed, set to the next delay), not
     // built against; with Shift held it's built against as usual.
-    const used = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight') ? null : useBlock(target.block);
-    if (used !== null) {
+    const shift = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight');
+    const used = shift ? null : useBlock(target.block);
+    // A furnace clicked in survival opens (a guest's furnaces are the host's: to come).
+    if (survival && !guest && !shift && furnaceOf(target.block)) openBackpack(furnaces.at(target.x, target.y, target.z));
+    else if (used !== null) {
       // A guest shows it at once and asks the host to use the block as the host has it.
       if (used !== target.block) {
         edit(target.x, target.y, target.z, used, !guest);
@@ -1167,7 +1209,9 @@ function frame(now: number): void {
   if (!guest && worldRuns()) {
     flowWater(dt);
     tickLogic(dt);
+    tickFurnaces(dt);
   }
+  backpack.tick();
   // Items on the ground fall and settle, and are picked up by a survival player within reach.
   if (ground.items.length && worldRuns())
     ground.update(dt, world, (x, z) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z))), survival && !dead && !player.waiting ? [player.body] : [], pickUp);
@@ -1284,6 +1328,7 @@ function sendKept(): void {
 /** The record saved: where the player is, the time, and in it the survival inventory and health as they are. */
 function saveRecord(): Promise<void> {
   survivalRecord.health = health.toJSON();
+  record.furnaces = furnaces.toJSON();
   return saver.saveRecord(playerState(), time);
 }
 

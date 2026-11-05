@@ -9,7 +9,7 @@ describe('the block picker and the hotbar', () => {
     expect(new Set(PLACEABLE).size).toBe(PLACEABLE.length);
     // All but air, the four wall torches (placed as the torch), the eight kinds of moving water, and
     // logic blocks' states (15 powered wires, a switch, button and lamp on, 7 more inverters, 31 more delays).
-    expect(PLACEABLE.length).toBe(BLOCKS.length - 13 - 15 - 3 - 7 - 31);
+    expect(PLACEABLE.length).toBe(BLOCKS.length - 13 - 15 - 3 - 7 - 31 - 7);
     expect(PLACEABLE).not.toContain(Block.WaterFlow7);
     expect(PLACEABLE).toContain(Block.Water);
     for (const b of HOTBAR) expect(PLACEABLE).toContain(b);

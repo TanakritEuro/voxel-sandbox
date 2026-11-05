@@ -4,13 +4,14 @@
 // sticks come from a roll the caller makes (seeded, so a test can say what drops). Pure.
 
 import { TUNING } from '../config';
-import { Block, BLOCKS, gateOf, isTorch, PLACEABLE, wirePower } from '../world/blocks';
+import { Block, BLOCKS, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, wirePower } from '../world/blocks';
 import type { Cost } from './inventory';
 import { Item, type Tool, type ToolKind } from './items';
 
 const RIGHT_TOOL = new Map<Block, ToolKind>();
 for (const b of [Block.Stone, Block.Sandstone, Block.CoalOre, Block.CopperOre, Block.IronOre, Block.CrystalOre, Block.Lamp, Block.ChargedBlock, Block.SignalLamp, Block.SignalLampOn])
   RIGHT_TOOL.set(b, 'pick');
+for (let f = 0; f < 4; f++) for (const lit of [false, true]) RIGHT_TOOL.set(furnace(f, lit), 'pick');
 for (const b of [Block.Wood, Block.SpruceWood, Block.Planks]) RIGHT_TOOL.set(b, 'axe');
 for (const b of [Block.Dirt, Block.Grass, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass]) RIGHT_TOOL.set(b, 'spade');
 
@@ -22,6 +23,7 @@ const PICK_TIER = new Map<Block, number>([
   [Block.CopperOre, 2],
   [Block.IronOre, 2],
   [Block.CrystalOre, 3],
+  ...[0, 1, 2, 3].flatMap((f) => [false, true].map((lit) => [furnace(f, lit), 1] as [Block, number])),
 ]);
 
 /** What a block gives, when it isn't itself. */
@@ -29,8 +31,8 @@ const GIVES = new Map<Block, number>([
   [Block.Grass, Block.Dirt],
   [Block.SnowyGrass, Block.Dirt],
   [Block.CoalOre, Item.Coal],
-  [Block.CopperOre, Item.Copper],
-  [Block.IronOre, Item.Iron],
+  [Block.CopperOre, Item.RawCopper],
+  [Block.IronOre, Item.RawIron],
   [Block.CrystalOre, Item.Crystal],
   [Block.SignalLampOn, Block.SignalLamp],
   [Block.SwitchOn, Block.Switch],
@@ -74,5 +76,6 @@ export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cos
   if (wirePower(block) >= 0) return [[Block.Wire, 1]];
   const gate = gateOf(block);
   if (gate) return [[gate.kind === 'inverter' ? Block.Inverter : Block.Delay, 1]];
+  if (furnaceOf(block)) return [[Block.Furnace, 1]];
   return PLACEABLE_SET.has(block) ? [[block, 1]] : [];
 }

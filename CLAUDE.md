@@ -128,7 +128,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   wear, without a pick, sticks from leaves, health, falls, air, cactus, healing, items on the ground), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
-  water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id:
+  water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
+  `furnaceOf`; a block's `front` texture on the side it faces):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
   `useBlock`, `isThinLogic`), textures and sound per face, the default
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches and
@@ -159,11 +160,12 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   timing (`timeOf`: in survival by the tool held) and crack stage).
 - `src/survival/` — survival worlds, pure: `items.ts` (items: placeable blocks by their ids, and
   `Item` from 256: sticks, coal, copper, iron, crystal, picks, axes and spades of wood, stone and
-  iron; `itemInfo`, `toolOf`), `inventory.ts` (`Inventory`: 36 slots, the hotbar first; adding,
+  iron; `itemInfo`, `toolOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
   spending, picking up and putting down, Shift moves, tools wearing out; `from` cleans what was
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
   held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`breakWith`: what a broken block gives and the
-  tool worn; `placeableIn`, `heldTool`), `ground.ts` (`GroundItems`: items lying on the ground, boxes
+  tool worn; `placeableIn`, `heldTool`), `furnace.ts` (`Furnace`: input, fuel and output, burning and
+  smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `ground.ts` (`GroundItems`: items lying on the ground, boxes
   under the block physics at 60 Hz, asleep at rest, floating, merging, picked up within reach of a
   player's box, aging out, a cap), `health.ts` (`Health`: falls from where the feet last stood,
   air and drowning, cactus, healing, death; stepped a frame at a time with how the body is).
@@ -230,7 +232,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
-  inventory and health) and `guests` (guests' survival states by name)), `saver.ts` (`WorldSaver`: which chunks a world
+  inventory and health), `furnaces` and `guests` (guests' survival states by name)), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -274,7 +276,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   water washing a logic block away wakes it), HUD, frame loop, pause, autosave.
 - `src/ui/` — `worldList.ts` (play, new, rename, delete, settings, join a friend, why a game
   ended), `pauseMenu.ts` (play, settings, save and quit or leave, keys, a part for playing together), `inventory.ts` (the block picker), `backpack.ts` (survival's inventory screen: slots, a stack
-  following the pointer, crafting), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
+  following the pointer, crafting, or a furnace opened from the world), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3), with GPU time per frame (`render/gpuTimer.ts`). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `src/flood.ts` — `?flood`, the sea let into a

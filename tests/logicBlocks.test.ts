@@ -27,7 +27,7 @@ import { Chunk, World } from '../src/world/world';
 describe('logic blocks', () => {
   it('are 63 ids after the water, each state its own', () => {
     expect(Block.Wire).toBe(35);
-    expect(Block.Delay + 31).toBe(BLOCKS.length - 1);
+    expect(Block.Delay + 31).toBe(Block.Furnace - 1); // the furnaces follow (Milestone 12)
     for (let p = 0; p <= 15; p++) expect(wirePower(wire(p))).toBe(p);
     expect(wirePower(Block.Switch)).toBe(-1);
     for (let f = 0; f < 4; f++)
@@ -39,7 +39,7 @@ describe('logic blocks', () => {
   });
 
   it('offer the picker their seven blocks, and nothing else of theirs', () => {
-    const logic = PLACEABLE.filter((b) => b >= Block.Wire);
+    const logic = PLACEABLE.filter((b) => b >= Block.Wire && b <= Block.Delay + 31);
     expect(logic).toEqual([Block.Wire, Block.Switch, Block.Button, Block.SignalLamp, Block.ChargedBlock, Block.Inverter, Block.Delay]);
     expect(logic.map((b) => BLOCKS[b].name)).toEqual(['Copper wire', 'Switch', 'Button', 'Signal lamp', 'Charged block', 'Inverter', 'Delay']);
   });

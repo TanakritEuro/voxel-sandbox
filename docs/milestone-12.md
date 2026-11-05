@@ -270,3 +270,82 @@ among them with no room, 10 s at 60 frames):
 - a grass block dug at the feet left its dirt at the bottom of the hole; after the fix, it was
   picked up from the edge.
 - No console errors.
+
+## Step 2: the furnace — built (2026-11-05)
+
+**What changed:**
+- **Blocks** 98–105: a furnace by facing, out and burning (`furnace`, `furnaceOf`).
+  - A burning one gives light 13. Only the first, out, is offered or dropped.
+  - Placed with its front to the player (`logicPlacement`: the opposite of the way they look).
+  - It needs a pick (wood or better) to come back.
+  - **Looks:** stone brick sides, a top with a vent, and a front with an arched opening, dark or on
+    fire (four new textures).
+  - `BlockInfo.front` gives the side a block faces its own texture: the mesher's face table and the
+    icon use it.
+  - Guests may place one facing any way, out.
+- **Items:** raw copper and raw iron (ids 270, 271), pictures as lumps with stone in them. Copper
+  and iron ore now give them.
+- **Crafting:** a furnace from 8 stone. Glass leaves the list (the furnace makes it).
+- **`survival/furnace.ts`:**
+  - **`Furnace`:** an input, a fuel and an output slot (an `Inventory` of 3: inventories now take a
+    size).
+  - **Burning:** while something can be smelted and its result has room, it lights a fuel and
+    smelts an item every 5 s (`TUNING.survival.smeltSeconds`). Once lit, a fuel burns to its end.
+  - **Recipes:** raw copper to copper, raw iron to iron, sand to glass. Fuel in items: coal 8, wood
+    and planks 1.5, a stick 0.5.
+  - The output only gives; the fuel slot takes only fuel.
+  - **`Furnaces`:** by place, saved in the world record (`record.furnaces`). Empty, out ones aren't
+    kept, and what's saved is cleaned on load.
+  - **A change from the plan:** contents are kept in the record rather than a new IndexedDB store.
+    Furnaces are few, and the record is saved every few seconds and on leaving. A furnace block with
+    nothing kept is an empty one; one kept where the block has gone is forgotten.
+- **In the game:**
+  - furnaces in loaded land tick every frame;
+  - those that light or go out change their block all at once, as a water tick does (light in one
+    update, remeshed in the workers, sent to guests);
+  - a right click on one in survival opens it (Shift and right click places against it);
+  - breaking one drops what's in it with it.
+  - A guest can't open one yet (step 5).
+- **The inventory screen** shows a furnace in place of crafting when opened from one:
+  - its input over a flame (the fuel left) over its fuel, an arrow (the item smelting) and its
+    output;
+  - Shift and a click puts fuel in the fuel and smeltables in the input, and takes things out.
+- **The world now runs while an inventory screen is open,** playing alone: only the pause menu
+  stops it. Opening a furnace paused it before, so nothing burned while you watched. The player stands
+  still as before.
+- `?kit` adds a furnace, raw copper and raw iron.
+
+**Fixes on the way:**
+- **Smelting made nothing at first** (the tests caught it): the result went in with `add`, which
+  fills the first empty slot, the fuel slot once its last coal was lit. It now goes in the output
+  slot itself.
+- **Lighting a furnace was first an edit,** remeshed on the main thread at once like a block broken.
+  It's now batched as water and logic are, after the bench showed the cost of lighting 50 at once.
+
+**Bench** (`npm run bench`, `furnaces`: 50 burning for 10 s, the block looked up and lit as the
+game does): 0.038 ms a frame median, 0.100 p95. The first frame, lighting all 50 (50 light
+updates), 5.4 ms.
+
+**Tests (10 new, 402 in all,** `tests/furnace.test.ts`):
+- **Smelting:** each recipe, an item every 5 s.
+- **Fuel:** coal smelts 8; planks 1 (and 3 from two); a stick none, two a stick 1.
+- **Lighting:** only with something to smelt and fuel; a coal lit for one raw iron burns on to its
+  end, and the furnace says once when it lights and once when it goes out.
+- **Stopping:** when the output is full or holds something else.
+- **Slots:** what each takes.
+- **Saving:** by place, a lit one comes back lit; empty ones aren't kept; junk is cleaned.
+- **Blocks:** four facings, out and burning, burning ones giving light, one offered; placed with the
+  front to the player; the mesher puts the front texture on the side faced and bricks on the others,
+  for every facing; a pick needed for one to come back.
+- The step-1 tests that knew the old drops, recipes and ids were brought up to date (raw ores, no
+  glass recipe, the furnaces after the logic ids).
+
+**Looked at in Chrome** (`?seed=7&survival&kit&nolock`):
+- the kit's furnace placed and opened by a right click: the furnace part in place of crafting;
+- Shift and a click put raw iron and coal in; 6 s later one iron was out, the flame at 85 %, the next
+  item a fifth done;
+- closed, the furnace burned in the world, its front to the player, fire in its arch;
+- broken with the stone pick: it and its contents dropped and were picked up walking over (iron 8
+  to 12);
+- after the batching, a furnace smelting sand with planks lit the same way.
+- No console errors.

@@ -61,6 +61,8 @@ export enum Block {
   Inverter = 58,
   /** Delays by facing and setting (1–4 ticks), off and on (66–97): `delay`, `gateOf`. */
   Delay = 66,
+  /** Furnaces by facing (`FACINGS`: the way the front looks), out and burning (98–105): `furnace`, `furnaceOf`. */
+  Furnace = 98,
 }
 
 type RGB = [number, number, number];
@@ -109,6 +111,8 @@ export interface BlockInfo {
   textures: { top: TextureName; side: TextureName; bottom: TextureName };
   /** The hotbar icon, if not the side texture. */
   icon?: TextureName;
+  /** A front (a furnace's): its texture on the side facing `FACINGS[facing]`, in place of `textures.side`. */
+  front?: { texture: TextureName; facing: number };
   sound: BlockSound;
   /** RGB 0–1 for the top, sides and bottom. */
   top: RGB;
@@ -242,6 +246,15 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
       })),
     ),
   ),
+  // Furnaces: stone brick sides and top, the front by facing, out and burning (giving light).
+  ...FACINGS.flatMap((_, facing) =>
+    [false, true].map((lit) => ({
+      ...solid('Furnace', 3.5, faces('furnace_top', 'furnace_side', 'furnace_top'), 0x77797c),
+      pickable: facing === 0 && !lit,
+      light: lit ? 13 : 0,
+      front: { texture: lit ? ('furnace_front_lit' as const) : ('furnace_front' as const), facing },
+    })),
+  ),
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
@@ -358,12 +371,23 @@ export const isThinLogic = (block: Block): boolean => {
   return s === 'wire' || s === 'switch' || s === 'button' || s === 'plate';
 };
 
+/** A furnace facing `facing` (`FACINGS`), burning or not. */
+export const furnace = (facing: number, lit: boolean): Block => (Block.Furnace + facing * 2 + (lit ? 1 : 0)) as Block;
+
+/** A furnace's facing and whether it burns; null for any other block. */
+export function furnaceOf(block: Block): { facing: number; lit: boolean } | null {
+  const i = block - Block.Furnace;
+  return i >= 0 && i < 8 ? { facing: i >> 1, lit: (i & 1) === 1 } : null;
+}
+
 /**
  * The block to place for `block` from the hotbar against a face whose normal is (nx, ny, nz), by a
  * player looking along `yaw`: thin logic blocks only on a top, a gate facing the way the player
- * looks; null where it can't go. Anything else as it is.
+ * looks; a furnace with its front to the player; null where it can't go. Anything else as it is.
  */
 export function logicPlacement(block: Block, ny: number, yaw: number): Block | null {
+  // Its front towards the player: the opposite of the way they look (facings come in pairs).
+  if (furnaceOf(block)) return furnace(facingFromYaw(yaw) ^ 1, false);
   if (!isThinLogic(block)) return block;
   if (ny <= 0) return null;
   const gate = gateOf(block);

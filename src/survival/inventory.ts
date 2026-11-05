@@ -1,4 +1,5 @@
-// A survival player's inventory: 36 slots, the first 9 the hotbar. A slot holds a stack of one
+// A survival player's inventory: 36 slots, the first 9 the hotbar (or any number of slots: a
+// furnace has 3). A slot holds a stack of one
 // item, up to its stack size (a tool alone, with how worn it is). Adding fills stacks already
 // there first, then empty slots, the hotbar first; spending takes from the end, so the hotbar
 // keeps what's in it longest. Picking up and putting down are what the inventory screen does with
@@ -22,7 +23,11 @@ export const HOTBAR_SLOTS = 9;
 const stackOf = (item: number): number => itemInfo(item).stack;
 
 export class Inventory {
-  readonly slots: (Stack | null)[] = new Array<Stack | null>(SLOTS).fill(null);
+  readonly slots: (Stack | null)[];
+
+  constructor(readonly size = SLOTS) {
+    this.slots = new Array<Stack | null>(size).fill(null);
+  }
 
   /** Put in `count` of `item` (a tool `wear` worn); returns how many didn't fit. */
   add(item: number, count = 1, wear?: number): number {
@@ -37,7 +42,7 @@ export class Inventory {
         left -= n;
       }
     }
-    for (let i = 0; i < SLOTS && left; i++) {
+    for (let i = 0; i < this.size && left; i++) {
       if (this.slots[i]) continue;
       const n = Math.min(left, most);
       this.slots[i] = most === 1 && wear !== undefined ? { item, count: n, wear } : { item, count: n };
@@ -62,7 +67,7 @@ export class Inventory {
   spend(cost: Cost): void {
     for (const [item, n] of cost) {
       let left = n;
-      for (let i = SLOTS - 1; i >= 0 && left; i--) {
+      for (let i = this.size - 1; i >= 0 && left; i--) {
         const s = this.slots[i];
         if (!s || s.item !== item) continue;
         const k = Math.min(left, s.count);
@@ -158,7 +163,7 @@ export class Inventory {
   }
 
   clone(): Inventory {
-    const copy = new Inventory();
+    const copy = new Inventory(this.size);
     this.slots.forEach((s, i) => (copy.slots[i] = s && { ...s }));
     return copy;
   }
@@ -173,10 +178,10 @@ export class Inventory {
    * whole number from 1 to the item's stack size, or a wear that isn't a whole number below the
    * tool's, is left out.
    */
-  static from(saved: unknown): Inventory {
-    const inv = new Inventory();
+  static from(saved: unknown, size = SLOTS): Inventory {
+    const inv = new Inventory(size);
     if (!Array.isArray(saved)) return inv;
-    for (let i = 0; i < SLOTS && i < saved.length; i++) {
+    for (let i = 0; i < size && i < saved.length; i++) {
       const s: unknown = saved[i];
       if (typeof s !== 'object' || s === null) continue;
       const { item, count, wear } = s as Record<string, unknown>;

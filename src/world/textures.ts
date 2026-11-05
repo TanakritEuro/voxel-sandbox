@@ -61,6 +61,11 @@ export const TEXTURE_NAMES = [
   'delay_2_on',
   'delay_3_on',
   'delay_4_on',
+  // Survival (Milestone 12).
+  'furnace_side',
+  'furnace_top',
+  'furnace_front',
+  'furnace_front_lit',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -434,6 +439,14 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   delay_2_on: (c) => delayPlate(c, 2, true),
   delay_3_on: (c) => delayPlate(c, 3, true),
   delay_4_on: (c) => delayPlate(c, 4, true),
+  furnace_side: (c) => bricks(c),
+  furnace_top(c) {
+    bricks(c);
+    // A dark vent in the middle.
+    for (let y = 6; y < 10; y++) for (let x = 5; x < 11; x++) c.set(x, y, hex(0x2a2a2c), 1 + (c.rng() - 0.5) * 0.2);
+  },
+  furnace_front: (c) => furnaceFront(c, false),
+  furnace_front_lit: (c) => furnaceFront(c, true),
   glass(c) {
     // Nearly clear, a light frame and a few highlights.
     const pane = hex(0xcfe8f2);
@@ -445,6 +458,37 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
     for (const [x, y] of [[3, 3], [4, 4], [5, 5], [3, 5], [10, 11], [11, 12]]) c.set(x, y, hex(0xffffff), 1, 130);
   },
 };
+
+/** Stone bricks: courses 4 high, joints offset course to course, mortar darker. */
+function bricks(c: Canvas): void {
+  const brick = hex(0x83868a);
+  const mortar = hex(0x55585c);
+  for (let y = 0; y < TEXTURE_SIZE; y++)
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      const course = y >> 2;
+      const joint = y % 4 === 3 || (x + (course % 2) * 4) % 8 === 7;
+      c.set(x, y, joint ? mortar : brick, 1 + (c.rng() - 0.5) * (joint ? 0.1 : 0.16));
+    }
+}
+
+/** A furnace's front: bricks round an arched opening, dark when out, a fire in it when burning. */
+function furnaceFront(c: Canvas, lit: boolean): void {
+  bricks(c);
+  const dark = hex(0x1c1c1e);
+  for (let y = 7; y < 14; y++)
+    for (let x = 3; x < 13; x++) {
+      // The arch: rounded at the top corners.
+      if (y === 7 && (x < 5 || x > 10)) continue;
+      if (!lit) {
+        c.set(x, y, dark, 1 + (c.rng() - 0.5) * 0.2);
+        continue;
+      }
+      const heat = (y - 7) / 6 + (c.rng() - 0.5) * 0.5;
+      c.set(x, y, heat > 0.7 ? LIT_CORE : heat > 0.35 ? FLAME : LIT, 1 + (c.rng() - 0.5) * 0.15);
+    }
+  // A grate over it.
+  for (let x = 3; x < 13; x += 3) c.set(x, 13, hex(0x3a3a3c));
+}
 
 /** Stone with clusters of mineral in the given colours (a main one and a highlight). */
 function ore(c: Canvas, [main, light]: RGB[]): void {

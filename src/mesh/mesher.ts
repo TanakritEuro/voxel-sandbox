@@ -95,6 +95,8 @@ BLOCKS.forEach((info, b) => {
   LIQUID[b] = info.liquid ? 1 : 0;
   DEPTH[b] = info.liquidHeight;
   for (let dir = 0; dir < 6; dir++) LAYER[b * 6 + dir] = textureLayer(dir === 2 ? info.textures.top : dir === 3 ? info.textures.bottom : info.textures.side);
+  // A front (a furnace's) on the side it faces.
+  if (info.front) LAYER[b * 6 + [0, 1, 4, 5][info.front.facing]] = textureLayer(info.front.texture);
 });
 /** Vertex brightness 0–255 by direction and AO level: SHADED[dir * 4 + ao]. */
 const SHADED = new Uint8Array(6 * 4);

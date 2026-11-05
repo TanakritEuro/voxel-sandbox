@@ -32,7 +32,7 @@ describe('items', () => {
     expect(isItem(Block.Air)).toBe(false);
     expect(isItem(Block.SwitchOn)).toBe(false); // a state, not an item
     expect(isItem(Item.Stick)).toBe(true);
-    expect(isItem(Item.IronSpade + 1)).toBe(false);
+    expect(isItem(Item.RawIron + 1)).toBe(false);
     for (const id of ALL_ITEMS) expect(itemInfo(id).name).not.toBe('');
     expect(itemInfo(Item.StoneAxe)).toMatchObject({ name: 'Stone axe', stack: 1, tool: { kind: 'axe', tier: 2, speed: 4, wear: 130 } });
     expect(itemInfo(Block.Planks).stack).toBe(64);
@@ -159,7 +159,8 @@ describe('drops and digging', () => {
     expect(gives(Block.CopperOre)).toEqual([0, 0, 1, 1]);
     expect(gives(Block.IronOre)).toEqual([0, 0, 1, 1]);
     expect(gives(Block.CrystalOre)).toEqual([0, 0, 0, 1]);
-    expect(dropsOf(Block.IronOre, stone, 0)).toEqual([[Item.Iron, 1]]);
+    expect(dropsOf(Block.IronOre, stone, 0)).toEqual([[Item.RawIron, 1]]);
+    expect(dropsOf(Block.CopperOre, stone, 0)).toEqual([[Item.RawCopper, 1]]);
     expect(dropsOf(Block.CrystalOre, iron, 0)).toEqual([[Item.Crystal, 1]]);
     // Too low a tier is as slow as the hand.
     expect(digTime(Block.CrystalOre, stone)).toBe(digTime(Block.CrystalOre, undefined));
@@ -223,7 +224,7 @@ describe('crafting', () => {
 
   it('has a way to every tool, torch and logic block from what the ground gives', () => {
     const made = new Set(RECIPES.map((r) => r.makes));
-    for (const want of [Item.WoodPick, Item.StoneSpade, Item.IronAxe, Block.Torch, Block.Glass, Block.Wire, Block.Switch, Block.Button, Block.SignalLamp, Block.ChargedBlock, Block.Inverter, Block.Delay])
+    for (const want of [Item.WoodPick, Item.StoneSpade, Item.IronAxe, Block.Torch, Block.Furnace, Block.Wire, Block.Switch, Block.Button, Block.SignalLamp, Block.ChargedBlock, Block.Inverter, Block.Delay])
       expect(made.has(want)).toBe(true);
   });
 });

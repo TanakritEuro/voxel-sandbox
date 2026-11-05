@@ -26,6 +26,9 @@ import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { wakeColumn, WaterFlow } from '../src/world/water';
 import { LogicFlow } from '../src/world/logic';
 import { GroundItems } from '../src/survival/ground';
+import { FUEL, Furnaces, INPUT } from '../src/survival/furnace';
+import { Item } from '../src/survival/items';
+import { furnace, furnaceOf } from '../src/world/blocks';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -644,4 +647,38 @@ it('ground items', () => {
     );
   }
   console.log(lines.join('\n') + '\n');
+});
+
+it('furnaces', () => {
+  // 50 furnaces burning, stepped a frame at a time as the game's tickFurnaces does: the block
+  // looked up in the World, the furnace stepped, its block lit or put out when that changes.
+  const world = new World(SEED);
+  world.ensureColumn(0, 0);
+  const all = new Furnaces();
+  for (let i = 0; i < 50; i++) {
+    const x = i % 10;
+    const z = Math.floor(i / 10);
+    world.setBlock(x, 120, z, furnace(0, false));
+    const f = all.at(x, 120, z);
+    f.slots.slots[INPUT] = { item: Item.RawIron, count: 64 };
+    f.slots.slots[FUEL] = { item: Item.Coal, count: 8 };
+  }
+  const times: number[] = [];
+  let changes = 0;
+  for (let frame = 0; frame < 600; frame++) {
+    const t0 = performance.now();
+    for (const [x, y, z, f] of all.entries()) {
+      const b = furnaceOf(world.getBlock(x, y, z));
+      if (!b) continue;
+      f.step(1 / 60);
+      if (b.lit !== f.lit) {
+        world.setBlock(x, y, z, furnace(b.facing, f.lit));
+        changes++;
+      }
+    }
+    times.push(performance.now() - t0);
+  }
+  console.log(
+    `\nfurnaces: 50 burning for 10 s, ${changes} blocks lit or put out (the light updates with them); ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)} (the first, lighting all 50: ${times[0].toFixed(3)})\n`,
+  );
 });
