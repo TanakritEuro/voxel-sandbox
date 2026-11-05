@@ -22,7 +22,8 @@ import { itemArt, itemIcons } from './render/itemIcons';
 import { digTime } from './survival/drops';
 import { HOTBAR_SLOTS, Inventory as SurvivalInventory } from './survival/inventory';
 import { isBlockItem, Item, itemInfo } from './survival/items';
-import { harvest, heldTool, placeableIn } from './survival/play';
+import { breakWith, heldTool, placeableIn } from './survival/play';
+import { type GroundItem, GroundItems } from './survival/ground';
 import { Health } from './survival/health';
 import { hash3 } from './math';
 import { ChunkRenderer } from './render/chunkRenderer';
@@ -32,6 +33,7 @@ import { blendFog, easeFog, fogColour } from './render/fog';
 import { HeldBlock } from './render/heldBlock';
 import { blockIcons } from './render/icons';
 import { brightness, ParticleMesh, Particles } from './render/particles';
+import { GroundItemView } from './render/groundItems';
 import { clock, skyAt } from './render/sky';
 import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
@@ -189,6 +191,8 @@ if (unsaved && !guest && params.has('kit')) {
 }
 /** Blocks broken in survival so far: with the place, what seeds a block's drops. */
 let gathered = 0;
+/** What lies on the ground: dropped by blocks broken in survival, and thrown (`survival/ground.ts`). */
+const ground = new GroundItems();
 let time = timeHeld ? Number(timeParam) : record.time;
 
 const world = new World(record.seed);
@@ -238,6 +242,9 @@ function mobLine(): string {
 let fog: ReturnType<typeof blendFog> | null = null;
 // `?light` shows light as grey instead of textures.
 const chunks = new ChunkRenderer(params.has('light'));
+/** Items lying on the ground, drawn from the chunks' own texture pixels. */
+const groundView = new GroundItemView(chunks.textures.image.data as Uint8Array);
+scene.add(groundView.group);
 /** The selected block, drawn in the lower right. */
 const held = new HeldBlock(chunks.textures);
 scene.add(chunks.group);
@@ -393,7 +400,8 @@ function waterLine(): string {
   waterWorst = 0;
   return line;
 }
-const input = new Input(canvas);
+// `?nolock`: the mouse counts as captured without the browser's pointer lock (for testing from outside).
+const input = new Input(canvas, params.has('nolock'));
 
 /** Are the columns around (x, z) loaded? The player holds still until they are. */
 function columnsLoaded(x: number, z: number): boolean {
@@ -685,7 +693,7 @@ const inventory = new Inventory(document.body, icons, (block) => {
 });
 function openInventory(): void {
   inventory.show(selected, hotbar[selected]);
-  document.exitPointerLock();
+  input.unlock();
 }
 function closeInventory(): void {
   inventory.hide();
@@ -698,11 +706,11 @@ const itemIconUrls = itemIcons();
 const iconOf = (item: number): string => (isBlockItem(item) ? icons[item] : (itemIconUrls.get(item) ?? ''));
 const backpack = new Backpack(document.body, pack, iconOf, {
   changed: () => renderHotbar(),
-  lost: (s) => say(`No room for ${itemInfo(s.item).name.toLowerCase()}.`),
+  lost: (s) => dropAtFeet(s),
 });
 function openBackpack(): void {
   backpack.show();
-  document.exitPointerLock();
+  input.unlock();
 }
 function closeBackpack(): void {
   backpack.hide();
@@ -744,13 +752,52 @@ function renderHotbar(): void {
     .join('');
 }
 
-/** What block `block` at (x, y, z) gives in survival, into the inventory (`wear`: the tool held wears). */
+/**
+ * What block `block` at (x, y, z) gives in survival, dropped there with a hop in a random direction
+ * (`wear`: the tool held wears).
+ */
 function gather(block: Block, x: number, y: number, z: number, wear = true): void {
-  const got = harvest(pack, selected, block, hash3(record.seed ^ gathered++, x, y, z), wear);
-  if (got.got.length) sound.play({ name: 'pickup', gain: 1 });
-  if (got.noRoom.length) say(`No room for ${got.noRoom.map(([item]) => itemInfo(item).name.toLowerCase()).join(', ')}.`);
-  if (got.woreOut !== null) say(`Your ${itemInfo(got.woreOut).name.toLowerCase()} wore out.`);
+  const G = TUNING.survival.ground;
+  const broke = breakWith(pack, selected, block, hash3(record.seed ^ gathered++, x, y, z), wear);
+  for (const [item, count] of broke.drops) {
+    const a = Math.random() * Math.PI * 2;
+    const out = Math.random() * G.scatter;
+    ground.drop(x + 0.5, y + 0.5, z + 0.5, { item, count }, Math.cos(a) * out, G.hop, Math.sin(a) * out);
+  }
+  if (broke.woreOut !== null) say(`Your ${itemInfo(broke.woreOut).name.toLowerCase()} wore out.`);
   renderHotbar();
+}
+
+/** An item on the ground reached in survival: as much of it as fits goes into the inventory; returns what's left. */
+function pickUp(g: GroundItem): number {
+  const left = pack.add(g.item, g.count, g.wear);
+  if (left < g.count) {
+    sound.play({ name: 'pickup', gain: 1 });
+    renderHotbar();
+  }
+  return left;
+}
+
+/** Q: one of the selected item thrown the way the player looks (Shift: all of it). */
+function throwSelected(all: boolean): void {
+  const s = pack.slots[selected];
+  if (!s) return;
+  const G = TUNING.survival.ground;
+  const n = all ? s.count : 1;
+  const stack = { ...s, count: n };
+  s.count -= n;
+  if (!s.count) pack.slots[selected] = null;
+  const d = player.direction();
+  const eye = camera.position;
+  ground.drop(eye.x + d.x * 0.4, eye.y - 0.3 + d.y * 0.4, eye.z + d.z * 0.4, stack, d.x * G.throwSpeed, d.y * G.throwSpeed + G.throwUp, d.z * G.throwSpeed, G.throwDelay);
+  swing();
+  renderHotbar();
+}
+
+/** What a stack picked up on the inventory screen does when there's no room to put it back: it drops at the feet. */
+function dropAtFeet(stack: { item: number; count: number; wear?: number }): void {
+  const b = player.body;
+  ground.drop(b.x, b.y + 0.5, b.z, stack, 0, 1, 0, TUNING.survival.ground.throwDelay);
 }
 
 /** Creative or survival from now on, saved with the world; each keeps its own hotbar. */
@@ -831,7 +878,7 @@ function die(): void {
   if (backpack.open) backpack.hide();
   deathWhy.textContent = health.cause ? CAUSES[health.cause] : '';
   deathRoot.classList.remove('hidden');
-  document.exitPointerLock();
+  input.unlock();
   void saveRecord();
 }
 
@@ -967,6 +1014,8 @@ window.addEventListener('keydown', (e) => {
     saveSettings(settings);
     applySettings(settings);
   }
+  // Q throws one of the selected item, Shift + Q all of it (survival).
+  if (e.code === 'KeyQ' && input.locked && survival && !dead) throwSelected(e.shiftKey);
   // E or Tab opens and closes the block picker (creative) or the inventory (survival); Esc closes them too.
   if (e.code === 'KeyE' || e.code === 'Tab') {
     e.preventDefault();
@@ -1100,6 +1149,7 @@ function frame(now: number): void {
   const sky = skyAt(time);
   daylightNow = sky.daylight;
   particleMesh.update();
+  groundView.update(ground.items, (x, y, z) => brightness(world.getLight(Math.floor(x), Math.floor(y), Math.floor(z)), daylightNow), now / 1000);
   chunks.setSunlight(sky.sunlight);
   chunks.setWaterFlow(waterFlow(now / 1000, TUNING.water.flow));
   // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).
@@ -1118,6 +1168,9 @@ function frame(now: number): void {
     flowWater(dt);
     tickLogic(dt);
   }
+  // Items on the ground fall and settle, and are picked up by a survival player within reach.
+  if (ground.items.length && worldRuns())
+    ground.update(dt, world, (x, z) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z))), survival && !dead && !player.waiting ? [player.body] : [], pickUp);
   // `?flood=guest` waits for a guest to be in, to measure what the water sends.
   circuit?.update(now, interval, player.body.x, player.body.y, player.body.z, player.waiting);
   flood?.update(now, interval, player.body.x, player.body.z, player.waiting || (params.get('flood') === 'guest' && (host?.players.length ?? 0) < 2));

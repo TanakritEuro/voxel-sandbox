@@ -5,7 +5,7 @@ import { canMake, make, RECIPES } from '../src/survival/crafting';
 import { digTime, dropsOf } from '../src/survival/drops';
 import { HOTBAR_SLOTS, Inventory, SLOTS } from '../src/survival/inventory';
 import { ALL_ITEMS, isItem, Item, itemInfo, toolOf } from '../src/survival/items';
-import { harvest, heldTool, placeableIn } from '../src/survival/play';
+import { breakWith, heldTool, placeableIn } from '../src/survival/play';
 import { Mining } from '../src/world/mining';
 import { itemArt } from '../src/render/itemIcons';
 import { itemMesh } from '../src/render/heldBlock';
@@ -229,23 +229,24 @@ describe('crafting', () => {
 });
 
 describe('breaking and placing in survival', () => {
-  it('puts what a block gives into the inventory and wears the tool held', () => {
+  it('says what a block gives (for the ground) and wears the tool held, leaving the inventory else alone', () => {
     const inv = holding([Item.WoodPick, 1], [Block.Planks, 3]);
     expect(heldTool(inv, 0)?.kind).toBe('pick');
     expect(heldTool(inv, 1)).toBeUndefined();
-    expect(harvest(inv, 0, Block.Stone, 0)).toEqual({ got: [[Block.Stone, 1]], noRoom: [], woreOut: null });
+    expect(breakWith(inv, 0, Block.Stone, 0)).toEqual({ drops: [[Block.Stone, 1]], woreOut: null });
     expect(inv.slots[0]!.wear).toBe(1);
+    expect(inv.count(Block.Stone)).toBe(0);
     // A torch that went with it: no wear.
-    expect(harvest(inv, 0, Block.WallTorchPosX, 0, false).got).toEqual([[Block.Torch, 1]]);
+    expect(breakWith(inv, 0, Block.WallTorchPosX, 0, false).drops).toEqual([[Block.Torch, 1]]);
     expect(inv.slots[0]!.wear).toBe(1);
     // By hand, stone gives nothing.
-    expect(harvest(inv, 1, Block.Stone, 0).got).toEqual([]);
+    expect(breakWith(inv, 1, Block.Stone, 0).drops).toEqual([]);
   });
 
-  it('says what there was no room for, and which tool wore out', () => {
-    const inv = fullOf(Block.Sand);
+  it('says which tool wore out, gone from its slot', () => {
+    const inv = holding([Block.Sand, 4]);
     inv.slots[4] = { item: Item.StoneSpade, count: 1, wear: 129 };
-    expect(harvest(inv, 4, Block.Dirt, 0)).toEqual({ got: [], noRoom: [[Block.Dirt, 1]], woreOut: Item.StoneSpade });
+    expect(breakWith(inv, 4, Block.Dirt, 0)).toEqual({ drops: [[Block.Dirt, 1]], woreOut: Item.StoneSpade });
     expect(inv.slots[4]).toBe(null);
   });
 

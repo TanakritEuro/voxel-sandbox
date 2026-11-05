@@ -129,6 +129,30 @@ export const TUNING = {
     /** Healing: from this long after the last hurt (s), a point every `healEvery` s. */
     healDelay: 5,
     healEvery: 4,
+    /** Items on the ground (`survival/ground.ts`). */
+    ground: {
+      /** Physics step (s); an item at rest sleeps, looking at the block under it this often (s). */
+      step: 1 / 60,
+      sleepCheck: 0.25,
+      /** Picked up this close to a player's middle (blocks); gone after this long (s); at most this many. */
+      pickup: 1.5,
+      life: 300,
+      cap: 256,
+      /** The same items closer than this merge (blocks), looked for this often (s). */
+      merge: 0.75,
+      mergeEvery: 0.25,
+      /** Thrown: this fast forward and up (blocks / s); not to be picked up again for this long (s). */
+      throwSpeed: 6,
+      throwUp: 2.5,
+      throwDelay: 1,
+      /** Broken out of a block: a hop up, and this much sideways at most (blocks / s). */
+      hop: 3,
+      scatter: 1.2,
+      /** Slowing: on the ground, in the air, in water (a fraction a second, as 1 - e^-kt). */
+      friction: 10,
+      drag: 0.6,
+      waterDrag: 4,
+    },
   },
   /** Playing together (`net/`). */
   net: {

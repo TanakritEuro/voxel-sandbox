@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 12 (survival, part two) in progress, plan approved (`docs/milestone-12.md`).
 Milestones 1–11 built (`docs/milestone-1.md` to `docs/milestone-11.md`), waiting for playtests
 (Milestone 11, survival basics: a world is creative or survival; in survival broken blocks drop into a
 36-slot inventory, placing uses them, picks, axes and spades of wood, stone and iron dig faster and
@@ -124,7 +125,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
-  wear, without a pick, sticks from leaves, health, falls, air, cactus, healing), net.
+  wear, without a pick, sticks from leaves, health, falls, air, cactus, healing, items on the ground), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id:
@@ -161,8 +162,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   iron; `itemInfo`, `toolOf`), `inventory.ts` (`Inventory`: 36 slots, the hotbar first; adding,
   spending, picking up and putting down, Shift moves, tools wearing out; `from` cleans what was
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
-  held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`harvest`: a broken block's drops in and the
-  tool worn; `placeableIn`, `heldTool`), `health.ts` (`Health`: falls from where the feet last stood,
+  held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`breakWith`: what a broken block gives and the
+  tool worn; `placeableIn`, `heldTool`), `ground.ts` (`GroundItems`: items lying on the ground, boxes
+  under the block physics at 60 Hz, asleep at rest, floating, merging, picked up within reach of a
+  player's box, aging out, a cap), `health.ts` (`Health`: falls from where the feet last stood,
   air and drowning, cactus, healing, death; stepped a frame at a time with how the body is).
 - `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,
   groups), `brain.ts` (a mob: idle, wander, flee, rest; following paths, jumping, getting
@@ -201,7 +204,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
   and the water texture's drift.
   `crack.ts` — the crack pattern and overlay. `particles.ts` — breaking and digging particles
-  (simulation, pure; one InstancedMesh), and the puff of smoke a mob goes in. `heldBlock.ts` — the held block (a lone block meshed,
+  (simulation, pure; one InstancedMesh), and the puff of smoke a mob goes in. `groundItems.ts` — items on the ground: an InstancedMesh per kind, a
+  block a little cube (its three textures side by side), anything else its picture as a slab.
+  `heldBlock.ts` — the held block (a lone block meshed,
   drawn in its own pass; bob, swing and switch motion, pure), or a held item as its picture made a
   slab (`itemMesh`). `mobRenderer.ts` — the mobs (from a `MobView`: the manager, or a guest's mirror): each
   kind's model posed, one InstancedMesh per box (an instance per copy per mob, so at most 19 draw
@@ -254,7 +259,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   hitting), `traffic.ts` (bytes each way, counted by wrapping links and rooms, for `?stats`),
   `bot.ts` (`?bot`: a test guest in the page).
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
-  until taken, mouse look and pointer lock (raw input where the browser has it, else `SpikeFilter`
+  until taken, mouse look and pointer lock (`unlock`; a free mode for `?nolock`) (raw input where the browser has it, else `SpikeFilter`
   drops Chrome's occasional huge moves).
 - `src/player.ts` — the player: physics at a fixed step, interpolated camera, fly toggle,
   waiting for the ground to load; `autopilot` for `?autofly`.
@@ -278,7 +283,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at`, `?autofly` and `?circuit`
   play an unsaved world; `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
-  tier and things to craft with), `?light` shows light as grey,
+  tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
+  pointer lock (for driving the game from outside),
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).

@@ -59,7 +59,18 @@ export class Input implements Controls {
   private readonly held = new Set<string>();
   private readonly pressed = new Set<string>();
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  /** Captured, in free mode (`?nolock`). */
+  private freeLocked = false;
+
+  /**
+   * `free` (`?nolock`, for testing): capturing the mouse only marks it captured, without asking the
+   * browser (which refuses a page driven from outside, or one whose window isn't focused), and Esc
+   * lets it go. The mouse's moves still turn the view.
+   */
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    private readonly free = false,
+  ) {
     canvas.addEventListener('click', () => this.lock());
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
@@ -72,6 +83,7 @@ export class Input implements Controls {
       this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch - e.movementY * s * (this.invertY ? -1 : 1)));
     });
     window.addEventListener('keydown', (e) => {
+      if (this.free && e.code === 'Escape') this.unlock();
       // Keys count only with the mouse captured (otherwise a menu is up).
       if (!this.locked) return;
       // Space would scroll; Ctrl+S, D and A (save, bookmark, select all) would fire while
@@ -100,6 +112,7 @@ export class Input implements Controls {
   /** Capture the mouse (from a click). */
   lock(): void {
     if (this.locked) return;
+    if (this.free) return this.setFree(true);
     // Raw input where the browser has it (see `SpikeFilter`); otherwise the plain kind. Some
     // embedded browsers refuse, and browsers refuse for a moment after Esc; say so rather than
     // leave an unhandled rejection.
@@ -113,8 +126,21 @@ export class Input implements Controls {
     );
   }
 
+  /** Let the mouse go (a menu opens). */
+  unlock(): void {
+    if (this.free) this.setFree(false);
+    else document.exitPointerLock();
+  }
+
   get locked(): boolean {
-    return document.pointerLockElement === this.canvas;
+    return this.free ? this.freeLocked : document.pointerLockElement === this.canvas;
+  }
+
+  /** Free mode: captured or not, told to the page as a real capture would be. */
+  private setFree(locked: boolean): void {
+    if (this.freeLocked === locked) return;
+    this.freeLocked = locked;
+    document.dispatchEvent(new Event('pointerlockchange'));
   }
 
   /** The biggest mouse move in one event since the last call (px). */

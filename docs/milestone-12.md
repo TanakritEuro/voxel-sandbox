@@ -1,6 +1,10 @@
 # Milestone 12: survival, part two
 
-**Plan, to check.**
+**Plan approved (2026-11-05)** as proposed: drops on the ground (not saved), dying keeping everything,
+raw copper and iron to smelt and glass only from the furnace, hunger that can't kill, the gloamer as
+described, tools hitting harder, furnaces and items on the ground the host's, and the names listed.
+One change while building: a whole stack is thrown with **Shift + Q**, not Ctrl + Q, which quits
+Chrome on Linux (and Cmd + Q on a Mac).
 
 **Goal.** Survival with things to do and something to fear:
 - what you break falls to the ground and is picked up, and you can throw things;
@@ -22,7 +26,7 @@ Creative is unchanged: no items on the ground, no hunger, no hostile creature. T
   - The same items close together merge into one stack.
 - **Picked up** when the player comes within 1.5 blocks: pulled in, with the pickup blip. If there's
   no room it stays where it is.
-- **Thrown:** Q throws one of the selected item forward, Ctrl + Q the whole stack. A thrown item
+- **Thrown:** Q throws one of the selected item forward, Shift + Q the whole stack. A thrown item
   can't be picked up again for a second.
 - **Gone** after 5 minutes on the ground, or when its column unloads. Items on the ground aren't saved
   (to agree).
@@ -198,3 +202,72 @@ An invented creature, the **gloamer**: a thin, dark, long-armed thing with two p
 - **Tools hit harder** (hand 1, pick or spade 2, axe 3), and animals keep 3 hits by hand.
 - **Furnaces and items on the ground are the host's** when playing together.
 - **Names:** furnace, raw copper, raw iron, raw meat, cooked meat, berries, ember, gloamer.
+
+## Step 1: items on the ground — built (2026-11-05)
+
+**What changed:**
+- **`survival/ground.ts`, `GroundItems`** (pure; numbers in `TUNING.survival.ground`):
+  - **Physics:** an item is a box a quarter of a block, moved by the block physics (`moveBody`) at
+    60 steps a second, at most 4 a frame. Gravity, sliding to a stop on the ground, slowing in the
+    air, bobbing up to the top of water.
+  - **Sleeping:** one at rest on the ground sleeps. It only looks at the block under it every
+    quarter second (spread out by id), and falls when that goes.
+  - **Merging:** every quarter second the same items within 0.75 of each other merge, up to a full
+    stack (tools never).
+  - **Picking up:** within 1.5 blocks of a player's box. The game takes as much as fits; with no
+    room the item stays.
+  - **Gone:** after 5 minutes, when its land unloads, or past the cap of 256 (the oldest first).
+- **Breaking in survival** (`survival/play.ts`, `breakWith`, in place of `harvest`): what the block
+  gives hops out of it in a random direction; the tool held wears as before.
+- **Q** throws one of the selected item the way the player looks, **Shift + Q** the stack; a
+  thrown item waits a second before it can be picked up. A stack held on the inventory screen with no
+  room to go back drops at the feet (it was lost before).
+- **Drawn** (`render/groundItems.ts`): an InstancedMesh for each kind lying about, so a draw call a
+  kind.
+  - A block is a little cube, its top, side and bottom textures side by side on one small texture,
+    shaded by vertex colour. Anything else, and torches and the thin logic blocks, is its picture as
+    a slab, as held.
+  - Each turns slowly and bobs, as bright as the light where it lies.
+- **`?nolock`** (`input.ts` free mode): the mouse counts as captured without the browser's pointer
+  lock, and Esc lets it go. The game's own lets-go go through `input.unlock()`. Chrome kept refusing
+  the pointer lock to a page driven from outside ("The root document of this element is not valid
+  for pointer lock"), most likely because its window loses focus whenever you answer me here.
+
+**A fix after trying:** reach was first measured from the player's middle. In Chrome, a block dug
+at the player's feet left its dirt at the bottom of the hole, 1.8 blocks below the middle, out of
+reach from the edge: you'd have had to jump into every hole. Reach is now 1.5 blocks from the nearest
+point of the player's box.
+
+**Bench** (`npm run bench`, `ground items`: the cap of 256 dropped over 32 × 32 blocks, a player
+among them with no room, 10 s at 60 frames):
+
+| | lying after 10 s | ms a frame, falling (the first second): median / max | after: median / p95 / max |
+| --- | --- | --- | --- |
+| On land round the spawn | 246, all asleep | 0.378 / 2.04 | 0.120 / 0.191 / 0.346 |
+| Over the sea at the origin | 247, 186 floating | 0.343 / 4.65 | 0.193 / 0.317 / 0.564 |
+
+- At first the land case was at the origin, which is sea at this seed: only 61 of 247 slept, and
+  every one awake was floating. That's right (they bob), but it wasn't measuring land; there are now
+  both.
+- Well under the plan's 1 ms. Items dropping out of a merged stack fall and settle in about a
+  second.
+
+**Tests (8 new, 392 in all,** `tests/ground.test.ts`, through the real block physics):
+- an item falls and rests on the floor, slides a little and stops, sleeps, and falls into the hole
+  when the block under it goes;
+- one in water floats at the top;
+- the same items close together merge up to 64; other items, tools and one too far away don't;
+- picked up within reach, not 4 blocks off, not while a thrown one waits;
+- one at the bottom of a hole is in reach from its edge;
+- with no room it stays, and loses only what was taken;
+- gone at 5 minutes, or when its land unloads;
+- the cap drops the oldest.
+- The survival tests for breaking now check `breakWith`: what it gives, and wear.
+
+**Looked at in Chrome** (`?seed=7&survival&kit&nolock`):
+- three planks thrown with Q lay a couple of blocks ahead as one small spinning cube (they merged),
+  the hotbar 16 to 13;
+- walking onto them picked them up (13 to 16);
+- a grass block dug at the feet left its dirt at the bottom of the hole; after the fix, it was
+  picked up from the edge.
+- No console errors.

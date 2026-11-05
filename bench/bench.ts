@@ -25,6 +25,7 @@ import { ALL_CONNECTED, reachableChunks } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { wakeColumn, WaterFlow } from '../src/world/water';
 import { LogicFlow } from '../src/world/logic';
+import { GroundItems } from '../src/survival/ground';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -601,5 +602,46 @@ it('logic', () => {
       }
     }),
   );
+  console.log(lines.join('\n') + '\n');
+});
+
+it('ground items', () => {
+  // Items on the ground (survival/ground.ts) as the game steps them, a frame at a time against the
+  // World as the game passes it: the cap of 256 dropped 5 blocks over 32 x 32 blocks, a player
+  // standing among them taking nothing (a full inventory), for 10 s. The first second is falling
+  // and settling; after it those on land lie asleep, and those in water float, awake. Twice: on land
+  // round the spawn, and over the sea at the origin.
+  const world = new World(SEED);
+  const g = world.generator;
+  const spawn = g.findLand(0, 0);
+  const lines = [''];
+  for (const [label, ox, oz] of [
+    ['on land round the spawn', spawn.x, spawn.z],
+    ['over the sea at the origin', 0, 0],
+  ] as const) {
+    for (let cz = toChunk(oz) - 2; cz <= toChunk(oz) + 2; cz++) for (let cx = toChunk(ox) - 2; cx <= toChunk(ox) + 2; cx++) world.ensureColumn(cx, cz);
+    const ground = new GroundItems();
+    const rng = createRng(5);
+    const items = [Block.Dirt, Block.Stone, Block.Sand, Block.Planks, Block.Torch];
+    for (let i = 0; i < TUNING.survival.ground.cap; i++) {
+      const x = ox + Math.floor(rng() * 32) - 16;
+      const z = oz + Math.floor(rng() * 32) - 16;
+      ground.drop(x + 0.5, g.height(x, z) + 6, z + 0.5, { item: items[i % items.length], count: 1 }, rng() - 0.5, 2, rng() - 0.5);
+    }
+    const player = { x: ox + 0.5, y: g.height(ox, oz) + 1, z: oz + 0.5 };
+    const loaded = (x: number, z: number) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z)));
+    const falling: number[] = [];
+    const resting: number[] = [];
+    for (let f = 0; f < 600; f++) {
+      const t0 = performance.now();
+      ground.update(1 / 60, world, loaded, [player], (it) => it.count);
+      (f < 60 ? falling : resting).push(performance.now() - t0);
+    }
+    const asleep = ground.items.filter((it) => it.asleep).length;
+    const floating = ground.items.filter((it) => it.body.inWater).length;
+    lines.push(
+      `ground items ${label}: ${ground.items.length} lying (${asleep} asleep, ${floating} floating, after 10 s); ms a frame falling (the first second) median ${median(falling).toFixed(3)}, max ${Math.max(...falling).toFixed(3)}; after it median ${median(resting).toFixed(3)}, p95 ${percentile(resting, 0.95).toFixed(3)}, max ${Math.max(...resting).toFixed(3)}`,
+    );
+  }
   console.log(lines.join('\n') + '\n');
 });
