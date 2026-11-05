@@ -31,6 +31,8 @@ import { brightness } from './particles';
 const FLASH = 0.25;
 /** Folded legs at rest lie this far from hanging straight (radians). */
 const FOLD = Math.PI * 0.45;
+/** How far a hunter's arms come up in front (radians). */
+const ARM_REACH = 1.25;
 /** A beetle's legs swing sideways this much more than a walker's forward. */
 const YAW_SWING = 1.5;
 
@@ -134,6 +136,10 @@ export class MobRenderer {
               break;
             case 'legYaw':
               m.multiply(step.makeRotationY(pose.swing * phase * YAW_SWING));
+              break;
+            case 'arm':
+              // Swinging opposite the legs, and raised out in front while it hunts.
+              m.multiply(step.makeRotationX(pose.swing * phase * 0.6 + pose.reach * ARM_REACH));
               break;
           }
           const [ox, oy, oz] = copy.offset ?? part.offset;

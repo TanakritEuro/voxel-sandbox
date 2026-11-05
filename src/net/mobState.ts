@@ -23,7 +23,7 @@ export interface MobSnap {
   sinceHurt: number;
 }
 
-const STATES: readonly MobState[] = ['idle', 'wander', 'flee', 'rest'];
+const STATES: readonly MobState[] = ['idle', 'wander', 'flee', 'rest', 'hunt'];
 const VOICES: readonly MobVoice[] = ['call', 'hurt', 'land', 'puff'];
 const MOB_FLOATS = 13;
 const SOUND_FLOATS = 5;

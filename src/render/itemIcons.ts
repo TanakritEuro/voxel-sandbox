@@ -29,6 +29,7 @@ const HANDLE = palette(0x8a6238, 0x5a3d20, 0xa87c4c);
 const RAW_MEAT = palette(0xd0545a, 0x8e2f35, 0xf2c2c4);
 const COOKED_MEAT = palette(0x9a5a2e, 0x5c3418, 0xc9894f);
 const BERRY = palette(0x7b2fa6, 0x3f1758, 0xc58ae6);
+const EMBER = palette(0xff8a2a, 0x8a2a12, 0xfff0a0);
 const RAW_COPPER = palette(0xb5683c, 0x6b6560, 0xe0925a);
 const RAW_IRON = palette(0xb8a898, 0x6b6560, 0xe3d6c8);
 
@@ -206,6 +207,7 @@ const ART: Record<number, [string[], Palette]> = {
   [Item.RawMeat]: [MEAT, RAW_MEAT],
   [Item.CookedMeat]: [MEAT, COOKED_MEAT],
   [Item.Berries]: [BERRIES, BERRY],
+  [Item.Ember]: [LUMP, EMBER],
 };
 
 /** Item `item`'s picture: 16 × 16 RGBA, row 0 at the top, transparent where empty; null for a block (it has its own icon). */

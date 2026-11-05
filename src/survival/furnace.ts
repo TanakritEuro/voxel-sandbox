@@ -26,6 +26,7 @@ export const SMELTS: ReadonlyMap<number, number> = new Map<number, number>([
 /** What burns, and for how many items smelted. */
 export const FUELS: ReadonlyMap<number, number> = new Map<number, number>([
   [Item.Coal, 8],
+  [Item.Ember, 12],
   [Block.Wood, 1.5],
   [Block.SpruceWood, 1.5],
   [Block.Planks, 1.5],

@@ -26,6 +26,7 @@ export enum Item {
   RawMeat,
   CookedMeat,
   Berries,
+  Ember,
 }
 
 /** What a tool digs: a pick stone and ores, an axe wood, a spade earth. */
@@ -77,6 +78,7 @@ const ITEMS: readonly ItemInfo[] = [
   { name: 'Raw meat', stack: S.stack, food: S.food.rawMeat },
   { name: 'Cooked meat', stack: S.stack, food: S.food.cookedMeat },
   { name: 'Berries', stack: S.stack, food: S.food.berries },
+  material('Ember'),
 ];
 
 const PLACEABLE_SET = new Set<number>(PLACEABLE);

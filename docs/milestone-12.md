@@ -393,3 +393,90 @@ updates), 5.4 ms.
 - **Not tried in the browser:** an animal leaving meat. Hits sent from a script knocked a hopper
   away (it fled) and then missed a crag goat. The drop is made in `hitMob` right after the puff, as
   Milestone 7's hits are, and it's in the playtest questions.
+
+## Step 4: the gloamer — built (2026-11-05)
+
+**What changed:**
+- **Mobs' health in points** (`KindInfo.health`): the animals 3, the gloamer 8.
+  - A hit does `TUNING.mobs.toolDamage`: a hand 1, a pick or spade 2, an axe 3 (survival; creative
+    and guests' hits 1).
+  - So an animal takes 3 hits by hand, 1 with an axe; a gloamer 8, 4 or 3.
+- **The gloamer** (`MobKind.Gloamer`, `KindInfo.hostile`): 0.6 wide and 1.9 tall, thin and long-armed.
+  It walks 1.4 a second and hunts at 4.8: faster than a walk (4.3), slower than a sprint (5.6).
+  - **Appearing** (`MobManager.trySpawnHostile`, a few tries a second, only with prey: survival):
+    - a random column 24–36 blocks from a player, the first place from 12 above their feet to 24
+      below where one could stand;
+    - in the dark only: sunlight by the daylight, or block light, at most 4. That means the surface
+      at night and caves at any hour, never by a torch;
+    - at most 4 for each player, counted apart from the animals' cap.
+  - **Hunting** (`brain.ts`, the `hunt` state):
+    - the nearest player within 32 blocks;
+    - a way to them asked for every second, or when they've moved off 3 blocks from where it was
+      going; straight at them meanwhile, or when there's no way;
+    - within reach (its box 0.9 from theirs) it stands, faces them, and hits once a second: 3 points
+      and a push. The game takes the hits (`takeAttacks`).
+    - It never rests or flees; a hit knocks it back half as far as an animal, and it comes on again.
+  - **Daylight:** out where the sunlight on it is 12 or more, with the daylight over a half, it fades
+    into a puff (`takeFaded`). In a cave it stays.
+  - **It drops an ember:** fuel for 12 items, and 4 torches with a stick (a new recipe). An animal
+    still leaves raw meat.
+  - **Looks:** a hunched dark body, a head with two pale eyes set wide, two long legs, and arms to
+    the knee that come up in front of it as it hunts (a new `arm` motion and `reach` in the pose).
+    Two new textures, a violet-black hide and its face.
+  - **Voice:** a low shaking rasp, a hiss over it when hit.
+  - Guests are sent `hunt` as a state (`mobState.ts`).
+- **A hit taken** (`Health.hurt`): points off, a push away from the gloamer, the red flash and the
+  cry. "A gloamer got you." on the death screen.
+
+**Changes from the plan:**
+- **It sees 32 blocks, not 20, and appears 24–36 blocks away, not 24–48.** As planned it appeared
+  beyond its sight: in the bench none of four ever hunted, they only wandered. Now it comes for you
+  from where it appears.
+
+**Fixes on the way:**
+- **An empty path stopped the game.** In Chrome the first gloamer hit, then the world froze (the
+  frame loop had thrown). The path search leaves its start out of a path, so one that starts "near
+  enough" gives no waypoints, and following that read past its end.
+  - A test giving the brain an empty path reproduced it.
+  - Now an empty path is no path: a hunter goes straight at the player, and a wanderer idles.
+  - The follower also stops at a path's end rather than read past it.
+- **A hunter with no path asked for one every step** (120 a second) while close; now once a
+  second, going straight at the player meanwhile.
+
+**Bench** (`npm run bench`, `gloamers`: a player standing at night on the land round the spawn, the
+gloamers gathered to their cap of 4, then 10 s):
+
+| | hunting at most | hits on the player | path searches (put off) | ms a frame: median / p95 / max |
+| --- | --- | --- | --- | --- |
+| Sight 20, appearing 24–48 (as planned) | 0 | 0 | 4 (0) | 0.033 / 0.092 / 1.21 |
+| Sight 32, appearing 24–36 | 3 | 11 | 36 (12) | 0.032 / 0.102 / 0.93 |
+| And asking for a way once a second | 3 | 12 | 35 (14) | 0.039 / 0.138 / 1.91 |
+
+- Searches put off are those past the mobs' 1 ms path budget for the frame, tried again a moment
+  later, as for the animals.
+
+**Tests (8 new, 415 in all,** `tests/gloamer.test.ts`, through the real brain and path search):
+- **Hunting:** a player 10 blocks off is reached in under 3 s and hit once a second from then on,
+  at night; a player beyond its sight is left alone; an empty path doesn't stop it (it goes straight).
+- **Hits taken:** a gloamer by hand, pick, spade and axe goes in 8, 4, 4 and 3 hits; an animal in 3
+  by hand and 1 with an axe. A gloamer is knocked back less than an animal and doesn't flee.
+- **Appearing,** in the real generated land, 4,000 tries at midnight and at noon:
+  - some appear, never more than 4;
+  - every one where the light is 4 or less, 24–36 blocks from the player;
+  - at noon, only where the sun doesn't reach.
+  - With nobody to hunt (creative), none appear.
+- **Daylight:** one out on the surface by day fades with a puff; one dug into the rock stays; at
+  night it stays out.
+- **The ember** is fuel for 12 and makes torches; `hunt` goes to guests as a state.
+
+**Looked at in Chrome:**
+- **`?showcase`, creative, at 05:38 (daylight 0.42):** the gloamer stands at the end of the row past
+  the beetle, tall and thin and nearly black. At 06:28 (daylight 0.84) it had faded at once, as it
+  should.
+- **`?seed=7&survival&kit&time=0`, before the fix:** four appeared within 3 s, one hit, and the game
+  froze (the empty path).
+- **After it:** four appeared; health 20 to 14 to 0 in about 9 s; the death screen said "A gloamer
+  got you."
+- No console errors after the fix.
+- **It's fierce:** four striking 3 points a second each is up to 12 points a second once they're
+  round you. That's the plan's numbers; it's the first thing to ask in the playtest.

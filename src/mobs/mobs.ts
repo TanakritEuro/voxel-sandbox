@@ -15,7 +15,15 @@
 // tries again a moment later).
 //
 // It also says what the mobs sound like (`takeSounds`): each calls now and then unless resting,
-// a hopper lands with a soft thump, a hit one cries out, and the third hit sends it off in a puff.
+// a hopper lands with a soft thump, a hit one cries out, and the hit that takes the last of its
+// health sends it off in a puff.
+//
+// Hostile kinds (the gloamer; only when asked, in survival) come apart from the animals: a few
+// times a second one may appear 24–48 blocks from a player, standing where it's dark (sunlight by
+// the daylight, or block light, at most its kind's `darkness`: the surface at night, caves at any
+// hour, never by a torch), at most `most` for each player. Out on the surface by day it fades into
+// a puff. It hunts the players given as prey (`brain.ts`), and its hits are kept for the game to
+// take (`takeAttacks`).
 
 import { TUNING } from '../config';
 import { createRng, FixedStep, type Rng } from '../math';
@@ -23,7 +31,7 @@ import { BLOCKS, Block } from '../world/blocks';
 import { toChunk, WORLD_HEIGHT } from '../world/coords';
 import type { World } from '../world/world';
 import { BlockCache } from './blockCache';
-import { createMob, hurt, type Mob, type MobContext, pathOptions, stepBrain } from './brain';
+import { createMob, hurt, type Mob, type MobContext, pathOptions, type Prey, stepBrain } from './brain';
 import { headroom, KINDS, type MobKind } from './kinds';
 import { findPath } from './pathfind';
 
@@ -34,6 +42,15 @@ export interface Before {
   z: number;
   yaw: number;
   onGround: boolean;
+}
+
+/** A hostile mob's hit on a player: who (an index into the prey), how hard, and from where. */
+export interface Attack {
+  target: number;
+  damage: number;
+  push: number;
+  fromX: number;
+  fromZ: number;
 }
 
 /** What a mob sounds: its call, a cry when hit, a hopper landing, the puff it goes in. */
@@ -59,8 +76,10 @@ export class MobManager {
   /** Seconds until each mob calls next. */
   private readonly calls = new Map<Mob, number>();
   private readonly sounds: MobSound[] = [];
+  private readonly attacks: Attack[] = [];
   private nextId = 1;
   private untilSpawn = 0;
+  private untilHostile = 0;
   /** For `?stats`: path searches done and put off since the last read, and this frame's time (ms). */
   searches = 0;
   deferred = 0;
@@ -97,8 +116,11 @@ export class MobManager {
     return this.cap;
   }
 
-  /** Once a frame (dt 0 while paused), with where the players are (x, z): spawn, despawn, think and move. */
-  update(dt: number, players: readonly (readonly [number, number])[], daylight: number): void {
+  /**
+   * Once a frame (dt 0 while paused), with where the players are (x, z): spawn, despawn, think and
+   * move. `prey`: the players hostile mobs may hunt, and appear round (none: no hostile mobs appear).
+   */
+  update(dt: number, players: readonly (readonly [number, number])[], daylight: number, prey: readonly Prey[] = []): void {
     const t0 = performance.now();
     this.cap = Math.min(this.max * Math.max(players.length, 1), this.max * 2);
     this.despawn(players);
@@ -107,8 +129,14 @@ export class MobManager {
       this.untilSpawn = TUNING.mobs.spawnInterval;
       // Round one player, chosen at random when there are several (so one alone spawns as it always did).
       const [px, pz] = players.length > 1 ? players[Math.floor(this.rng() * players.length)] : players[0];
-      if (this.mobs.length < this.cap) this.trySpawn(px, pz, players);
+      if (this.animals() < this.cap) this.trySpawn(px, pz, players);
     }
+    this.untilHostile -= dt;
+    if (this.untilHostile <= 0 && prey.length) {
+      this.untilHostile = TUNING.mobs.spawnInterval;
+      this.trySpawnHostile(prey[Math.floor(this.rng() * prey.length)], prey, daylight);
+    }
+    if (dt > 0) this.fade(daylight);
     const steps = this.clock.advance(dt);
     if (steps > 0) {
       for (const m of this.mobs) this.before.set(m, { x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw, onGround: m.body.onGround });
@@ -117,6 +145,11 @@ export class MobManager {
       const ctx: MobContext = {
         blocks,
         daylight,
+        prey,
+        attack: (mob, target) => {
+          const h = KINDS[mob.kind].hostile!;
+          this.attacks.push({ target, damage: h.damage, push: h.push, fromX: mob.body.x, fromZ: mob.body.z });
+        },
         findPath: (mob, start, goal, near) => {
           if (performance.now() > deadline) {
             this.deferred++;
@@ -170,17 +203,93 @@ export class MobManager {
   }
 
   /**
-   * The player at (fromX, fromZ) hits `mob`: knocked back, it cries out and flees; the last of
-   * `TUNING.mobs.hits` sends it off in a puff instead. True if it's gone.
+   * The player at (fromX, fromZ) hits `mob` for `points` (a hand 1, tools more): knocked back, it
+   * cries out and flees (a hostile one comes on); the hit that takes the last of its kind's `health`
+   * sends it off in a puff instead. True if it's gone.
    */
-  hit(mob: Mob, fromX: number, fromZ: number): boolean {
-    hurt(mob, fromX, fromZ);
+  hit(mob: Mob, fromX: number, fromZ: number, points = 1): boolean {
+    hurt(mob, fromX, fromZ, points);
     this.sound(mob, 'hurt');
-    if (mob.hits < TUNING.mobs.hits) return false;
+    if (mob.hits < KINDS[mob.kind].health) return false;
     this.sound(mob, 'puff');
     this.remove(mob);
     return true;
   }
+
+  /** The hostile mobs' hits on players since the last time this was asked, oldest first. */
+  takeAttacks(): Attack[] {
+    return this.attacks.splice(0);
+  }
+
+  /** Animals around (hostile mobs have a cap of their own). */
+  private animals(): number {
+    let n = 0;
+    for (const m of this.mobs) if (!KINDS[m.kind].hostile) n++;
+    return n;
+  }
+
+  /**
+   * A try at a hostile mob round `near` (one of `prey`): a random column at its kind's distance
+   * from it, the first place from 12 blocks above its feet to 24 below where one could stand in the
+   * dark, and not nearer than that to any of `prey`. At most `most` for each of them.
+   */
+  trySpawnHostile(near: Prey, prey: readonly Prey[], daylight: number): boolean {
+    for (const [k, info] of KINDS.entries()) {
+      const h = info.hostile;
+      if (!h) continue;
+      const kind = k as MobKind;
+      if (this.mobs.filter((m) => m.kind === kind).length >= h.most * prey.length) continue;
+      const angle = this.rng() * 2 * Math.PI;
+      const r = h.distance[0] + (h.distance[1] - h.distance[0]) * this.rng();
+      const x = Math.floor(near.x + Math.sin(angle) * r);
+      const z = Math.floor(near.z + Math.cos(angle) * r);
+      if (!this.world.hasColumn(toChunk(x), toChunk(z))) continue;
+      if (prey.some((p) => Math.hypot(x + 0.5 - p.x, z + 0.5 - p.z) < h.distance[0])) continue;
+      const room = headroom(info);
+      for (let y = Math.floor(near.y) + 12; y >= Math.floor(near.y) - 24; y--) {
+        if (y < 1 || y + room >= WORLD_HEIGHT) continue;
+        if (BLOCKS[this.world.getBlock(x, y - 1, z)].passable) continue;
+        let fits = true;
+        for (let i = 0; i < room && fits; i++) {
+          const b = BLOCKS[this.world.getBlock(x, y + i, z)];
+          fits = b.passable && !b.liquid;
+        }
+        if (!fits || this.lightAt(x, y, z, daylight) > h.darkness) continue;
+        this.mobs.push(createMob(this.nextId++, kind, x + 0.5, y, z + 0.5, Math.floor(this.rng() * 0x7fffffff)));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** How light it is at a block: its sunlight by the daylight, or its block light, the brighter. */
+  private lightAt(x: number, y: number, z: number, daylight: number): number {
+    const l = this.world.getLight(x, y, z);
+    return Math.max(Math.round((l >> 4) * daylight), l & 15);
+  }
+
+  /** Hostile mobs out in the day fade into a puff: daylight on them, the sun reaching them strongly. */
+  private fade(daylight: number): void {
+    if (daylight < 0.5) return;
+    for (let i = this.mobs.length - 1; i >= 0; i--) {
+      const m = this.mobs[i];
+      const h = KINDS[m.kind].hostile;
+      if (!h) continue;
+      const b = m.body;
+      const sun = this.world.getLight(Math.floor(b.x), Math.floor(b.y + b.height - 0.1), Math.floor(b.z)) >> 4;
+      if (sun < h.fadeSun) continue;
+      this.sound(m, 'puff');
+      this.faded.push(m);
+      this.remove(m);
+    }
+  }
+
+  /** Hostile mobs gone in daylight since the last time this was asked (for their puffs of smoke). */
+  takeFaded(): Mob[] {
+    return this.faded.splice(0);
+  }
+
+  private readonly faded: Mob[] = [];
 
   /** The sounds made since the last time this was asked, oldest first. */
   takeSounds(): MobSound[] {

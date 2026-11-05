@@ -161,7 +161,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   timing (`timeOf`: in survival by the tool held) and crack stage).
 - `src/survival/` — survival worlds, pure: `items.ts` (items: placeable blocks by their ids, and
   `Item` from 256: sticks, coal, copper, iron, crystal, picks, axes and spades of wood, stone and
-  iron, raw copper and iron, raw and cooked meat, berries; `itemInfo`, `toolOf`, `foodOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
+  iron, raw copper and iron, raw and cooked meat, berries, embers; `itemInfo`, `toolOf`, `foodOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
   spending, picking up and putting down, Shift moves, tools wearing out; `from` cleans what was
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
   held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`breakWith`: what a broken block gives and the
@@ -171,12 +171,14 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   player's box, aging out, a cap), `health.ts` (`Health`: falls from where the feet last stood,
   air and drowning, cactus, hunger (faster working hard; starving down to 1; `eat`), healing only well
   fed, death; stepped a frame at a time with how the body is).
-- `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,
-  groups), `brain.ts` (a mob: idle, wander, flee, rest; following paths, jumping, getting
+- `src/mobs/` — `kinds.ts` (the four animals and the gloamer: size, speeds, climb and drop, biomes, ground,
+  groups, health in points; `hostile`: sight, reach, hit, darkness to appear in, sun to fade in, how many), `brain.ts` (a mob: idle, wander, flee, rest, and hunt for hostile kinds (paths to the
+  nearest prey, hitting at reach once a second); following paths, jumping, getting
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
   spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
   or with the column, a cap, stepping at the fixed rate with a per-frame path search budget;
-  hits (three and it's gone); the sounds they make; round every player when playing together, the cap
+  hits (points against a kind's health; tools hit harder); hostile kinds appearing in the dark round
+  the prey and fading by day, their hits kept for the game (`takeAttacks`, `takeFaded`); the sounds they make; round every player when playing together, the cap
   by players; not saved), `hit.ts` (the mob under the
   crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
   cutting, swimming at the surface, node and range limits; typed arrays reused between

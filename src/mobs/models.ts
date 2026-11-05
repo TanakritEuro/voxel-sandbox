@@ -18,13 +18,16 @@ export type MobTexture =
   | 'hoof'
   | 'shell'
   | 'beetleFace'
-  | 'black';
+  | 'black'
+  | 'gloom'
+  | 'gloomFace';
 
 /**
  * How a part moves: not at all; a leg swinging forward and back (and folding at rest); a
- * beetle's leg swinging sideways; the head; an ear laid back; the body leaning (hoppers).
+ * beetle's leg swinging sideways; the head; an ear laid back; the body leaning (hoppers); an arm
+ * swinging, and reaching forward as it hunts (gloamers).
  */
-export type Anim = 'none' | 'leg' | 'legYaw' | 'head' | 'ear' | 'body';
+export type Anim = 'none' | 'leg' | 'legYaw' | 'head' | 'ear' | 'body' | 'arm';
 
 type V3 = [number, number, number];
 
@@ -141,6 +144,35 @@ export const MODELS: Record<MobKind, Model> = {
         onHead: true,
         tilt: -0.3,
         texture: 'black',
+      },
+    ],
+  },
+  [MobKind.Gloamer]: {
+    headPivot: [0, 1.56, -0.06],
+    parts: [
+      // A thin body, hunched forward a little.
+      { size: [0.5, 0.66, 0.28], at: [{ pivot: [0, 1.22, 0] }], offset: [0, 0, 0], anim: 'none', tilt: -0.12, texture: 'gloom' },
+      { size: [0.36, 0.36, 0.34], at: [{ pivot: [0, 1.56, -0.06] }], offset: [0, 0.17, -0.06], anim: 'head', texture: 'gloom', front: 'gloomFace' },
+      // Two long legs, and longer arms that hang to the knee.
+      {
+        size: [0.14, 0.9, 0.14],
+        at: [
+          { pivot: [-0.12, 0.9, 0], phase: 1 },
+          { pivot: [0.12, 0.9, 0], phase: -1 },
+        ],
+        offset: [0, -0.45, 0],
+        anim: 'leg',
+        texture: 'gloom',
+      },
+      {
+        size: [0.11, 0.98, 0.11],
+        at: [
+          { pivot: [-0.32, 1.5, 0], phase: -1 },
+          { pivot: [0.32, 1.5, 0], phase: 1 },
+        ],
+        offset: [0, -0.45, 0],
+        anim: 'arm',
+        texture: 'gloom',
       },
     ],
   },

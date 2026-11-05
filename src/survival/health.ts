@@ -35,7 +35,7 @@ export class Health {
   /** Hunger points: full at `TUNING.survival.maxHunger`. */
   hunger = S.maxHunger;
   /** What hurt last. */
-  cause: 'fall' | 'drowning' | 'cactus' | 'starving' | null = null;
+  cause: 'fall' | 'drowning' | 'cactus' | 'starving' | 'gloamer' | null = null;
   /** The highest the feet were since they last stood; null while standing, in water or flying. */
   private top: number | null = null;
   /** Where the feet last stood (a fall starts there, not a frame below it). */
@@ -119,6 +119,14 @@ export class Health {
       } else this.healClock = 0;
     }
     return damage;
+  }
+
+  /** A hit from something (a gloamer) for `points`, as hurting in a step does. */
+  hurt(points: number, cause: 'gloamer'): void {
+    this.health = Math.max(0, this.health - points);
+    this.cause = cause;
+    this.sinceHurt = 0;
+    this.healClock = 0;
   }
 
   /** Eat food worth `points`: refused (false) when full. */

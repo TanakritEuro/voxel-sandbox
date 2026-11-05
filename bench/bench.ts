@@ -12,6 +12,7 @@ import { createRng } from '../src/math';
 import { BlockCache } from '../src/mobs/blockCache';
 import { createMob, type Mob, type MobContext, pathOptions, stepBrain } from '../src/mobs/brain';
 import { MobKind } from '../src/mobs/kinds';
+import { MobManager } from '../src/mobs/mobs';
 import { findPath } from '../src/mobs/pathfind';
 import { meshCulled } from '../src/mesh/culled';
 import { type Lod, prepareLod } from '../src/mesh/lod';
@@ -680,5 +681,30 @@ it('furnaces', () => {
   }
   console.log(
     `\nfurnaces: 50 burning for 10 s, ${changes} blocks lit or put out (the light updates with them); ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)} (the first, lighting all 50: ${times[0].toFixed(3)})\n`,
+  );
+});
+
+it('gloamers', () => {
+  // The mob manager with gloamers hunting a player standing still at night on the land round the
+  // spawn, as the game steps it a frame at a time: animals off, gloamers appearing in the dark up to
+  // their cap of 4 and coming for the player (paths, hits). Then 10 s of it.
+  const world = new World(SEED);
+  const spawn = world.generator.findLand(0, 0);
+  for (let cz = toChunk(spawn.z) - 3; cz <= toChunk(spawn.z) + 3; cz++) for (let cx = toChunk(spawn.x) - 3; cx <= toChunk(spawn.x) + 3; cx++) world.ensureColumn(cx, cz);
+  const player = { x: spawn.x + 0.5, y: world.generator.height(spawn.x, spawn.z) + 1, z: spawn.z + 0.5 };
+  const m = new MobManager(world, 9, 0);
+  // Gather them first (a few seconds of tries), then time.
+  for (let f = 0; f < 600 && m.mobs.length < 4; f++) m.update(1 / 60, [[player.x, player.z]], 0, [player]);
+  const times: number[] = [];
+  let hits = 0;
+  let hunting = 0;
+  for (let f = 0; f < 600; f++) {
+    m.update(1 / 60, [[player.x, player.z]], 0, [player]);
+    times.push(m.ms);
+    hits += m.takeAttacks().length;
+    hunting = Math.max(hunting, m.mobs.filter((g) => g.state === 'hunt').length);
+  }
+  console.log(
+    `\ngloamers: ${m.mobs.length} round a player at night (${hunting} hunting at most), 10 s: ${hits} hits on the player, ${m.searches} path searches (${m.deferred} put off); ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}\n`,
   );
 });

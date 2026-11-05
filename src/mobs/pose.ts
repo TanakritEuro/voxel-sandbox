@@ -18,6 +18,8 @@ export interface Pose {
   lean: number;
   /** Ears laid back (radians). */
   ears: number;
+  /** Arms reaching forward, 0 hanging to 1 out in front (gloamers hunting). */
+  reach: number;
 }
 
 /** Radians of leg swing per block walked, and the most it swings (at full walking speed). */
@@ -48,5 +50,7 @@ export function poseOf(mob: Mob, t: number): Pose {
   // A hopper leans nose up as it rises and down as it falls, and lays its ears back.
   const lean = k.hops && !b.onGround ? Math.max(-0.4, Math.min(0.4, b.vy * 0.08)) : 0;
   const ears = k.hops ? Math.min(0.9, Math.abs(b.vy) * 0.15 + pace * 0.3) : 0;
-  return { drop: resting ? k.height * 0.3 : 0, swing, fold: resting ? 1 : 0, head, lean, ears };
+  // A hunter's arms come up in front of it as it closes in.
+  const reach = mob.state === 'hunt' ? 1 : 0;
+  return { drop: resting ? k.height * 0.3 : 0, swing, fold: resting ? 1 : 0, head, lean, ears, reach };
 }

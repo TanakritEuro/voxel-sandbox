@@ -1,5 +1,6 @@
 // The mobs' textures: 16 × 16 pixel-art patterns painted in code at startup, in the style of the
-// block textures (speckled, a few colours): fur, moss, faces with eyes, ears, wool, horn, shell.
+// block textures (speckled, a few colours): fur, moss, faces with eyes, ears, wool, horn, shell, and
+// the gloamer's dark hide.
 // Each is its own small texture; `mobRenderer.ts` maps one onto a model's box, or a pair side by
 // side (`sideAndFront`) onto a box with a face.
 
@@ -94,5 +95,8 @@ export function mobTextures(): Record<MobTexture, THREE.DataTexture> {
     }),
     beetleFace: face(12, 0x1f2830, 0x9fc6d6),
     black: fur(13, 0x1c1c1c, 0.15),
+    // The gloamer: near-black with a violet cast and faint streaks, two pale eyes set wide.
+    gloom: painted(14, (x, y, r) => shade(rgb((x * 5 + y * 3) % 9 === 0 ? 0x3a2f48 : 0x231d2c), 1 + (r() - 0.5) * 0.2)),
+    gloomFace: face(15, 0x231d2c, 0xdfe8c8, undefined, 0x9fb27a),
   };
 }

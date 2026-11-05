@@ -328,8 +328,9 @@ export const TUNING = {
     despawnDistance: 96,
     /** Path searches stop for the frame once mobs have used this much of it (ms); the rest wait. */
     pathBudgetMs: 1,
-    /** Hits that make a mob go (in a puff), and a hit's push away and up (blocks / s). */
-    hits: 3,
+    /** Points a hit does: by hand, and with each kind of tool (survival). An animal takes 3, a gloamer 8 (`mobs/kinds.ts`). */
+    toolDamage: { hand: 1, pick: 2, spade: 2, axe: 3 },
+    /** A hit's push away and up (blocks / s). */
     knockback: 6,
     knockUp: 5,
     /** A mob calls every so often (seconds, from and to), heard this far away (blocks). */

@@ -6,6 +6,9 @@
 //   wander  walks a path (A*, `pathfind.ts`) to a spot 4–12 blocks away, then idles again;
 //   flee    after a hit: knocked back, then runs from where the hit came from for a few seconds;
 //   rest    at night: lies down and stays put until morning.
+//   hunt    a hostile kind (`KindInfo.hostile`) that sees a player within its sight: paths to them,
+//           asking for the way again every second or when they've moved off, and hits them once a
+//           second when within reach. It never rests or flees; a hit knocks it back a little.
 //
 // Following a path: steer at the next waypoint's middle, jump when it's higher, on to the next
 // within `arrive`. No closer to it for `stuckSeconds` (a block placed in the way, another mob):
@@ -14,11 +17,18 @@
 import { TUNING } from '../config';
 import { createRng, type Rng } from '../math';
 import { BLOCKS } from '../world/blocks';
-import { type BlockSource, type Body, createBody, stepMob } from '../world/physics';
+import { type BlockSource, type Body, createBody, HALF_WIDTH, HEIGHT, stepMob } from '../world/physics';
 import { headroom, KINDS, type MobKind } from './kinds';
 import { findPath, type Path, type PathOptions } from './pathfind';
 
-export type MobState = 'idle' | 'wander' | 'flee' | 'rest';
+export type MobState = 'idle' | 'wander' | 'flee' | 'rest' | 'hunt';
+
+/** A player a hostile mob can hunt: where their feet are. */
+export interface Prey {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export interface Mob {
   readonly id: number;
@@ -43,7 +53,11 @@ export interface Mob {
   /** Ground covered, for the walk animation; seconds since the last hit, for the flash. */
   walked: number;
   sinceHurt: number;
+  /** Points of hitting taken (it goes at its kind's `health`). */
   hits: number;
+  /** Hunting: the player (an index into the prey) and seconds until it may hit again. */
+  target: number;
+  cooldown: number;
   readonly rng: Rng;
 }
 
@@ -54,6 +68,10 @@ export interface MobContext {
   daylight: number;
   /** A way from start to goal for this mob: the path, null for none, or undefined to ask again later (the search budget is used up). */
   findPath(mob: Mob, start: [number, number, number], goal: [number, number, number], near: number): Path | null | undefined;
+  /** The players a hostile mob may hunt (none: it wanders). */
+  prey?: readonly Prey[];
+  /** A hostile mob hits player `target` (an index into `prey`). */
+  attack?(mob: Mob, target: number): void;
 }
 
 /** The pathfinder's options for a kind. */
@@ -87,6 +105,8 @@ export function createMob(id: number, kind: MobKind, x: number, y: number, z: nu
     walked: 0,
     sinceHurt: Number.POSITIVE_INFINITY,
     hits: 0,
+    target: -1,
+    cooldown: 0,
     rng,
   };
 }
@@ -96,30 +116,104 @@ const feet = (mob: Mob): [number, number, number] => [Math.floor(mob.body.x), Ma
 
 const between = (rng: Rng, [lo, hi]: readonly [number, number]) => lo + (hi - lo) * rng();
 
-/** Hit from (x, z): knocked away and up, then it flees. */
-export function hurt(mob: Mob, fromX: number, fromZ: number): void {
+/** Hit from (x, z) for `points`: knocked away and up, then it flees (a hostile one, knocked back less, comes on again). */
+export function hurt(mob: Mob, fromX: number, fromZ: number, points = 1): void {
   const b = mob.body;
+  const hostile = KINDS[mob.kind].hostile !== undefined;
   const dx = b.x - fromX;
   const dz = b.z - fromZ;
   const d = Math.hypot(dx, dz) || 1;
-  b.vx = (dx / d) * TUNING.mobs.knockback;
-  b.vz = (dz / d) * TUNING.mobs.knockback;
-  b.vy = TUNING.mobs.knockUp;
+  const knock = TUNING.mobs.knockback * (hostile ? 0.5 : 1);
+  b.vx = (dx / d) * knock;
+  b.vz = (dz / d) * knock;
+  b.vy = TUNING.mobs.knockUp * (hostile ? 0.6 : 1);
   b.onGround = false;
-  mob.hits++;
+  mob.hits += points;
   mob.sinceHurt = 0;
+  mob.path = null;
+  mob.goal = null;
+  if (hostile) return;
   mob.threat = { x: fromX, z: fromZ };
   mob.state = 'flee';
   mob.timer = TUNING.mobs.fleeSeconds;
-  mob.path = null;
-  mob.goal = null;
+}
+
+/** How far apart the boxes of mob `mob` and a player standing at `p` are (0 when they touch or overlap). */
+function gapTo(mob: Mob, p: Prey): number {
+  const b = mob.body;
+  const dx = Math.max(0, Math.abs(b.x - p.x) - b.halfWidth - HALF_WIDTH);
+  const dz = Math.max(0, Math.abs(b.z - p.z) - b.halfWidth - HALF_WIDTH);
+  const dy = Math.max(0, p.y - (b.y + b.height), b.y - (p.y + HEIGHT));
+  return Math.hypot(dx, dy, dz);
+}
+
+/**
+ * A hostile mob's hunting, before it moves: the nearest player within sight becomes its target
+ * (none: it goes back to wandering); it asks for a way to them every second, or when they've moved
+ * off from where it was going; within reach it stands, faces them and hits once a second. Returns
+ * the speed it should go along its path, or a straight line to run if it has no way.
+ */
+function hunt(mob: Mob, ctx: MobContext, dt: number): { speed: number; straight: [number, number] | null } {
+  const k = KINDS[mob.kind];
+  const h = k.hostile!;
+  const b = mob.body;
+  mob.cooldown = Math.max(0, mob.cooldown - dt);
+  const prey = ctx.prey ?? [];
+  let best = -1;
+  let bestD = h.sight;
+  prey.forEach((p, i) => {
+    const d = Math.hypot(p.x - b.x, p.y - b.y, p.z - b.z);
+    if (d <= bestD) [best, bestD] = [i, d];
+  });
+  if (best < 0) {
+    if (mob.state === 'hunt') {
+      mob.state = 'idle';
+      mob.timer = between(mob.rng, TUNING.mobs.idle);
+      mob.path = null;
+    }
+    mob.target = -1;
+    return { speed: 0, straight: null };
+  }
+  const p = prey[best];
+  mob.target = best;
+  if (mob.state !== 'hunt') {
+    mob.state = 'hunt';
+    mob.timer = 0;
+    mob.path = null;
+  }
+  // Within reach: stand, face them, hit when it may.
+  if (gapTo(mob, p) <= h.reach) {
+    mob.path = null;
+    mob.yaw = Math.atan2(-(p.x - b.x), -(p.z - b.z));
+    if (mob.cooldown <= 0) {
+      mob.cooldown = h.every;
+      ctx.attack?.(mob, best);
+    }
+    return { speed: 0, straight: null };
+  }
+  // A way to them, asked for again every second or when they've moved off from its end.
+  mob.timer -= dt;
+  const goal: [number, number, number] = [Math.floor(p.x), Math.floor(p.y + 0.01), Math.floor(p.z)];
+  const off = mob.goal ? Math.hypot(mob.goal[0] - goal[0], mob.goal[1] - goal[1], mob.goal[2] - goal[2]) : Infinity;
+  // (With none, or past its end, it goes straight at them until then.)
+  if (mob.timer <= 0 || off > 3) {
+    mob.timer = 1;
+    if (!goTo(mob, ctx, goal, 1)) mob.path = null;
+  }
+  if (mob.path) return { speed: k.runSpeed, straight: null };
+  // No way found (yet): straight at them.
+  const dx = p.x - b.x;
+  const dz = p.z - b.z;
+  const d = Math.hypot(dx, dz) || 1;
+  return { speed: k.runSpeed, straight: [(dx / d) * k.runSpeed, (dz / d) * k.runSpeed] };
 }
 
 /** Send the mob along a path to `goal` (within `near`); false if there's none (or it must wait). */
 export function goTo(mob: Mob, ctx: MobContext, goal: [number, number, number], near = 0): boolean {
   const path = ctx.findPath(mob, feet(mob), goal, near);
   if (!path) return false;
-  mob.path = path;
+  // No waypoints at all: it starts near enough, so there's no way to walk (a hunter goes straight).
+  mob.path = path.length ? path : null;
   mob.next = 0;
   mob.goal = goal;
   mob.near = near;
@@ -159,8 +253,16 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
   const b = mob.body;
   mob.sinceHurt += dt;
 
-  // Night: rest (unless running from something); morning: wake up.
-  if (ctx.daylight < M.rest && mob.state !== 'flee' && mob.state !== 'rest') {
+  // A hostile kind hunts the players it sees, and never rests.
+  if (k.hostile) {
+    const { speed, straight } = hunt(mob, ctx, dt);
+    if (mob.state === 'hunt') {
+      if (straight) return moveAndTurn(mob, ctx, straight[0], straight[1], false, dt);
+      if (!mob.path) return moveAndTurn(mob, ctx, 0, 0, false, dt);
+      return follow(mob, ctx, speed, dt);
+    }
+  } else if (ctx.daylight < M.rest && mob.state !== 'flee' && mob.state !== 'rest') {
+    // Night: rest (unless running from something); morning: wake up.
     mob.state = 'rest';
     mob.path = null;
   } else if (mob.state === 'rest' && ctx.daylight > M.wake) {
@@ -201,11 +303,23 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
   } else if (mob.state === 'wander') {
     speed = k.walkSpeed;
   }
+  follow(mob, ctx, speed, dt);
+}
 
+/** Along its path (if it has one, wandering, fleeing or hunting) at `speed`, then moving and turning. */
+function follow(mob: Mob, ctx: MobContext, speed: number, dt: number): void {
+  const M = TUNING.mobs;
+  const b = mob.body;
   let vx = 0;
   let vz = 0;
   let jump = false;
-  if ((mob.state === 'wander' || mob.state === 'flee') && mob.path) {
+  // Wandering with no way to go (it's there already): idle again.
+  if (mob.state === 'wander' && (!mob.path || mob.next >= mob.path.length)) {
+    mob.path = null;
+    mob.state = 'idle';
+    mob.timer = between(mob.rng, M.idle);
+  }
+  if ((mob.state === 'wander' || mob.state === 'flee' || mob.state === 'hunt') && mob.path && mob.next < mob.path.length) {
     const w = mob.path[mob.next];
     const dx = w[0] + 0.5 - b.x;
     const dz = w[2] + 0.5 - b.z;

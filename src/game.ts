@@ -859,7 +859,7 @@ el(deathPanel, 'div', 'menu-title', 'You died');
 const deathWhy = el(deathPanel, 'p', 'menu-help');
 el(deathPanel, 'p', 'menu-help', 'Everything you carried is still with you.');
 button(el(deathPanel, 'div', 'menu-row'), 'Start again', () => startAgain(), 'menu-go');
-const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.', starving: 'You starved.' } as const;
+const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.', starving: 'You starved.', gloamer: 'A gloamer got you.' } as const;
 /** What the HUD shows now, so it's redrawn only when that changes. */
 let vitalsShown = '';
 
@@ -1012,21 +1012,52 @@ function swing(): void {
   swings++;
 }
 
-/** A hit on a mob from (fromX, fromZ): knocked back (or gone in a puff on the last hit). This player's own (from where it stands) swings. */
-function hitMob(mob: Mob, fromX = player.body.x, fromZ = player.body.z): void {
+/** What this player's hit does: in survival a tool hits harder than a hand. */
+function hitPoints(): number {
+  const D = TUNING.mobs.toolDamage;
+  const tool = survival ? heldTool(pack, selected) : undefined;
+  return tool ? D[tool.kind] : D.hand;
+}
+
+/**
+ * A hit on a mob from (fromX, fromZ) for `points`: knocked back (or gone in a puff on the hit that
+ * takes the last of its health). This player's own (from where it stands) swings, and hits with its
+ * tool.
+ */
+function hitMob(mob: Mob, fromX = player.body.x, fromZ = player.body.z, points = hitPoints()): void {
   if (!mobs) return;
   if (fromX === player.body.x && fromZ === player.body.z) swing();
   const b = mob.body;
-  if (mobs.hit(mob, fromX, fromZ)) {
+  if (mobs.hit(mob, fromX, fromZ, points)) {
     const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow);
     particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, light);
-    // In survival it leaves raw meat.
+    // In survival an animal leaves raw meat, a gloamer an ember.
     if (survival) {
       const [least, most] = TUNING.survival.meat;
-      const count = least + Math.floor(Math.random() * (most - least + 1));
-      ground.drop(b.x, b.y + b.height / 2, b.z, { item: Item.RawMeat, count }, 0, TUNING.survival.ground.hop, 0);
+      const stack = KINDS[mob.kind].hostile ? { item: Item.Ember, count: 1 } : { item: Item.RawMeat, count: least + Math.floor(Math.random() * (most - least + 1)) };
+      ground.drop(b.x, b.y + b.height / 2, b.z, stack, 0, TUNING.survival.ground.hop, 0);
     }
   }
+}
+
+/** A gloamer's hit on this player: the points, a push away from it, the flash and cry of being hurt. */
+function struck(damage: number, push: number, fromX: number, fromZ: number): void {
+  if (!survival || dead) return;
+  health.hurt(damage, 'gloamer');
+  const b = player.body;
+  const dx = b.x - fromX;
+  const dz = b.z - fromZ;
+  const d = Math.hypot(dx, dz) || 1;
+  b.vx += (dx / d) * push;
+  b.vz += (dz / d) * push;
+  b.vy = Math.max(b.vy, 4);
+  b.onGround = false;
+  sound.play({ name: 'hurt', gain: 1 });
+  hurtEl.classList.remove('on');
+  void hurtEl.offsetWidth; // start the flash again
+  hurtEl.classList.add('on');
+  renderVitals();
+  if (health.dead) die();
 }
 
 /** Breaking (hold the left button) and placing (a click of the right one), once per frame. */
@@ -1284,7 +1315,14 @@ function frame(now: number): void {
   editing(dt);
   // The mobs think and move (not while paused), then are drawn where they are.
   if (mobs && mobView) {
-    mobs.update(worldRuns() ? dt : 0, mobPlayers(), daylightNow);
+    // In survival, a living player is prey for the gloamers that come in the dark.
+    const prey = survival && !dead && !player.waiting ? [player.body] : [];
+    mobs.update(worldRuns() ? dt : 0, mobPlayers(), daylightNow, prey);
+    for (const a of mobs.takeAttacks()) if (a.target === 0) struck(a.damage, a.push, a.fromX, a.fromZ);
+    for (const m of mobs.takeFaded()) {
+      const b = m.body;
+      particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 1), Math.floor(b.z)), daylightNow));
+    }
     if (showcase && !player.waiting) {
       mobs.showcase(player.body.x, player.body.y, player.body.z, input.yaw);
       showcase = false;

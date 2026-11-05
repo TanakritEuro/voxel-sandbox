@@ -9,7 +9,7 @@
 // level vary a little each time so repeats don't sound mechanical.
 //
 // Mobs have voices: a pitched oscillator gliding through a filter, with a wobble. A mossback
-// groans low, a hopper chirps twice, a crag goat bleats, a dune beetle chitters; hurt, the call
+// groans low, a hopper chirps twice, a crag goat bleats, a dune beetle chitters, a gloamer rasps; hurt, the call
 // comes higher and shorter over a thump. A hopper lands with a soft thump; a mob that's gone
 // leaves a rising whoosh of noise. Each is panned to the side it came from.
 //
@@ -178,6 +178,11 @@ export class Sound {
         break;
       case MobKind.DuneBeetle:
         for (let i = 0; i < (hurt ? 3 : 5); i++) this.tone(3300 * p * vary(0.05), 0.018, gain * 0.25, t + i * 0.032, out);
+        break;
+      case MobKind.Gloamer:
+        // A low rasp, shaking fast; hurt, a hiss over it.
+        this.voiced('sawtooth', 74 * p, 52 * p, 1.1 * len, 480, 23, 14, gain * 0.55, t, out);
+        if (hurt) this.voiced('square', 900, 700, 0.25, 3000, 40, 60, gain * 0.12, t, out);
         break;
     }
   }
