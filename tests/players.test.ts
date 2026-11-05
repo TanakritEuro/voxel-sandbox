@@ -118,6 +118,11 @@ describe('states over the network', () => {
     keep: () => {},
     blockAt: () => Block.Air,
     hitMob: () => {},
+    drop: () => {},
+    take: () => null,
+    furnace: () => null,
+    furnacePut: (_p, _x, _y, _z, _slot, stack) => stack,
+    furnaceTake: () => null,
   };
 
   it("go from each guest to the host and the other guests, and the host's to everyone, on the host's clock", async () => {

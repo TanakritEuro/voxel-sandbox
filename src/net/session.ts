@@ -24,6 +24,8 @@ import { toChunk } from '../world/coords';
 import type { Link, Room } from './link';
 import { MobMirror } from './mobMirror';
 import { packMobs, packMobSounds, unpackMobs, unpackMobSounds } from './mobState';
+import { type GroundSnap, packGround, unpackGround } from './itemState';
+import type { Stack } from '../survival/inventory';
 import { packState, type PlayerState, unpackState } from './playerState';
 import { RemotePlayer } from './remotePlayer';
 import { type BlockChange, checkChunk, MAX_PLAYERS, type Message, packEdits, parseMessage, type PlayerInfo, PROTOCOL, unpackEdits } from './protocol';
@@ -44,14 +46,24 @@ export interface HostWorld {
   /** Player `player` uses block (x, y, z) (`useBlock`): make it if it's allowed, and say whether it was. */
   use(player: number, x: number, y: number, z: number): boolean;
   blockAt(x: number, y: number, z: number): number;
-  /** Player `player` hit mob `id`: the game checks it's in reach and makes the hit. */
-  hitMob(player: number, id: number): void;
+  /** Player `player` hit mob `id` for `points`: the game checks it's in reach and makes the hit. */
+  hitMob(player: number, id: number, points: number): void;
   /** The world's mode now. */
   mode(): WorldMode;
   /** The survival state kept for a guest called `name`, or null. */
   kept(name: string): Record<string, unknown> | null;
   /** Keep `survival` for a guest called `name` (cleaned by the game). */
   keep(name: string, survival: Record<string, unknown>): void;
+  /** Player `player` drops `stack` on the ground at (x, y, z), moving at (vx, vy, vz), not to be picked up for `delay` s. */
+  drop(player: number, stack: Stack, x: number, y: number, z: number, vx: number, vy: number, vz: number, delay: number): void;
+  /** Player `player` picks up `count` of item `id` on the ground: what they get (taken off the ground), or null (gone, or out of reach). */
+  take(player: number, id: number, count: number): Stack | null;
+  /** What's in the furnace at (x, y, z) for player `player` (`Furnace.toJSON`), or null if there's none there or it's out of reach. */
+  furnace(player: number, x: number, y: number, z: number): Record<string, unknown> | null;
+  /** Player `player` puts `stack` into a slot of the furnace at (x, y, z): what didn't go in (back to them), or null. */
+  furnacePut(player: number, x: number, y: number, z: number, slot: number, stack: Stack): Stack | null;
+  /** Player `player` takes what's in a slot of the furnace at (x, y, z): what they get, or null. */
+  furnaceTake(player: number, x: number, y: number, z: number, slot: number): Stack | null;
 }
 
 /** What a guest's game gives its session, once the world is made. */
@@ -86,6 +98,12 @@ export class HostSession {
   /** The host's own last state. */
   own: PlayerState | null = null;
   private readonly guests = new Map<number, Link>();
+  /** The furnace each guest has open, by player. */
+  private readonly watching = new Map<number, [number, number, number]>();
+  /** What each guest was last sent of its furnace (JSON), so it's sent only when it changes. */
+  private readonly watched = new Map<number, string>();
+  /** What each guest was last sent of the ground, and when: items at rest aren't sent again and again. */
+  private readonly groundSent = new Map<number, { bytes: Uint8Array; at: number }>();
   private closed = false;
 
   constructor(
@@ -151,6 +169,52 @@ export class HostSession {
       const heard = sounds.filter((s) => Math.hypot(s.x - at.x, s.y - at.y, s.z - at.z) <= hearing);
       if (heard.length) link.send({ type: 'mobsounds', data: packMobSounds(heard) });
     }
+  }
+
+  /**
+   * The items lying on the ground (with the mobs): to each guest, those within the despawning distance
+   * of it. Only when that has changed, or a second on (`frames` may lose one), as most lie still.
+   */
+  shareGround(items: readonly { id: number; item: number; count: number; body: { x: number; y: number; z: number } }[]): void {
+    const far = TUNING.mobs.despawnDistance;
+    for (const [id, link] of this.guests) {
+      const at = this.remotes.get(id)?.latest;
+      if (!at) continue;
+      const near = items.filter((g) => Math.hypot(g.body.x - at.x, g.body.z - at.z) <= far).slice(0, 512);
+      const data = packGround(near);
+      const bytes = new Uint8Array(data).slice();
+      const last = this.groundSent.get(id);
+      const now = this.now();
+      if (last && now - last.at < 1 && last.bytes.length === bytes.length && last.bytes.every((b, i) => b === bytes[i])) continue;
+      this.groundSent.set(id, { bytes, at: now });
+      link.send({ type: 'ground', data }, 'frames');
+    }
+  }
+
+  /** What's in the furnaces guests have open, to each of them, when it has changed. */
+  shareFurnaces(): void {
+    for (const [id, [x, y, z]] of this.watching) this.sendFurnace(id, x, y, z);
+  }
+
+  /** A hostile mob hit guest `player` for `damage` and a push away from (fromX, fromZ). */
+  hurt(player: number, damage: number, push: number, fromX: number, fromZ: number): void {
+    this.guests.get(player)?.send({ type: 'hurt', damage, push, fromX, fromZ });
+  }
+
+  private sendFurnace(id: number, x: number, y: number, z: number, always = false): void {
+    const link = this.guests.get(id);
+    const state = this.world.furnace(id, x, y, z);
+    if (!link) return;
+    if (!state) {
+      // Gone (broken) or out of reach: it's closed for them.
+      this.watching.delete(id);
+      this.watched.delete(id);
+      return;
+    }
+    const json = JSON.stringify(state);
+    if (!always && this.watched.get(id) === json) return;
+    this.watched.set(id, json);
+    link.send({ type: 'furnace', x, y, z, state });
   }
 
   /** The time of day now (every `TUNING.net.timeEvery` seconds): to every guest. */
@@ -231,8 +295,36 @@ export class HostSession {
         link.send({ type: 'pong', t: m.t, at: this.now() });
         break;
       case 'hit':
-        this.world.hitMob(id, m.id);
+        this.world.hitMob(id, m.id, m.points);
         break;
+      case 'drop':
+        this.world.drop(id, m.stack, m.x, m.y, m.z, m.vx, m.vy, m.vz, m.delay);
+        break;
+      case 'take': {
+        const got = this.world.take(id, m.id, m.count);
+        if (got) link.send({ type: 'given', stack: got });
+        break;
+      }
+      case 'fopen':
+        this.watching.set(id, [m.x, m.y, m.z]);
+        this.sendFurnace(id, m.x, m.y, m.z, true);
+        break;
+      case 'fclose':
+        this.watching.delete(id);
+        this.watched.delete(id);
+        break;
+      case 'fput': {
+        const back = this.world.furnacePut(id, m.x, m.y, m.z, m.slot, m.stack);
+        if (back) link.send({ type: 'given', stack: back });
+        this.sendFurnace(id, m.x, m.y, m.z, true);
+        break;
+      }
+      case 'ftake': {
+        const got = this.world.furnaceTake(id, m.x, m.y, m.z, m.slot);
+        if (got) link.send({ type: 'given', stack: got });
+        this.sendFurnace(id, m.x, m.y, m.z, true);
+        break;
+      }
       case 'kept': {
         const who = this.players.find((p) => p.id === id);
         if (who) this.world.keep(who.name, m.survival);
@@ -256,6 +348,9 @@ export class HostSession {
   private leave(id: number, reason: string): void {
     if (!this.guests.delete(id)) return;
     this.remotes.delete(id);
+    this.watching.delete(id);
+    this.watched.delete(id);
+    this.groundSent.delete(id);
     const i = this.players.findIndex((p) => p.id === id);
     const name = i >= 0 ? this.players[i].name : 'Someone';
     if (i >= 0) this.players.splice(i, 1);
@@ -335,6 +430,14 @@ export class GuestSession {
   onTime: (time: number) => void = () => {};
   /** The host switched the world's mode. */
   onMode: (mode: WorldMode) => void = () => {};
+  /** The items lying round this player, as the host last said. */
+  ground: GroundSnap[] = [];
+  /** Something the host gave this player (picked up, from a furnace). */
+  onGiven: (stack: Stack) => void = () => {};
+  /** A hostile mob hit this player. */
+  onHurt: (damage: number, push: number, fromX: number, fromZ: number) => void = () => {};
+  /** What's in the furnace this player has open, as the host has it. */
+  onFurnace: (x: number, y: number, z: number, state: Record<string, unknown>) => void = () => {};
   /** Recent round trips and the offsets they gave. */
   private readonly samples: { rtt: number; offset: number }[] = [];
   /** Something to tell the player (someone joined, left). */
@@ -415,8 +518,37 @@ export class GuestSession {
   }
 
   /** This player hit mob `id`: the host makes the hit (the knockback, the flash and any puff come back with the mobs). */
-  hit(id: number): void {
-    if (!this.closed) this.link.send({ type: 'hit', id });
+  hit(id: number, points = 1): void {
+    if (!this.closed) this.link.send({ type: 'hit', id, points });
+  }
+
+  /** Ask the host to put `stack` on the ground (broken, thrown, no room), at (x, y, z) moving at (vx, vy, vz). */
+  drop(stack: Stack, x: number, y: number, z: number, vx = 0, vy = 0, vz = 0, delay = 0): void {
+    if (!this.closed) this.link.send({ type: 'drop', stack, x, y, z, vx, vy, vz, delay });
+  }
+
+  /** Ask the host for `count` of item `id` on the ground (`onGiven` brings it, if it's still there). */
+  take(id: number, count: number): void {
+    if (!this.closed) this.link.send({ type: 'take', id, count });
+  }
+
+  /** Open the furnace at (x, y, z): `onFurnace` brings what's in it, and its changes, until it's closed. */
+  openFurnace(x: number, y: number, z: number): void {
+    if (!this.closed) this.link.send({ type: 'fopen', x, y, z });
+  }
+
+  closeFurnace(): void {
+    if (!this.closed) this.link.send({ type: 'fclose' });
+  }
+
+  /** Put `stack` into slot `slot` of the furnace at (x, y, z) (what doesn't go in comes back through `onGiven`). */
+  furnacePut(x: number, y: number, z: number, slot: number, stack: Stack): void {
+    if (!this.closed) this.link.send({ type: 'fput', x, y, z, slot, stack });
+  }
+
+  /** Take what's in slot `slot` of the furnace at (x, y, z) (it comes through `onGiven`). */
+  furnaceTake(x: number, y: number, z: number, slot: number): void {
+    if (!this.closed) this.link.send({ type: 'ftake', x, y, z, slot });
   }
 
   /** This player set a block (it shows already): ask the host to make it. */
@@ -487,6 +619,18 @@ export class GuestSession {
         break;
       case 'mode':
         this.onMode(m.mode);
+        break;
+      case 'ground':
+        this.ground = unpackGround(m.data) ?? [];
+        break;
+      case 'given':
+        this.onGiven(m.stack);
+        break;
+      case 'hurt':
+        this.onHurt(m.damage, m.push, m.fromX, m.fromZ);
+        break;
+      case 'furnace':
+        this.onFurnace(m.x, m.y, m.z, m.state);
         break;
       case 'joined':
         this.players = [...this.players.filter((p) => p.id !== m.player.id), m.player].sort((a, b) => a.id - b.id);

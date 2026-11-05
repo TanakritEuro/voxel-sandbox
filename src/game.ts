@@ -23,8 +23,10 @@ import { digTime } from './survival/drops';
 import { HOTBAR_SLOTS, Inventory as SurvivalInventory } from './survival/inventory';
 import { foodOf, isBlockItem, Item, itemInfo } from './survival/items';
 import { breakWith, heldTool, placeableIn } from './survival/play';
-import { type GroundItem, GroundItems } from './survival/ground';
-import { type Furnace, Furnaces } from './survival/furnace';
+import { type GroundItem, GroundItems, inReach } from './survival/ground';
+import type { Stack } from './survival/inventory';
+import { Furnace, Furnaces } from './survival/furnace';
+import { hostSurvival } from './net/hostSurvival';
 import { Health } from './survival/health';
 import { hash3 } from './math';
 import { ChunkRenderer } from './render/chunkRenderer';
@@ -457,6 +459,26 @@ if (guest) {
   };
   // The host switched the world's mode: everyone plays it.
   guest.onMode = (mode) => setMode(mode === 'survival');
+  // Survival together: what the host gives (picked up, from a furnace), a gloamer's hits, the furnace open.
+  guest.onGiven = (stack) => {
+    asked.clear();
+    const left = pack.add(stack.item, stack.count, stack.wear);
+    if (left) dropAtFeet({ ...stack, count: left });
+    sound.play({ name: 'pickup', gain: 1 });
+    renderHotbar();
+    if (backpack.open) backpack.refresh();
+  };
+  guest.onHurt = (damage, push, fromX, fromZ) => struck(damage, push, fromX, fromZ);
+  guest.onFurnace = (x, y, z, state) => {
+    const open = hostFurnace;
+    if (!open || open.x !== x || open.y !== y || open.z !== z) return;
+    const heard = Furnace.from(state);
+    heard.slots.slots.forEach((st, i) => (open.furnace.slots.slots[i] = st));
+    open.furnace.burn = heard.burn;
+    open.furnace.burnTotal = heard.burnTotal;
+    open.furnace.progress = heard.progress;
+    backpack.refresh();
+  };
   setInterval(sendKept, TUNING.net.keptEvery * 1000);
   guest.onMobSounds = (sounds) => {
     const p = camera.position;
@@ -481,7 +503,9 @@ function openToFriends(room: Room): HostSession {
       position: () => [player.body.x, player.body.y, player.body.z],
       allowed: (id, x, y, z, block): boolean => editAllowed(session.states().get(id), session.states().values(), x, y, z, block),
       edit: (x, y, z, block) => guestEdit(x, y, z, block),
-      hitMob: (id, mobId) => guestHit(id, mobId),
+      hitMob: (id, mobId, points) => guestHit(id, mobId, points),
+      // Guests' survival on this world's ground and in its furnaces.
+      ...hostSurvival(ground, furnaces, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
       mode: () => modeOf(record),
       kept: (name) => {
         const k = record.guests?.[name];
@@ -542,13 +566,21 @@ function say(text: string): void {
 }
 
 /** A guest hit mob `mobId`: made as this player's hit would be, if it was in reach of where they were last heard. */
-function guestHit(id: number, mobId: number): void {
+/** The furnace at (x, y, z) was broken: forgotten, and in survival what was in it dropped there. */
+function furnaceGone(x: number, y: number, z: number): void {
+  const kept = furnaces.remove(x, y, z);
+  if (!kept) return;
+  if (backpack.showing === kept) closeBackpack();
+  if (survival) for (const st of kept.contents()) ground.drop(x + 0.5, y + 0.5, z + 0.5, st, (Math.random() - 0.5) * 2, TUNING.survival.ground.hop, (Math.random() - 0.5) * 2);
+}
+
+function guestHit(id: number, mobId: number, points: number): void {
   const mob = mobs?.byId(mobId);
   const who = host?.states().get(id);
   if (!mob || !who) return;
   const b = mob.body;
   const far = Math.hypot(b.x - who.x, b.y + b.height / 2 - (who.y + TUNING.player.eyeHeight), b.z - who.z);
-  if (far <= TUNING.edit.reach + TUNING.net.reachSlack + 1) hitMob(mob, who.x, who.z);
+  if (far <= TUNING.edit.reach + TUNING.net.reachSlack + 1) hitMob(mob, who.x, who.z, points);
 }
 
 /** Once a frame, playing together: this player's state now and then, the others drawn; a host also sends mobs and time, and keeps the others' land loaded. */
@@ -577,9 +609,11 @@ function playTogether(now: number): void {
     });
   }
   // The mobs near each guest, and the sounds they made; the time of day now and then.
-  if (host && mobs && now / 1000 - lastMobsSent >= 1 / TUNING.net.mobRate) {
+  if (host && now / 1000 - lastMobsSent >= 1 / TUNING.net.mobRate) {
     lastMobsSent = now / 1000;
-    host.shareMobs(mobs.mobs, mobSoundsOut);
+    host.shareGround(ground.items);
+    host.shareFurnaces();
+    if (mobs) host.shareMobs(mobs.mobs, mobSoundsOut);
     mobSoundsOut = [];
   }
   if (host && now / 1000 - lastTimeSent >= TUNING.net.timeEvery) {
@@ -750,6 +784,10 @@ function tickFurnaces(dt: number): void {
 function closeBackpack(): void {
   backpack.hide();
   input.lock();
+  if (hostFurnace) {
+    guest?.closeFurnace();
+    hostFurnace = null;
+  }
 }
 /** Items' pictures, made once each, for holding them. */
 const arts = new Map<number, Uint8Array | null>();
@@ -797,7 +835,7 @@ function gather(block: Block, x: number, y: number, z: number, wear = true): voi
   for (const [item, count] of broke.drops) {
     const a = Math.random() * Math.PI * 2;
     const out = Math.random() * G.scatter;
-    ground.drop(x + 0.5, y + 0.5, z + 0.5, { item, count }, Math.cos(a) * out, G.hop, Math.sin(a) * out);
+    putDown({ item, count }, x + 0.5, y + 0.5, z + 0.5, Math.cos(a) * out, G.hop, Math.sin(a) * out);
   }
   if (broke.woreOut !== null) say(`Your ${itemInfo(broke.woreOut).name.toLowerCase()} wore out.`);
   renderHotbar();
@@ -824,7 +862,7 @@ function throwSelected(all: boolean): void {
   if (!s.count) pack.slots[selected] = null;
   const d = player.direction();
   const eye = camera.position;
-  ground.drop(eye.x + d.x * 0.4, eye.y - 0.3 + d.y * 0.4, eye.z + d.z * 0.4, stack, d.x * G.throwSpeed, d.y * G.throwSpeed + G.throwUp, d.z * G.throwSpeed, G.throwDelay);
+  putDown(stack, eye.x + d.x * 0.4, eye.y - 0.3 + d.y * 0.4, eye.z + d.z * 0.4, d.x * G.throwSpeed, d.y * G.throwSpeed + G.throwUp, d.z * G.throwSpeed, G.throwDelay);
   swing();
   renderHotbar();
 }
@@ -832,8 +870,33 @@ function throwSelected(all: boolean): void {
 /** What a stack picked up on the inventory screen does when there's no room to put it back: it drops at the feet. */
 function dropAtFeet(stack: { item: number; count: number; wear?: number }): void {
   const b = player.body;
-  ground.drop(b.x, b.y + 0.5, b.z, stack, 0, 1, 0, TUNING.survival.ground.throwDelay);
+  putDown(stack, b.x, b.y + 0.5, b.z, 0, 1, 0, TUNING.survival.ground.throwDelay);
 }
+
+/** A stack on the ground: this world's, or (a guest) the host's, asked for. */
+function putDown(stack: Stack, x: number, y: number, z: number, vx = 0, vy = 0, vz = 0, delay = 0): void {
+  if (guest) guest.drop(stack, x, y, z, vx, vy, vz, delay);
+  else ground.drop(x, y, z, stack, vx, vy, vz, delay);
+}
+
+/** A guest's pickups asked of the host and not answered yet: the item's id, and when it was asked (ms). */
+const asked = new Map<number, number>();
+
+/** A guest in survival: the host's items in reach, as much of each as there's room for, asked for. */
+function pickUpFromHost(now: number): void {
+  if (!guest || !survival || dead || player.waiting) return;
+  for (const [id, at] of asked) if (now - at > 1000) asked.delete(id);
+  for (const g of guest.ground) {
+    if (asked.has(g.id) || !inReach(g.x, g.y, g.z, player.body)) continue;
+    const room = g.count - pack.clone().add(g.item, g.count);
+    if (room <= 0) continue;
+    guest.take(g.id, room);
+    asked.set(g.id, now);
+  }
+}
+
+/** A guest's view of the host's furnace it has open: where, and what was last heard of it. */
+let hostFurnace: { x: number; y: number; z: number; furnace: Furnace } | null = null;
 
 /** Creative or survival from now on, saved with the world; each keeps its own hotbar. */
 function setMode(toSurvival: boolean): void {
@@ -999,9 +1062,10 @@ function edit(x: number, y: number, z: number, block: Block, share = true): void
   lastEdit = { ms: performance.now() - t0, lightMs: world.lightMs, chunks: stale.length };
 }
 
-/** A guest's edit, checked by the session: made as the host's would be, the torches a broken block held going too. */
+/** A guest's edit, checked by the session: made as the host's would be, the torches a broken block held going too, and what a furnace held. */
 function guestEdit(x: number, y: number, z: number, block: Block): void {
   const held = block === Block.Air ? torchesHeldBy(world, x, y, z) : [];
+  if (block === Block.Air && furnaceOf(world.getBlock(x, y, z))) furnaceGone(x, y, z);
   edit(x, y, z, block, false);
   for (const [tx, ty, tz] of held) edit(tx, ty, tz, Block.Air);
 }
@@ -1070,12 +1134,8 @@ function editing(dt: number): void {
     swing();
     particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
     if (survival) gather(broken.block, broken.x, broken.y, broken.z);
-    // A furnace broken: what's in it drops too (in survival), and it's forgotten.
-    const kept = furnaceOf(broken.block) ? furnaces.remove(broken.x, broken.y, broken.z) : undefined;
-    if (kept) {
-      if (backpack.showing === kept) closeBackpack();
-      if (survival) for (const s of kept.contents()) ground.drop(broken.x + 0.5, broken.y + 0.5, broken.z + 0.5, s, (Math.random() - 0.5) * 2, TUNING.survival.ground.hop, (Math.random() - 0.5) * 2);
-    }
+    // A furnace broken: what's in it drops too (in survival), and it's forgotten (a guest's is the host's to drop).
+    if (furnaceOf(broken.block) && !guest) furnaceGone(broken.x, broken.y, broken.z);
     // Torches go with the block they stood on or hung from (in survival, into the inventory).
     for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) {
       if (survival) gather(world.getBlock(x, y, z), x, y, z, false);
@@ -1088,7 +1148,17 @@ function editing(dt: number): void {
     const shift = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight');
     const used = shift ? null : useBlock(target.block);
     // A furnace clicked in survival opens (a guest's furnaces are the host's: to come).
-    if (survival && !guest && !shift && furnaceOf(target.block)) openBackpack(furnaces.at(target.x, target.y, target.z));
+    if (survival && !shift && furnaceOf(target.block)) {
+      if (!guest) openBackpack(furnaces.at(target.x, target.y, target.z));
+      else {
+        // The host's furnace: opened there, its contents shown as they come.
+        const { x, y, z } = target;
+        hostFurnace = { x, y, z, furnace: new Furnace() };
+        guest.openFurnace(x, y, z);
+        backpack.show(hostFurnace.furnace, { put: (slot, stack) => guest!.furnacePut(x, y, z, slot, stack), take: (slot) => guest!.furnaceTake(x, y, z, slot) });
+        input.unlock();
+      }
+    }
     else if (used !== null) {
       // A guest shows it at once and asks the host to use the block as the host has it.
       if (used !== target.block) {
@@ -1272,7 +1342,8 @@ function frame(now: number): void {
   const sky = skyAt(time);
   daylightNow = sky.daylight;
   particleMesh.update();
-  groundView.update(ground.items, (x, y, z) => brightness(world.getLight(Math.floor(x), Math.floor(y), Math.floor(z)), daylightNow), now / 1000);
+  // A guest draws the host's items, where it last heard they lie.
+  groundView.update(guest ? guest.ground.map((g) => ({ id: g.id, item: g.item, body: g })) : ground.items, (x, y, z) => brightness(world.getLight(Math.floor(x), Math.floor(y), Math.floor(z)), daylightNow), now / 1000);
   chunks.setSunlight(sky.sunlight);
   chunks.setWaterFlow(waterFlow(now / 1000, TUNING.water.flow));
   // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).
@@ -1294,6 +1365,9 @@ function frame(now: number): void {
   }
   backpack.tick();
   // Items on the ground fall and settle, and are picked up by a survival player within reach.
+  pickUpFromHost(now);
+  // A guest's furnace screen closes when the furnace is broken.
+  if (hostFurnace && !furnaceOf(world.getBlock(hostFurnace.x, hostFurnace.y, hostFurnace.z))) closeBackpack();
   if (ground.items.length && worldRuns())
     ground.update(dt, world, (x, z) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z))), survival && !dead && !player.waiting ? [player.body] : [], pickUp);
   // `?flood=guest` waits for a guest to be in, to measure what the water sends.
@@ -1309,16 +1383,32 @@ function frame(now: number): void {
     // A guest's hit is the host's to make: the knockback and any puff come back with the mobs.
     if (guest) {
       swing();
-      guest.hit(aimed.mob.id);
+      guest.hit(aimed.mob.id, hitPoints());
     } else hitMob(aimed.mob);
   }
   editing(dt);
   // The mobs think and move (not while paused), then are drawn where they are.
   if (mobs && mobView) {
     // In survival, a living player is prey for the gloamers that come in the dark.
-    const prey = survival && !dead && !player.waiting ? [player.body] : [];
+    // Playing together, every guest is prey too (by player number, this player 0).
+    const prey: { x: number; y: number; z: number }[] = [];
+    const preyIds: number[] = [];
+    if (survival && !dead && !player.waiting) {
+      prey.push(player.body);
+      preyIds.push(0);
+    }
+    if (survival && host)
+      for (const [id, r] of host.remotes)
+        if (r.latest) {
+          prey.push(r.latest);
+          preyIds.push(id);
+        }
     mobs.update(worldRuns() ? dt : 0, mobPlayers(), daylightNow, prey);
-    for (const a of mobs.takeAttacks()) if (a.target === 0) struck(a.damage, a.push, a.fromX, a.fromZ);
+    for (const a of mobs.takeAttacks()) {
+      const id = preyIds[a.target];
+      if (id === 0) struck(a.damage, a.push, a.fromX, a.fromZ);
+      else if (id !== undefined) host?.hurt(id, a.damage, a.push, a.fromX, a.fromZ);
+    }
     for (const m of mobs.takeFaded()) {
       const b = m.body;
       particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 1), Math.floor(b.z)), daylightNow));

@@ -7,7 +7,6 @@
 // Each is as bright as the light where it lies (the instance colour).
 
 import * as THREE from 'three';
-import type { GroundItem } from '../survival/ground';
 import { isBlockItem } from '../survival/items';
 import { BLOCKS } from '../world/blocks';
 import { TEXTURE_SIZE, type TextureName, textureLayer } from '../world/textures';
@@ -41,8 +40,11 @@ export class GroundItemView {
   /** `pixels`: every texture layer, as the chunks have them (`makeTextures`). */
   constructor(private readonly pixels: Uint8Array) {}
 
-  /** Once a frame: where everything lying about is, how bright it is there, and the time (s) for the turning. */
-  update(items: readonly GroundItem[], brightness: (x: number, y: number, z: number) => number, time: number): void {
+  /**
+   * Once a frame: where everything lying about is (the ground's items, or a guest's mirror of
+   * them), how bright it is there, and the time (s) for the turning.
+   */
+  update(items: readonly { id: number; item: number; body: { x: number; y: number; z: number } }[], brightness: (x: number, y: number, z: number) => number, time: number): void {
     const used = this.used;
     used.clear();
     for (const g of items) used.set(g.item, (used.get(g.item) ?? 0) + 1);

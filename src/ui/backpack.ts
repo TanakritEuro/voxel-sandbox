@@ -6,6 +6,10 @@
 // back out). Each recipe is a button, bright when it can be made: a click makes it once, Shift and
 // a click as many times as it can. A furnace's output only gives; its fuel slot takes only fuel.
 // Closing with a stack picked up puts it back. Plain DOM, as the picker is.
+//
+// A guest's furnace is the host's (`FurnaceAsk`): the screen shows the host's furnace as last heard,
+// and a click puts the stack held (or Shift-clicked) into it, or asks for what's in a slot; the host
+// answers, with what didn't go in or what was taken.
 
 import { TUNING } from '../config';
 import { canMake, make, RECIPES, type Recipe } from '../survival/crafting';
@@ -13,6 +17,14 @@ import { FUEL, Furnace, FUELS, INPUT, OUTPUT, SMELTS } from '../survival/furnace
 import { HOTBAR_SLOTS, type Inventory, SLOTS, type Stack } from '../survival/inventory';
 import { itemInfo } from '../survival/items';
 import { el } from './dom';
+
+/** A furnace that is someone else's to change (a guest's view of the host's). */
+export interface FurnaceAsk {
+  /** Put `stack` into slot `slot` (what doesn't go in comes back). */
+  put(slot: number, stack: Stack): void;
+  /** Ask for what's in slot `slot`. */
+  take(slot: number): void;
+}
 
 export interface BackpackEvents {
   /** The inventory changed (a move or something made): the hotbar is drawn again. */
@@ -37,6 +49,8 @@ export class Backpack {
   private furnace: Furnace | null = null;
   /** What the furnace part shows now, so it's redrawn only when that changes. */
   private furnaceShown = '';
+  /** The furnace open is someone else's: changes are asked for (`FurnaceAsk`). */
+  private ask: FurnaceAsk | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -85,10 +99,11 @@ export class Backpack {
     return this.isOpen ? this.furnace : null;
   }
 
-  /** Open it with crafting beside the inventory, or with `furnace`. */
-  show(furnace: Furnace | null = null): void {
+  /** Open it with crafting beside the inventory, or with `furnace` (someone else's, with `ask`). */
+  show(furnace: Furnace | null = null, ask: FurnaceAsk | null = null): void {
     this.isOpen = true;
     this.furnace = furnace;
+    this.ask = ask;
     this.furnaceShown = '';
     this.crafting.classList.toggle('hidden', furnace !== null);
     this.furnacePart.classList.toggle('hidden', furnace === null);
@@ -160,7 +175,8 @@ export class Backpack {
     if (!s) return false;
     const target = FUELS.has(s.item) && this.fits(FUEL, s) ? FUEL : SMELTS.has(s.item) && this.fits(INPUT, s) ? INPUT : -1;
     if (target < 0) return false;
-    this.inventory.slots[slot] = f.slots.put(target, this.inventory.pick(slot)!);
+    if (this.ask) this.ask.put(target, this.inventory.pick(slot)!);
+    else this.inventory.slots[slot] = f.slots.put(target, this.inventory.pick(slot)!);
     return true;
   }
 
@@ -174,6 +190,16 @@ export class Backpack {
     const f = this.furnace;
     if (!f) return;
     const there = f.slots.slots[slot];
+    if (this.ask) {
+      // Someone else's: the stack held goes in (if it may); with nothing held, what's there is asked for.
+      if (this.held && slot !== OUTPUT && Furnace.accepts(slot, this.held)) {
+        this.ask.put(slot, this.held);
+        this.held = null;
+      } else if (!this.held && there) this.ask.take(slot);
+      this.refresh();
+      this.events.changed();
+      return;
+    }
     if (!this.held) {
       if (shift && !right && there) {
         // Out into the inventory, as much as fits.

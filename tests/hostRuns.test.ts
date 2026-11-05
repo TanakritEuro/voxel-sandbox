@@ -127,7 +127,7 @@ describe('what the host runs, for its guests', () => {
   function setup() {
     const net = new Network({ delay: 0.03 });
     let t = 0;
-    const hits: [number, number][] = [];
+    const hits: [number, number, number][] = [];
     const world: HostWorld = {
       seed: 1,
       time: () => 0.4,
@@ -140,7 +140,12 @@ describe('what the host runs, for its guests', () => {
       kept: () => null,
       keep: () => {},
       blockAt: () => Block.Air,
-      hitMob: (player, id) => hits.push([player, id]),
+      hitMob: (player, id, points) => hits.push([player, id, points]),
+      drop: () => {},
+      take: () => null,
+      furnace: () => null,
+      furnacePut: (_p, _x, _y, _z, _slot, stack) => stack,
+      furnaceTake: () => null,
     };
     const room = net.room();
     const host = new HostSession(room, world, 'Host', () => t);
@@ -194,16 +199,19 @@ describe('what the host runs, for its guests', () => {
     const { host, guest, hits, applied, run } = setup();
     await run(0.2);
     expect(guest.time).toBe(0.4); // from the welcome
-    guest.hit(41);
+    guest.hit(41, 3);
     host.shareEdits([[1, 70, 1, Block.WaterFlow3]], 0, 0, true);
     host.shareEdits([[2, 70, 1, Block.Stone]]);
     let heard = -1;
     guest.onTime = (time) => (heard = time);
     host.shareTime(0.55);
     await run(0.1);
-    expect(hits).toEqual([[guest.you, 41]]);
+    expect(hits).toEqual([[guest.you, 41, 3]]);
     expect(applied.map((a) => a.water)).toEqual([true, false]);
     expect([heard, guest.time]).toEqual([0.55, 0.55]);
-    expect(parseMessage({ type: 'hit', id: 41 })).toEqual({ type: 'hit', id: 41 });
+    expect(parseMessage({ type: 'hit', id: 41, points: 3 })).toEqual({ type: 'hit', id: 41, points: 3 });
+    // A hit harder than any tool's, or with no points, is turned away.
+    expect(parseMessage({ type: 'hit', id: 41, points: 9 })).toBe(null);
+    expect(parseMessage({ type: 'hit', id: 41 })).toBe(null);
   });
 });

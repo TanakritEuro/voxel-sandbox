@@ -26,8 +26,14 @@ export interface HostGame {
   allowed(player: number, x: number, y: number, z: number, block: Block): boolean;
   /** Make an edit as the game does (blocks and light, remeshing, saving, waking the water). */
   edit(x: number, y: number, z: number, block: Block): void;
-  /** Player `player` hit mob `id`: check it's in reach, and make the hit. */
-  hitMob(player: number, id: number): void;
+  /** Player `player` hit mob `id` for `points`: check it's in reach, and make the hit. */
+  hitMob(player: number, id: number, points: number): void;
+  /** Guests' survival on the host's ground and in its furnaces (`HostWorld`'s). */
+  drop: HostWorld['drop'];
+  take: HostWorld['take'];
+  furnace: HostWorld['furnace'];
+  furnacePut: HostWorld['furnacePut'];
+  furnaceTake: HostWorld['furnaceTake'];
   /** The world's mode, and guests' survival states kept by name (`HostWorld`'s). */
   mode(): WorldMode;
   kept(name: string): Record<string, unknown> | null;
@@ -103,7 +109,12 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
       return true;
     },
     blockAt: (x, y, z) => world.getBlock(x, y, z),
-    hitMob: (player, id) => game.hitMob(player, id),
+    hitMob: (player, id, points) => game.hitMob(player, id, points),
+    drop: (...a) => game.drop(...a),
+    take: (...a) => game.take(...a),
+    furnace: (...a) => game.furnace(...a),
+    furnacePut: (...a) => game.furnacePut(...a),
+    furnaceTake: (...a) => game.furnaceTake(...a),
     mode: () => game.mode(),
     kept: (name) => game.kept(name),
     keep: (name, survival) => game.keep(name, survival),

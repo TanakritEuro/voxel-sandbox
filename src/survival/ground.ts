@@ -39,6 +39,19 @@ export interface Picker {
   z: number;
 }
 
+/**
+ * Is an item whose box's bottom middle is at (x, y, z) within reach of a player standing at `p`?
+ * Measured from the item's middle to the nearest of the player's box, so one at the bottom of a hole
+ * just dug is in reach from its edge.
+ */
+export function inReach(x: number, y: number, z: number, p: Picker): boolean {
+  const dx = Math.max(0, Math.abs(x - p.x) - HALF_WIDTH);
+  const dz = Math.max(0, Math.abs(z - p.z) - HALF_WIDTH);
+  const my = y + SIZE / 2;
+  const dy = my < p.y ? p.y - my : Math.max(0, my - (p.y + HEIGHT));
+  return Math.hypot(dx, dy, dz) <= G.pickup;
+}
+
 export class GroundItems {
   readonly items: GroundItem[] = [];
   private nextId = 1;
@@ -95,14 +108,7 @@ export class GroundItems {
       if (g.delay > 0) continue;
       const b = g.body;
       for (let p = 0; p < players.length; p++) {
-        const pl = players[p];
-        // From the item's middle to the nearest of the player's box, so one at the bottom of a hole
-        // just dug is in reach from its edge.
-        const dx = Math.max(0, Math.abs(b.x - pl.x) - HALF_WIDTH);
-        const dz = Math.max(0, Math.abs(b.z - pl.z) - HALF_WIDTH);
-        const my = b.y + SIZE / 2;
-        const dy = my < pl.y ? pl.y - my : Math.max(0, my - (pl.y + HEIGHT));
-        if (Math.hypot(dx, dy, dz) > G.pickup) continue;
+        if (!inReach(b.x, b.y, b.z, players[p])) continue;
         g.count = take(g, p);
         if (g.count <= 0) {
           this.items.splice(i, 1);

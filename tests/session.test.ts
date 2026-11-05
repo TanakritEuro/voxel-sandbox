@@ -10,6 +10,13 @@ import { Block, gateOf, useBlock } from '../src/world/blocks';
 import { LogicFlow } from '../src/world/logic';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
 import { World } from '../src/world/world';
+import { hostSurvival } from '../src/net/hostSurvival';
+import type { PlayerState } from '../src/net/playerState';
+import { Furnace, Furnaces } from '../src/survival/furnace';
+import { GroundItems } from '../src/survival/ground';
+import { Item } from '../src/survival/items';
+import type { Stack } from '../src/survival/inventory';
+import { furnace } from '../src/world/blocks';
 
 const SEED = 20261022;
 /** The columns everyone loads: blocks -32..63 each way. */
@@ -54,6 +61,9 @@ async function makeHost(env: Env) {
   const kept = new Map<string, Record<string, unknown>>();
   // Its logic, woken by every edit as the game's is.
   const logic = new LogicFlow();
+  // Its ground and furnaces, as the game's.
+  const ground = new GroundItems();
+  const furnaces = new Furnaces();
   const edit = (x: number, y: number, z: number, b: Block) => {
     if (world.setBlock(x, y, z, b).length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
     logic.wake(x, y, z);
@@ -67,6 +77,7 @@ async function makeHost(env: Env) {
       allowed: () => allow.ok,
       edit,
       hitMob: () => {},
+      ...hostSurvival(ground, furnaces, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
       mode: () => mode.value,
       kept: (name) => kept.get(name) ?? null,
       keep: (name, s) => void kept.set(name, s),
@@ -85,7 +96,7 @@ async function makeHost(env: Env) {
     world.setBlocks(changes);
     session.shareEdits(changes, 0, 0, true);
   };
-  return { world, saver, session, room, allow, hostEdit, tick, mode, kept };
+  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces };
 }
 
 async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, name: string) {
@@ -403,5 +414,148 @@ describe('survival over the network', () => {
     expect(again.welcome.kept).toEqual(state);
     const other = await makeGuest(env, host, 'Aroon');
     expect(other.welcome.kept).toBe(null);
+  });
+
+  /** A guest standing at (x, y, z), its clock learned first (states wait for that), and the host told. */
+  async function standAt(env: Env, a: Awaited<ReturnType<typeof makeGuest>>, x: number, y: number, z: number) {
+    for (let i = 0; i < 30 && !a.session.synced; i++) {
+      a.session.update();
+      await env.pump(0.1);
+    }
+    const st: Omit<PlayerState, 'time'> = { x, y, z, yaw: 0, pitch: 0, flying: false, crouching: false, swimming: false, onGround: true, held: Block.Air, swings: 0, digging: Block.Air };
+    a.session.sendState(st);
+    await env.pump(0.3);
+  }
+
+  it("puts a guest's drop on the host's ground, shows it to every guest near, and gives it to the first who asks", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    host.mode.value = 'survival';
+    const a = await makeGuest(env, host, 'Pim');
+    const b = await makeGuest(env, host, 'Aroon');
+    const y = surface(host.world, 4, 4);
+    await standAt(env, a, 4.5, y, 4.5);
+    await standAt(env, b, 5.5, y, 4.5);
+    // A drops 5 coal at its feet: on the host's ground.
+    a.session.drop({ item: Item.Coal, count: 5 }, 4.5, y + 0.5, 4.5);
+    await env.pump(0.3);
+    expect(host.ground.items.map((g) => [g.item, g.count])).toEqual([[Item.Coal, 5]]);
+    // Shared: both see it where it lies.
+    host.session.shareGround(host.ground.items);
+    await env.pump(0.3);
+    for (const g of [a, b]) expect(g.session.ground.map((it) => [it.item, it.count])).toEqual([[Item.Coal, 5]]);
+    const id = a.session.ground[0].id;
+    // Lying still, it isn't sent again for a second; then it is (in case one was lost).
+    a.session.ground = [];
+    host.session.shareGround(host.ground.items);
+    await env.pump(0.3);
+    expect(a.session.ground).toEqual([]);
+    await env.pump(0.8);
+    host.session.shareGround(host.ground.items);
+    await env.pump(0.3);
+    expect(a.session.ground.length).toBe(1);
+    // Both ask for it at once: A for 3, B for all 5. A asked first: 3 for A, the 2 left for B.
+    const given: [string, Stack][] = [];
+    a.session.onGiven = (st) => given.push(['Pim', st]);
+    b.session.onGiven = (st) => given.push(['Aroon', st]);
+    a.session.take(id, 3);
+    b.session.take(id, 5);
+    await env.pump(0.5);
+    expect(given.sort()).toEqual([
+      ['Aroon', { item: Item.Coal, count: 2 }],
+      ['Pim', { item: Item.Coal, count: 3 }],
+    ]);
+    expect(host.ground.items).toEqual([]);
+    // Asked again, it's gone: nothing.
+    a.session.take(id, 1);
+    await env.pump(0.3);
+    expect(given.length).toBe(2);
+  });
+
+  it('refuses a drop or a take far from where a guest was heard', async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    const y = surface(host.world, 4, 4);
+    await standAt(env, a, 4.5, y, 4.5);
+    a.session.drop({ item: Item.Coal, count: 5 }, 30.5, y + 0.5, 4.5);
+    await env.pump(0.3);
+    expect(host.ground.items).toEqual([]);
+    const far = host.ground.drop(20.5, y + 0.5, 4.5, { item: Item.Stick, count: 2 });
+    const got: Stack[] = [];
+    a.session.onGiven = (st) => got.push(st);
+    a.session.take(far.id, 2);
+    await env.pump(0.3);
+    expect(got).toEqual([]);
+    expect(host.ground.items.length).toBe(1);
+  });
+
+  it("opens the host's furnace for a guest: what's in it and its changes, what's put in and taken out checked there", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    const y = surface(host.world, 4, 4);
+    host.hostEdit(6, y, 4, furnace(0, false));
+    host.furnaces.at(6, y, 4).slots.slots[1] = { item: Item.Coal, count: 2 };
+    await standAt(env, a, 4.5, y, 4.5);
+    const seen: Furnace[] = [];
+    a.session.onFurnace = (_x, _y, _z, state) => seen.push(Furnace.from(state));
+    const given: Stack[] = [];
+    a.session.onGiven = (st) => given.push(st);
+    a.session.openFurnace(6, y, 4);
+    await env.pump(0.3);
+    expect(seen.at(-1)!.slots.slots[1]).toEqual({ item: Item.Coal, count: 2 });
+    // Raw iron in: it's there, and the guest hears.
+    a.session.furnacePut(6, y, 4, 0, { item: Item.RawIron, count: 3 });
+    await env.pump(0.3);
+    expect(host.furnaces.at(6, y, 4).slots.slots[0]).toEqual({ item: Item.RawIron, count: 3 });
+    expect(seen.at(-1)!.slots.slots[0]).toEqual({ item: Item.RawIron, count: 3 });
+    // Sticks as fuel onto the coal: not the same, so they come back; raw iron as fuel: not a fuel, back.
+    a.session.furnacePut(6, y, 4, 1, { item: Item.Stick, count: 4 });
+    a.session.furnacePut(6, y, 4, 1, { item: Item.RawIron, count: 1 });
+    await env.pump(0.3);
+    expect(given).toEqual([
+      { item: Item.Stick, count: 4 },
+      { item: Item.RawIron, count: 1 },
+    ]);
+    expect(host.furnaces.at(6, y, 4).slots.slots[1]).toEqual({ item: Item.Coal, count: 2 });
+    // The host's furnace burns: the guest hears it changed, and only when it has.
+    const before = seen.length;
+    host.session.shareFurnaces();
+    await env.pump(0.2);
+    expect(seen.length).toBe(before);
+    host.furnaces.at(6, y, 4).step(1);
+    host.session.shareFurnaces();
+    await env.pump(0.2);
+    expect(seen.length).toBe(before + 1);
+    expect(seen.at(-1)!.progress).toBeGreaterThan(0);
+    // What's left of the fuel taken: given, and gone from the furnace.
+    a.session.furnaceTake(6, y, 4, 1);
+    await env.pump(0.3);
+    expect(given.at(-1)!.item).toBe(Item.Coal);
+    expect(host.furnaces.at(6, y, 4).slots.slots[1]).toBe(null);
+    // Closed: no more news.
+    a.session.closeFurnace();
+    await env.pump(0.2);
+    const closed = seen.length;
+    host.furnaces.at(6, y, 4).step(1);
+    host.session.shareFurnaces();
+    await env.pump(0.2);
+    expect(seen.length).toBe(closed);
+    // Where there's no furnace: what's put in comes back.
+    a.session.furnacePut(9, y, 4, 0, { item: Item.RawIron, count: 1 });
+    await env.pump(0.3);
+    expect(given.at(-1)).toEqual({ item: Item.RawIron, count: 1 });
+  });
+
+  it("brings a hostile mob's hit to the guest it hit", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    const hurts: number[][] = [];
+    a.session.onHurt = (damage, push, fromX, fromZ) => hurts.push([damage, push, fromX, fromZ]);
+    host.session.hurt(a.session.you, 2, 5, 3.5, -1);
+    await env.pump(0.3);
+    expect(hurts).toEqual([[2, 5, 3.5, -1]]);
   });
 });

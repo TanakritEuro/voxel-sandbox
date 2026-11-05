@@ -188,7 +188,7 @@ An invented creature, the **gloamer**: a thin, dark, long-armed thing with two p
 3. **Food and hunger:** meat and berries, eating, the hunger pips, healing by food.
 4. **The gloamer:** the kind, darkness spawning, hunting and hitting, health in points and tools,
    fading by day, its looks and sounds.
-5. **Together:** items, furnaces and the gloamer for guests.
+5. **Together:** items, furnaces and the gloamer for guests. Built (2026-11-05).
 6. **Measurements,** notes and playtest questions.
 
 ## Decisions to agree
@@ -509,3 +509,79 @@ You asked for the gloamer to be softened before going on.
 
 **Whether it's still too fierce** is for the playtest. The numbers are in one place,
 `KINDS[MobKind.Gloamer].hostile` and `TUNING.mobs.hostileInterval`.
+
+## Step 5: together — built (2026-11-05)
+
+**What a guest now has in survival:**
+- **Items on the ground are the host's.**
+  - A guest sees them as the host last said (`ground`, 24 bytes an item, sent with the mobs 10 times a
+    second to each guest within 96 blocks of them). The host sends again only when what it would send
+    has changed, or a second on, as `frames` may lose one: most items lie still.
+  - What a guest breaks, throws (Q, Shift+Q) or has no room for is asked of the host (`drop`) and put on
+    its ground.
+  - A guest within reach of one asks for as much as it has room for (`take`); the host gives it to the
+    first to ask (`given`), and what's left stays. Asked again within a second only if no answer came.
+  - The host picks up from its own ground every frame, so where both are in reach the host usually
+    gets it first.
+- **Furnaces are the host's.**
+  - A guest's right click opens the host's furnace (`fopen`): its contents come at once and whenever
+    they change (`furnace`), until it's closed (`fclose`), broken or out of reach.
+  - The screen shows the furnace only as the host has it. A click or Shift-click asks (`fput`,
+    `ftake`); the host checks reach, that the slot takes the item (fuel only in the fuel slot,
+    nothing into the output), never swaps a different item (it comes back), and sends back
+    what didn't go in or what was taken (`given`).
+  - A guest breaking a furnace: what's in it drops on the host's ground.
+- **The gloamer hunts guests too:** the host's mobs take every survival guest as prey with the host
+  (where they were last heard), and a hit on a guest goes to it (`hurt`: points and push), made there
+  as a hit on the host is.
+- **Hits** from a guest carry the points of the tool it holds (`hit`, 1–3).
+- **`PROTOCOL` 4.** Hunger stays each player's own, kept with a guest's survival state by name, as in
+  Milestone 11.
+
+**Files:**
+- `net/itemState.ts`: the ground packed and checked.
+- `net/hostSurvival.ts`: the host's side of drops, takes and furnaces, pure. It was in `game.ts`
+  at first; moved out so the tests run the same rules.
+- `net/protocol.ts`, `net/session.ts`, `net/hostWorld.ts`: the messages and both sides.
+- `ui/backpack.ts`: `FurnaceAsk`, a furnace someone else changes.
+- `survival/ground.ts`: `inReach`, shared by the host's ground and a guest's mirror.
+- `render/groundItems.ts`: draws either.
+- `game.ts`: the wiring.
+
+**Tests** (over the loopback network, with the real ground and furnaces):
+- a guest's drop lands on the host's ground and both guests see it;
+- lying still, it isn't sent again for a second;
+- two guests asking at once: the first gets what it asked for, the second what's left, a third ask
+  nothing;
+- a drop or take far from where the guest was heard is refused;
+- a guest's furnace: contents on opening, a put in, a wrong put given back (sticks onto coal, raw iron as
+  fuel), changes heard only when they happen, a take, nothing after closing, a put where there's no
+  furnace given back;
+- a hit reaches the guest it was for;
+- every new message through `parseMessage`, and a hit of 9 points or none turned away.
+- 419 tests in all.
+
+**Tried in the browser** (two tabs, host `?seed=5&survival&kit&nolock`, guest `?join=…&nolock`):
+- **Pickup:**
+  - the guest dug down through dirt, grass and sand; each came to it through the host;
+  - a dirt thrown with Q came back once it settled;
+  - the first two blocks it broke, right by the host, went to the host.
+- **Rejoining:** the guest left and came back under the same name with its inventory kept.
+- **Furnace:**
+  - the host placed one, and the guest opened it;
+  - sand Shift-clicked in showed in the furnace from the host's answer;
+  - a click took it back into the guest's hotbar.
+- No console errors in either tab.
+- Not tried in the browser: a gloamer hitting a guest (the time was held at noon); the test covers the
+  message, and the prey list is the one the host's own hits use.
+- **A tab in the background runs at about 2 frames a second.** The host's items, at most 4 physics steps
+  a frame, then fall in slow motion; the guest got them once the host's tab was in front. Two real
+  machines don't have this.
+
+**Measured** (host `?stats`, one guest, both at the spawn, 48 mobs round them, 9 stacks thrown on the
+ground):
+- the host sent 31.3 KB/s and received 2.2 KB/s, 48 messages a second;
+- the mobs are most of that: 48 × 52 bytes × 10 a second is 25 KB/s;
+- the 9 items lying still: 216 bytes once a second, about 0.2 KB/s (worked out from the sizes);
+- at the cap, 256 items moving would be 61 KB/s a guest and 6 KB/s lying still, also worked out.
+
