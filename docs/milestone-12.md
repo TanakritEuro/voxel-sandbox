@@ -189,7 +189,7 @@ An invented creature, the **gloamer**: a thin, dark, long-armed thing with two p
 4. **The gloamer:** the kind, darkness spawning, hunting and hitting, health in points and tools,
    fading by day, its looks and sounds.
 5. **Together:** items, furnaces and the gloamer for guests. Built (2026-11-05).
-6. **Measurements,** notes and playtest questions.
+6. **Measurements,** notes and playtest questions. Done (2026-11-05).
 
 ## Decisions to agree
 - **Drops go on the ground now,** picked up within 1.5 blocks; with no room they stay. Gone after 5
@@ -585,3 +585,88 @@ ground):
 - the 9 items lying still: 216 bytes once a second, about 0.2 KB/s (worked out from the sizes);
 - at the cap, 256 items moving would be 61 KB/s a guest and 6 KB/s lying still, also worked out.
 
+## Step 6: measurements, and the end of the milestone (2026-11-05)
+
+**Bench** (`npm run bench`, this machine):
+
+| | ms a frame: median / p95 / max | |
+| --- | --- | --- |
+| 256 items on land, at rest (246 left after merging) | 0.153 / 0.229 / 0.625 | falling, the first second: 0.418 median, 1.773 max |
+| 256 items over the sea, mostly floating (247 left) | 0.234 / 0.316 / 0.529 | falling: 0.326 median, 0.715 max |
+| 50 furnaces burning | 0.041 / 0.078 / 4.128 | the max is the first frame, lighting all 50 at once |
+| 3 gloamers round a player at night | 0.027 / 0.085 / 0.588 | 20 hits in 10 s, 13 path searches (after the fix below) |
+| 3 gloamers in caves under a player at noon (new) | 0.013 / 0.022 / 2.674 | 7 path searches in 10 s (after the fix below) |
+
+Items and furnaces together come well under the plan's 1 ms of main thread.
+
+**In the browser** (the browser pane in the Claude app, Chromium; `?seed=7&survival&nolock&stats`,
+radius 8, standing at the spawn; main thread from `?stats` once a second, long frames from the time
+between animation frames):
+
+| | main thread, ms: avg / max | frames over 20 ms |
+| --- | --- | --- |
+| Noon, no mobs (`?mobs=0`), nothing on the ground | 1.5–1.8 / 2.9 | none |
+| The same, with 256 items dropped round the player (`?litter`) | 1.8–2.1 / 3.4 | one of 25 ms as they all appear |
+| Night, no mobs | 1.6–1.9 / 3.1 | none |
+| Night, mobs on, 3 gloamers hunting (dead in 13.7 s, standing still) | 1.8–2.3 / 11.2 | one of 25–29 ms, at the same moment in 4 runs of 5 |
+| Noon, mobs on (3 gloamers in caves), before the fix | — | 9 of 20–23 ms in 15 s, about once a second |
+| The same, after the fix | 2.0 / 4.4 | none |
+
+- **Items:** 15 more draw calls (one for each kind lying about, 12 here). They cost about 0.3 ms of
+  main thread on average.
+- The one long frame is when all 256, of 12 kinds, appear and start falling at once. In play they
+  come a few at a time.
+- **Gloamers at night** cost about 0.2 ms on average.
+  - The one long frame came 9.95 s after Play in 4 runs of 5. It isn't a hit (those came at 9.5 and
+    10.7 s), and the player didn't cross a chunk border.
+  - The fifth run read the HUD every frame and had none. That fits a garbage collection falling at
+    the same point each time; not proven.
+- **Together** (step 5): one guest beside 48 mobs, 31.3 KB/s from the host, 25 of it the mobs.
+
+**Fixed while measuring:**
+- **A hunter with no way to its prey searched again every frame.**
+  - At noon, gloamers in caves (they appear where the sun doesn't reach) can see a player on the
+    surface 32 blocks off and hunt them.
+  - A search that found no way left the hunter without a goal, so "the player has moved off from
+    where it was going" was always true, and it asked again at once.
+  - The bench showed 600 searches in 10 s and 2.1 ms a frame at the median. In the browser the 1 ms
+    budget turned most of them into put-off searches, but the first in each frame still ran in full:
+    frames of 20–23 ms about once a second.
+  - Now a search that finds nothing waits `TUNING.mobs.huntRetry` (4 s); one put off tries again in
+    0.2 s; and the player moving off sets off a new search only while there's a path being followed.
+  - 7 searches in 10 s, 0.013 ms median. At night the hits are the same (20 in 10 s) and the worst
+    frame went from 2.3 to 0.59 ms.
+  - A test counts the searches.
+- **The items' shaders compiled when the first item landed:** a 21 ms main-thread frame.
+  - Now `GroundItemView.warm` compiles both looks (a block's cube, a picture's slab) at startup, as
+    the mobs' shader already was.
+  - The first second with 256 items then measured 12 ms of main thread at most.
+- **`?litter[=n]`** (new): n items (256, the cap, by default) of a dozen kinds dropped over 32 × 32
+  blocks round the player, for measuring.
+
+**Not measured:** a laptop. These are this machine's numbers; the budget is a laptop's. Milestone
+11's laptop check is still to come with its playtest.
+
+## Playtest questions
+
+1. **Items on the ground:** does breaking a block and walking over its drop feel right (the hop, the
+   spin, the 1.5-block reach)? Is it annoying when a drop rolls into a hole or water?
+2. **Throwing** with Q and Shift+Q: easy to aim, too far, too near?
+3. **The furnace:** is the screen clear (top what to smelt, bottom fuel, the flame and the arrow)? Is 5 s
+   an item about right? Is it clear that ores now give raw ore to smelt, and that glass needs the furnace?
+4. **Hunger:** does it go down at a fair rate (a point a minute standing, faster sprinting, swimming
+   and digging)? Are the pips easy to read beside health? Is "healing only at 15 or more" clear?
+5. **Food:** is it easy enough to find (meat from animals, berries from one leaf in twenty)? Is 1.5 s
+   holding the right button to eat about right?
+6. **The gloamer:** still too fierce after softening (a player standing still at midnight lasts about
+   16 s)? Too easy to fight off (3 hits with an axe)? Do you see it coming? Does it look and sound
+   right, and does it fade in the morning as you'd expect?
+7. **Night:** worth staying out, or best spent in a hole with torches? Does the light from a lit
+   furnace help?
+8. **Meat drops:** I couldn't check in the browser that an animal gives raw meat (my scripted hits
+   missed). Do they?
+9. **Together:** host a survival world with a friend.
+   - Do the friend's drops, throws and pickups work?
+   - Is it odd that when you're both in reach, the host usually gets the item?
+   - Can they use your furnace, and does it show what's smelting?
+   - Do gloamers come for them too, and do their hits land?

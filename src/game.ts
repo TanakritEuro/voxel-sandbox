@@ -230,6 +230,25 @@ if (mobView) {
   renderer.compile(mobView.group, camera);
 }
 let mobsRead = performance.now();
+/** `?litter[=256]`: that many items dropped round the player once the ground is there (for measuring). */
+let litter = params.has('litter') ? Math.min(TUNING.survival.ground.cap, Number(params.get('litter')) || TUNING.survival.ground.cap) : 0;
+
+/** `n` items of a dozen kinds dropped from a few blocks up over 32 × 32 blocks round (x, z), none within reach. */
+function scatter(n: number, x: number, z: number): void {
+  const kinds = [Block.Dirt, Block.Stone, Block.Sand, Block.Wood, Block.Planks, Block.Torch, Item.Stick, Item.Coal, Item.RawIron, Item.Berries, Item.RawMeat, Item.StonePick];
+  for (let i = 0; i < n; i++) {
+    let gx = 0;
+    let gz = 0;
+    do {
+      gx = Math.floor(x) + Math.floor(Math.random() * 32) - 16;
+      gz = Math.floor(z) + Math.floor(Math.random() * 32) - 16;
+    } while (Math.hypot(gx + 0.5 - x, gz + 0.5 - z) < 3);
+    let y = 200;
+    while (y > 1 && BLOCKS[world.getBlock(gx, y - 1, gz)].passable) y--;
+    ground.drop(gx + 0.5, y + 4, gz + 0.5, { item: kinds[i % kinds.length], count: 1 }, Math.random() - 0.5, 2, Math.random() - 0.5);
+  }
+}
+
 /** `?showcase`: one of each kind in front of the player once the ground is there. */
 let showcase = params.has('showcase');
 /** The mobs line of `?stats`: how many of each kind, path searches a second since last read (and put off), time this frame. */
@@ -252,6 +271,7 @@ const chunks = new ChunkRenderer(params.has('light'));
 /** Items lying on the ground, drawn from the chunks' own texture pixels. */
 const groundView = new GroundItemView(chunks.textures.image.data as Uint8Array);
 scene.add(groundView.group);
+groundView.warm((group) => renderer.compile(group, camera));
 /** The selected block, drawn in the lower right. */
 const held = new HeldBlock(chunks.textures);
 scene.add(chunks.group);
@@ -1368,6 +1388,10 @@ function frame(now: number): void {
   pickUpFromHost(now);
   // A guest's furnace screen closes when the furnace is broken.
   if (hostFurnace && !furnaceOf(world.getBlock(hostFurnace.x, hostFurnace.y, hostFurnace.z))) closeBackpack();
+  if (litter && !player.waiting && !guest) {
+    scatter(litter, player.body.x, player.body.z);
+    litter = 0;
+  }
   if (ground.items.length && worldRuns())
     ground.update(dt, world, (x, z) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z))), survival && !dead && !player.waiting ? [player.body] : [], pickUp);
   // `?flood=guest` waits for a guest to be in, to measure what the water sends.

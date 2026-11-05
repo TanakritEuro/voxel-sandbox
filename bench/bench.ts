@@ -708,3 +708,27 @@ it('gloamers', () => {
     `\ngloamers: ${m.mobs.length} round a player at night (${hunting} hunting at most), 10 s: ${hits} hits on the player, ${m.searches} path searches (${m.deferred} put off); ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}\n`,
   );
 });
+
+it('gloamers at noon', () => {
+  // The same player at noon: gloamers appear only in caves, where the sun doesn't reach, and those
+  // within sight hunt a player they mostly can't get to. Gathered for up to a minute, then 10 s.
+  const world = new World(SEED);
+  const spawn = world.generator.findLand(0, 0);
+  for (let cz = toChunk(spawn.z) - 3; cz <= toChunk(spawn.z) + 3; cz++) for (let cx = toChunk(spawn.x) - 3; cx <= toChunk(spawn.x) + 3; cx++) world.ensureColumn(cx, cz);
+  const player = { x: spawn.x + 0.5, y: world.generator.height(spawn.x, spawn.z) + 1, z: spawn.z + 0.5 };
+  const m = new MobManager(world, 9, 0);
+  for (let f = 0; f < 3600 && m.mobs.length < 3; f++) m.update(1 / 60, [[player.x, player.z]], 1, [player]);
+  const times: number[] = [];
+  let hits = 0;
+  let hunting = 0;
+  const searches = m.searches;
+  for (let f = 0; f < 600; f++) {
+    m.update(1 / 60, [[player.x, player.z]], 1, [player]);
+    times.push(m.ms);
+    hits += m.takeAttacks().length;
+    hunting = Math.max(hunting, m.mobs.filter((g) => g.state === 'hunt').length);
+  }
+  console.log(
+    `\ngloamers at noon: ${m.mobs.length} in caves round a player (${hunting} hunting at most), 10 s: ${hits} hits on the player, ${m.searches - searches} path searches; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}, over 2 ms ${times.filter((t) => t > 2).length} frames\n`,
+  );
+});

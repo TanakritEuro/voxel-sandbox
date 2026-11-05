@@ -26,9 +26,14 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 12 (survival, part two) in progress, plan approved (`docs/milestone-12.md`).
-Milestones 1–11 built (`docs/milestone-1.md` to `docs/milestone-11.md`), waiting for playtests
-(Milestone 11, survival basics: a world is creative or survival; in survival broken blocks drop into a
+Milestones 1–12 built (`docs/milestone-1.md` to `docs/milestone-12.md`), waiting for playtests
+(Milestone 12, survival, part two: broken blocks drop onto the ground as small spinning items, falling,
+floating, merging and picked up within reach, thrown with Q (Shift+Q the stack), gone after 5 minutes;
+furnaces smelting raw copper and iron, sand into glass and cooking meat with coal, wood or embers, their
+contents saved; hunger (a point a minute, faster working hard), food (meat, berries) eaten by holding
+the right button, healing only well fed; the gloamer, a hostile creature appearing in the dark, hunting
+by A* and fading by day, tools hitting harder; together, the ground, furnaces and gloamers the host's;
+Milestone 11, survival basics: a world is creative or survival; in survival broken blocks drop into a
 36-slot inventory, placing uses them, picks, axes and spades of wood, stone and iron dig faster and
 wear out, stone and ores need a pick of their tier, crafting from a list (E), health with falls,
 drowning, cactus and healing, dying back at the spawn with everything kept; together, the host's mode
@@ -297,7 +302,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   play an unsaved world; `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
-  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?litter` (`?litter=100`) drops items round you (256 by default), `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

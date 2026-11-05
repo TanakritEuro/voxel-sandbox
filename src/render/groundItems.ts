@@ -7,8 +7,8 @@
 // Each is as bright as the light where it lies (the instance colour).
 
 import * as THREE from 'three';
-import { isBlockItem } from '../survival/items';
-import { BLOCKS } from '../world/blocks';
+import { isBlockItem, Item } from '../survival/items';
+import { Block, BLOCKS } from '../world/blocks';
 import { TEXTURE_SIZE, type TextureName, textureLayer } from '../world/textures';
 import { itemMesh } from './heldBlock';
 import { itemArt } from './itemIcons';
@@ -67,6 +67,15 @@ export class GroundItemView {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+  }
+
+  /**
+   * Compile the two looks' shaders now (a block's cube, a picture's slab), not when the first item
+   * lands: `compile(group)` is the renderer's.
+   */
+  warm(compile: (group: THREE.Group) => void): void {
+    for (const item of [Block.Dirt, Item.Stick]) this.kindFor(item, 1);
+    compile(this.group);
   }
 
   /** Draw calls this frame (for `?stats`). */

@@ -66,6 +66,25 @@ describe('the gloamer', () => {
     expect(hits.length).toBeGreaterThan(0);
   });
 
+  it("asks for a way it can't have only every so often, and one put off again soon", () => {
+    // Under a player it sees but can't reach (as from a cave): no way. Once it asked again every
+    // frame (no goal kept).
+    const grid = new Grid().floor(-40, 40, -40, 40, 1);
+    const player = { x: 10.5, y: 20, z: 0.5 };
+    const count = (answer: null | undefined) => {
+      const mob = createMob(1, MobKind.Gloamer, 0.5, 1, 0.5, 7);
+      let asked = 0;
+      const ctx: MobContext = { ...directContext(grid, 0), findPath: () => (asked++, answer), prey: [player] };
+      for (let i = 0; i < 10 / STEP; i++) stepBrain(mob, ctx);
+      return asked;
+    };
+    // No way: at the start, then every `huntRetry` s.
+    expect(count(null)).toBe(Math.ceil(10 / TUNING.mobs.huntRetry));
+    // Put off: about 5 a second, not every step.
+    expect(count(undefined)).toBeGreaterThan(40);
+    expect(count(undefined)).toBeLessThanOrEqual(51);
+  });
+
   it('leaves alone a player beyond its sight', () => {
     const { mob, hits } = chase([0, 0], { x: H.sight + 5, y: 1, z: 0.5 }, 5);
     expect(mob.state).not.toBe('hunt');

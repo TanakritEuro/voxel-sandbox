@@ -192,14 +192,23 @@ function hunt(mob: Mob, ctx: MobContext, dt: number): { speed: number; straight:
     }
     return { speed: 0, straight: null };
   }
-  // A way to them, asked for again every second or when they've moved off from its end.
+  // A way to them, asked for again every second or, along one, when they've moved off from its end.
+  // With no way to them (in a cave under them, say), not again for `huntRetry` s: a search that
+  // finds nothing is the costliest kind. One put off (the frame's budget used) is asked again soon.
   mob.timer -= dt;
   const goal: [number, number, number] = [Math.floor(p.x), Math.floor(p.y + 0.01), Math.floor(p.z)];
   const off = mob.goal ? Math.hypot(mob.goal[0] - goal[0], mob.goal[1] - goal[1], mob.goal[2] - goal[2]) : Infinity;
   // (With none, or past its end, it goes straight at them until then.)
-  if (mob.timer <= 0 || off > 3) {
-    mob.timer = 1;
-    if (!goTo(mob, ctx, goal, 1)) mob.path = null;
+  if (mob.timer <= 0 || (mob.path && off > 3)) {
+    const path = ctx.findPath(mob, feet(mob), goal, 1);
+    if (path === undefined) mob.timer = 0.2;
+    else if (path === null) {
+      mob.timer = TUNING.mobs.huntRetry;
+      mob.path = null;
+    } else {
+      mob.timer = 1;
+      setPath(mob, path, goal, 1);
+    }
   }
   if (mob.path) return { speed: k.runSpeed, straight: null };
   // No way found (yet): straight at them.
@@ -213,6 +222,12 @@ function hunt(mob: Mob, ctx: MobContext, dt: number): { speed: number; straight:
 export function goTo(mob: Mob, ctx: MobContext, goal: [number, number, number], near = 0): boolean {
   const path = ctx.findPath(mob, feet(mob), goal, near);
   if (!path) return false;
+  setPath(mob, path, goal, near);
+  return true;
+}
+
+/** Follow `path` to `goal` from its start. */
+function setPath(mob: Mob, path: Path, goal: [number, number, number], near: number): void {
   // No waypoints at all: it starts near enough, so there's no way to walk (a hunter goes straight).
   mob.path = path.length ? path : null;
   mob.next = 0;
@@ -220,7 +235,6 @@ export function goTo(mob: Mob, ctx: MobContext, goal: [number, number, number], 
   mob.near = near;
   mob.best = Number.POSITIVE_INFINITY;
   mob.sinceBest = 0;
-  return true;
 }
 
 /** Where feet can stand in column (x, z) within a few blocks of height y, or null. */

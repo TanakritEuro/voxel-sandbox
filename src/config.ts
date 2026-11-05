@@ -325,6 +325,8 @@ export const TUNING = {
     spawnInterval: 0.25,
     /** A try at a hostile mob this often (seconds): they gather slowly. */
     hostileInterval: 2,
+    /** A hunter that found no way to its prey asks again after this (seconds), going straight meanwhile. */
+    huntRetry: 4,
     spawnDistance: [24, 64] as [number, number],
     /** Gone beyond this (blocks, across) or when its column unloads. */
     despawnDistance: 96,
