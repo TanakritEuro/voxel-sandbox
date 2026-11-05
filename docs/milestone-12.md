@@ -249,8 +249,7 @@ among them with no room, 10 s at 60 frames):
 - At first the land case was at the origin, which is sea at this seed: only 61 of 247 slept, and
   every one awake was floating. That's right (they bob), but it wasn't measuring land; there are now
   both.
-- Well under the plan's 1 ms. Items dropping out of a merged stack fall and settle in about a
-  second.
+- Well under the plan's 1 ms.
 
 **Tests (8 new, 392 in all,** `tests/ground.test.ts`, through the real block physics):
 - an item falls and rests on the floor, slides a little and stops, sleeps, and falls into the hole
