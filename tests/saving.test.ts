@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { WorldSaver } from '../src/save/saver';
 import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type WorldStore } from '../src/save/store';
+import { TUNING } from '../src/config';
 import { Health } from '../src/survival/health';
 import { Inventory } from '../src/survival/inventory';
 import { Item } from '../src/survival/items';
@@ -92,7 +93,7 @@ describe.each([
     const back = (await store.getWorld('s'))!;
     expect(modeOf(back)).toBe('survival');
     expect(Inventory.from(back.survival?.inventory).toJSON()).toEqual(pack.toJSON());
-    expect(Health.from(back.survival?.health).toJSON()).toEqual({ health: 7, air: 4.5 });
+    expect(Health.from(back.survival?.health).toJSON()).toEqual({ health: 7, air: 4.5, hunger: TUNING.survival.maxHunger }); // from before hunger: full
     const old = { ...newWorldRecord('o', 'Old', SEED, 0.3) };
     delete old.mode;
     expect(modeOf(old)).toBe('creative');

@@ -349,3 +349,47 @@ updates), 5.4 ms.
   to 12);
 - after the batching, a furnace smelting sand with planks lit the same way.
 - No console errors.
+
+## Step 3: food and hunger — built (2026-11-05)
+
+**What changed:**
+- **Hunger in `Health`** (numbers in `TUNING.survival`): 20 points.
+  - **Losing it:** a point a minute standing; sprinting adds 3 a minute, swimming 2, digging 1.5.
+    The game says which.
+  - **Healing** comes only at 15 or more, and each point healed costs half a point of hunger.
+  - **Starving** (0) costs a point of health every 4 s, down to 1, never the last. Its own line on
+    the death screen is there only for completeness.
+  - **`eat(points)`:** refused when full.
+  - Saved with health. A save from before hunger loads full.
+- **Food** (`survival/items.ts`, ids 272–274, `foodOf`):
+  - **Raw meat**, 3 points: an animal leaves 1 or 2 when it goes in a puff, on the ground.
+  - **Cooked meat**, 8: the furnace cooks raw meat.
+  - **Berries**, 2: one leaf in twenty (from the same roll as the stick's one in eight).
+  - Pictures: a cut of meat, raw and cooked, and a bunch of berries.
+- **Eating:** hold the right button with food selected for 1.5 s, with a crunch and the hand going
+  to the mouth every quarter second. Full, a line says so and nothing is eaten.
+- **HUD:** 10 hunger pips to the right of health, filling from the right, crust-coloured.
+- `?kit` adds raw meat and berries, and starts at 12 hunger to try eating at once.
+
+**Fixes on the way:**
+- **Floating point** (a test caught it): a minute of sprinting adds sixty sixtieths of 4 points,
+  3.9999…, so only 3 came off. Hunger used now counts within a hair of a whole point.
+- The leaves test counted any drop as a stick; it now counts sticks and berries apart.
+- The saved-health tests now expect hunger, and check that a save without it loads full.
+
+**Tests (5 new, 407 in all,** `tests/health.test.ts`):
+- **Losing it:** 10 minutes standing costs 10; a minute sprinting 4; two minutes working every way
+  at once their sum.
+- **Healing:** none below 15; well fed, 6 points in 30 s cost 3 hunger.
+- **Starving:** a point after 4 s, then down to 1 and no further, never dead.
+- **Eating:** each food adds its points, up to full; refused when full; a reset is full.
+- **Food:** what is food (meat raw and cooked, berries) and what isn't; the furnace cooks meat.
+
+**Looked at in Chrome** (`?seed=7&survival&kit&nolock&showcase`):
+- the hunger pips beside health, 6 of 10 at the kit's 12;
+- berries put in slot 9 are held in the hand as a purple bunch;
+- holding the right button 1.7 s ate them: hunger 6 pips to 7, berries 6 to 5.
+- No console errors.
+- **Not tried in the browser:** an animal leaving meat. Hits sent from a script knocked a hopper
+  away (it fled) and then missed a crag goat. The drop is made in `hitMob` right after the puff, as
+  Milestone 7's hits are, and it's in the playtest questions.

@@ -21,7 +21,7 @@ import { Backpack } from './ui/backpack';
 import { itemArt, itemIcons } from './render/itemIcons';
 import { digTime } from './survival/drops';
 import { HOTBAR_SLOTS, Inventory as SurvivalInventory } from './survival/inventory';
-import { isBlockItem, Item, itemInfo } from './survival/items';
+import { foodOf, isBlockItem, Item, itemInfo } from './survival/items';
 import { breakWith, heldTool, placeableIn } from './survival/play';
 import { type GroundItem, GroundItems } from './survival/ground';
 import { type Furnace, Furnaces } from './survival/furnace';
@@ -184,11 +184,13 @@ record.survival = survivalRecord;
 /** Died, and not started again yet (the death screen is up). */
 let dead = false;
 // `?kit` (an unsaved world only): something of everything to try, a tool of each kind and tier,
-// the metals and what crafting starts from.
+// the metals, food and what crafting starts from.
 if (unsaved && !guest && params.has('kit')) {
   for (const item of [Item.StonePick, Item.WoodAxe, Item.IronSpade, Block.Torch, Block.Planks, Item.WoodPick, Item.IronPick, Item.StoneAxe, Item.WoodSpade])
     pack.add(item, isBlockItem(item) ? 16 : 1);
-  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6]] as const) pack.add(item, n);
+  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6]] as const) pack.add(item, n);
+  // A little hungry, to try eating at once.
+  health.hunger = 12;
 }
 /** Blocks broken in survival so far: with the place, what seeds a block's drops. */
 let gathered = 0;
@@ -857,24 +859,28 @@ el(deathPanel, 'div', 'menu-title', 'You died');
 const deathWhy = el(deathPanel, 'p', 'menu-help');
 el(deathPanel, 'p', 'menu-help', 'Everything you carried is still with you.');
 button(el(deathPanel, 'div', 'menu-row'), 'Start again', () => startAgain(), 'menu-go');
-const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.' } as const;
+const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.', starving: 'You starved.' } as const;
 /** What the HUD shows now, so it's redrawn only when that changes. */
 let vitalsShown = '';
 
 function renderVitals(): void {
   const S = TUNING.survival;
   const bubbles = health.air < S.air ? Math.ceil((health.air / S.air) * 10) : -1;
-  const key = survival ? `${health.health},${bubbles}` : '';
+  const key = survival ? `${health.health},${health.hunger},${bubbles}` : '';
   if (key === vitalsShown) return;
   vitalsShown = key;
   vitalsEl.classList.toggle('hidden', !survival);
   if (!survival) return;
-  let html = '<div class="pips">';
-  for (let i = 0; i < S.maxHealth / 2; i++) {
-    const left = health.health - i * 2;
-    html += `<span class="pip${left >= 2 ? ' full' : left === 1 ? ' half' : ''}"></span>`;
-  }
-  html += '</div>';
+  // Health on the left, hunger on the right (its pips filling from the right), a pip for two points.
+  const pips = (points: number, most: number, kind: string) => {
+    let row = `<div class="pips ${kind}">`;
+    for (let i = 0; i < most / 2; i++) {
+      const left = points - i * 2;
+      row += `<span class="pip${left >= 2 ? ' full' : left === 1 ? ' half' : ''}"></span>`;
+    }
+    return row + '</div>';
+  };
+  let html = `<div class="vitals-row">${pips(health.health, S.maxHealth, 'health')}${pips(health.hunger, S.maxHunger, 'food')}</div>`;
   if (bubbles >= 0) {
     html += '<div class="bubbles">';
     for (let i = 0; i < 10; i++) html += `<span class="bubble${i < bubbles ? ' full' : ''}"></span>`;
@@ -894,6 +900,9 @@ function live(dt: number): void {
     flying: player.flying,
     eyeInWater: player.eyeInWater,
     touchingCactus: touches(b, world, Block.Cactus),
+    sprinting: player.sprinting && !player.flying,
+    swimming: b.inWater,
+    digging: mining.target !== null,
   });
   if (lost) {
     sound.play({ name: 'hurt', gain: Math.min(1, 0.6 + lost * 0.1) });
@@ -923,6 +932,40 @@ function startAgain(): void {
   renderVitals();
   input.lock();
   void saveRecord();
+}
+
+/** Seconds the right button has been held with food selected; and whether this press was turned down (full). */
+let eatingFor = 0;
+let eatRefused = false;
+
+/** Survival: holding the right button with food selected eats it, a mouthful at a time, after `eatSeconds`. */
+function eating(dt: number): void {
+  const food = survival && !dead ? foodOf(pack.slots[selected]?.item) : 0;
+  if (!food || !input.isHeld('Mouse2')) {
+    eatingFor = 0;
+    eatRefused = false;
+    return;
+  }
+  if (eatRefused) return;
+  if (health.hunger >= TUNING.survival.maxHunger) {
+    say('You aren’t hungry.');
+    eatRefused = true;
+    return;
+  }
+  const before = eatingFor;
+  eatingFor += dt;
+  // A bite every quarter second: a sound and the hand going to the mouth.
+  if (Math.floor(eatingFor / 0.25) > Math.floor(before / 0.25)) {
+    sound.play({ name: 'eat', gain: 0.8 });
+    held.motion.swing();
+  }
+  if (eatingFor < TUNING.survival.eatSeconds) return;
+  eatingFor = 0;
+  if (health.eat(food)) {
+    pack.takeOne(selected);
+    renderHotbar();
+    renderVitals();
+  }
 }
 
 /** The pause menu's part for the world's mode, and switching it. */
@@ -977,6 +1020,12 @@ function hitMob(mob: Mob, fromX = player.body.x, fromZ = player.body.z): void {
   if (mobs.hit(mob, fromX, fromZ)) {
     const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow);
     particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, light);
+    // In survival it leaves raw meat.
+    if (survival) {
+      const [least, most] = TUNING.survival.meat;
+      const count = least + Math.floor(Math.random() * (most - least + 1));
+      ground.drop(b.x, b.y + b.height / 2, b.z, { item: Item.RawMeat, count }, 0, TUNING.survival.ground.hop, 0);
+    }
   }
 }
 
@@ -1019,6 +1068,7 @@ function editing(dt: number): void {
       swing();
     } else place(target);
   }
+  eating(dt);
   cracks.show(mining.target, mining.stage);
 }
 

@@ -26,6 +26,9 @@ const COPPER = palette(0xd0703a, 0x8a4520, 0xf3a668);
 const COAL = palette(0x2e2e30, 0x161617, 0x5a5a5e);
 const CRYSTAL = palette(0x7fdcec, 0x2f8fa8, 0xe2fcff);
 const HANDLE = palette(0x8a6238, 0x5a3d20, 0xa87c4c);
+const RAW_MEAT = palette(0xd0545a, 0x8e2f35, 0xf2c2c4);
+const COOKED_MEAT = palette(0x9a5a2e, 0x5c3418, 0xc9894f);
+const BERRY = palette(0x7b2fa6, 0x3f1758, 0xc58ae6);
 const RAW_COPPER = palette(0xb5683c, 0x6b6560, 0xe0925a);
 const RAW_IRON = palette(0xb8a898, 0x6b6560, 0xe3d6c8);
 
@@ -82,6 +85,42 @@ const SPADE = [
   '.......hh.......',
   '.......hh.......',
   '.......hh.......',
+  '................',
+];
+const MEAT = [
+  '................',
+  '................',
+  '................',
+  '......dddd......',
+  '....ddmmmmdd....',
+  '...dmmmllmmmd...',
+  '..dmmllmmmmmmd..',
+  '..dmmmmmmmlmmd..',
+  '..dmmmmlmmmmmd..',
+  '..dmlmmmmmmmd...',
+  '...dmmmmmmmd....',
+  '....ddmmmdd.....',
+  '......ddd.......',
+  '................',
+  '................',
+  '................',
+];
+const BERRIES = [
+  '................',
+  '.......hh.......',
+  '........h.......',
+  '.....dd.hdd.....',
+  '....dlmd.dlmd...',
+  '....dmmd.dmmd...',
+  '.....dd.dd.dd...',
+  '......ddlmd.....',
+  '...dd.dmmmd.dd..',
+  '..dlmd.ddd.dlmd.',
+  '..dmmd.....dmmd.',
+  '...dd.dd....dd..',
+  '.....dlmd.......',
+  '.....dmmd.......',
+  '......dd........',
   '................',
 ];
 const LUMP = [
@@ -164,6 +203,9 @@ const ART: Record<number, [string[], Palette]> = {
   [Item.IronSpade]: [SPADE, IRON],
   [Item.RawCopper]: [LUMP, RAW_COPPER],
   [Item.RawIron]: [LUMP, RAW_IRON],
+  [Item.RawMeat]: [MEAT, RAW_MEAT],
+  [Item.CookedMeat]: [MEAT, COOKED_MEAT],
+  [Item.Berries]: [BERRIES, BERRY],
 };
 
 /** Item `item`'s picture: 16 × 16 RGBA, row 0 at the top, transparent where empty; null for a block (it has its own icon). */

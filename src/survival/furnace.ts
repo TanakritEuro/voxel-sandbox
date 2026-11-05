@@ -20,6 +20,7 @@ export const SMELTS: ReadonlyMap<number, number> = new Map<number, number>([
   [Item.RawCopper, Item.Copper],
   [Item.RawIron, Item.Iron],
   [Block.Sand, Block.Glass],
+  [Item.RawMeat, Item.CookedMeat],
 ]);
 
 /** What burns, and for how many items smelted. */

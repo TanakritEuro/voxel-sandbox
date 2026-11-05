@@ -70,7 +70,7 @@ export class Backpack {
     this.furnaceEls[FUEL] = this.slotButton(ins, (e) => this.clickFurnace(FUEL, e.button === 2, e.shiftKey));
     this.arrow = el(el(works, 'div', 'furnace-arrow'), 'div');
     this.furnaceEls[OUTPUT] = this.slotButton(works, (e) => this.clickFurnace(OUTPUT, e.button === 2, e.shiftKey));
-    el(this.furnacePart, 'p', 'menu-help', 'Top: what to smelt (raw copper, raw iron, sand). Bottom: fuel (coal, wood, planks, sticks). Shift click puts things in and takes them out.');
+    el(this.furnacePart, 'p', 'menu-help', 'Top: what to smelt or cook (raw copper, raw iron, sand, raw meat). Bottom: fuel (coal, wood, planks, sticks). Shift click puts things in and takes them out.');
     this.cursor = el(this.root, 'div', 'backpack-cursor slot');
     this.root.addEventListener('mousemove', (e) => this.follow(e));
     this.root.addEventListener('contextmenu', (e) => e.preventDefault());

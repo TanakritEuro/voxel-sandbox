@@ -114,8 +114,13 @@ export const TUNING = {
     toolWear: [0, 60, 130, 250] as const,
     /** A block that needs a better pick than the one held takes this many times its hardness, and drops nothing. */
     withoutPick: 3,
-    /** One in this many leaves drops a stick. */
+    /** One in this many leaves drops a stick, and one in this many berries. */
     leafStick: 8,
+    leafBerries: 20,
+    /** Hunger points each food gives back. */
+    food: { rawMeat: 3, cookedMeat: 8, berries: 2 },
+    /** Raw meat an animal leaves when it goes in a puff: from and to. */
+    meat: [1, 2] as [number, number],
     /** Health (points; the HUD shows a pip for two). */
     maxHealth: 20,
     /** A fall up to this many blocks costs nothing; a point a block beyond. */
@@ -129,6 +134,21 @@ export const TUNING = {
     /** Healing: from this long after the last hurt (s), a point every `healEvery` s. */
     healDelay: 5,
     healEvery: 4,
+    /**
+     * Hunger (points, a pip for two): lost a point a minute standing, and a point a minute more for
+     * every `hungerSprint` etc. (points a minute) on top. Healing waits for `healHunger` or more and
+     * costs `healCost` a point healed; starving costs a point of health every `starveEvery` s, down to 1.
+     */
+    maxHunger: 20,
+    hungerBase: 1,
+    hungerSprint: 3,
+    hungerSwim: 2,
+    hungerDig: 1.5,
+    healHunger: 15,
+    healCost: 0.5,
+    starveEvery: 4,
+    /** Holding the button this long eats (s). */
+    eatSeconds: 1.5,
     /** Seconds a furnace takes to smelt one item (`survival/furnace.ts`); fuel is counted in these. */
     smeltSeconds: 5,
     /** Items on the ground (`survival/ground.ts`). */

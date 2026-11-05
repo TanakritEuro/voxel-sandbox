@@ -14,7 +14,7 @@
 // leaves a rising whoosh of noise. Each is panned to the side it came from.
 //
 // In survival, being hurt is a low thump with a quick falling grunt; picking something up a soft
-// rising blip.
+// rising blip; a bite of food a short crunch.
 
 import { MobKind } from '../mobs/kinds';
 import type { MobVoice } from '../mobs/mobs';
@@ -120,6 +120,10 @@ export class Sound {
         this.thump(110, 0.18, e.gain * 0.8);
         this.glide('sawtooth', 320, 150, 0.14, e.gain * 0.12, 900);
         this.material('dirt', e.gain * 0.5, 1.2, 0);
+        break;
+      case 'eat':
+        this.material('leaves', e.gain * 0.7, 0.7, 0);
+        this.thump(180, 0.05, e.gain * 0.25);
         break;
       case 'pickup':
         this.glide('triangle', 620, 1050, 0.07, e.gain * 0.18, 4000);

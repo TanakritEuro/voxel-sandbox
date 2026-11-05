@@ -405,10 +405,32 @@ body.menu-mode #hud {
   display: none;
 }
 
+.vitals-row {
+  display: flex;
+  gap: 18px;
+}
+
 .pips,
 .bubbles {
   display: flex;
   gap: 3px;
+}
+
+/* Hunger fills from the right, in the colour of bread crust. */
+.pips.food {
+  flex-direction: row-reverse;
+}
+
+.pips.food .pip {
+  border-radius: 6px;
+}
+
+.pips.food .pip.full {
+  background: #d08a3a;
+}
+
+.pips.food .pip.half {
+  background: linear-gradient(270deg, #d08a3a 50%, rgba(40, 10, 10, 0.55) 50%);
 }
 
 .pip {

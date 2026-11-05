@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { TUNING } from '../src/config';
 import { type Condition, Health } from '../src/survival/health';
+import { SMELTS } from '../src/survival/furnace';
+import { foodOf, Item } from '../src/survival/items';
 import { Block } from '../src/world/blocks';
 import { createBody, NO_INPUT, stepPlayer, touches } from '../src/world/physics';
 import { Grid } from './grid';
@@ -97,9 +99,12 @@ describe('health', () => {
     const health = new Health();
     health.health = 7;
     health.air = 3.5;
-    expect(Health.from(JSON.parse(JSON.stringify(health))).toJSON()).toEqual({ health: 7, air: 3.5 });
-    expect(Health.from({ health: 0, air: 50 }).toJSON()).toEqual({ health: S.maxHealth, air: S.air });
-    expect(Health.from('full').toJSON()).toEqual({ health: S.maxHealth, air: S.air });
+    health.hunger = 9;
+    expect(Health.from(JSON.parse(JSON.stringify(health))).toJSON()).toEqual({ health: 7, air: 3.5, hunger: 9 });
+    expect(Health.from({ health: 0, air: 50, hunger: 21 }).toJSON()).toEqual({ health: S.maxHealth, air: S.air, hunger: S.maxHunger });
+    expect(Health.from('full').toJSON()).toEqual({ health: S.maxHealth, air: S.air, hunger: S.maxHunger });
+    // From before hunger: full.
+    expect(Health.from({ health: 7, air: 3.5 }).hunger).toBe(S.maxHunger);
   });
 });
 
@@ -115,5 +120,74 @@ describe('touching a block', () => {
     expect(at(0, 3, 0)).toBe(false); // above a 1.8 tall head with room
     body.x = 0.5;
     expect(at(-1, 1, 0)).toBe(false); // 0.2 away
+  });
+});
+
+describe('hunger', () => {
+  const minutes = (h: Health, m: number, c: Partial<Condition> = {}) => {
+    for (let t = 0; t < m * 60 * 60; t++) h.step(1 / 60, { ...STILL, ...c });
+  };
+
+  it('goes down a point a minute standing, faster sprinting, swimming or digging', () => {
+    const still = new Health();
+    minutes(still, 10);
+    expect(still.hunger).toBe(S.maxHunger - 10);
+    const sprint = new Health();
+    minutes(sprint, 1, { sprinting: true });
+    expect(sprint.hunger).toBe(S.maxHunger - 4);
+    const hard = new Health();
+    minutes(hard, 2, { sprinting: true, swimming: true, digging: true });
+    expect(hard.hunger).toBe(S.maxHunger - Math.floor(2 * (S.hungerBase + S.hungerSprint + S.hungerSwim + S.hungerDig)));
+  });
+
+  it('lets health come back only well fed, at a cost', () => {
+    const lean = new Health();
+    lean.health = 10;
+    lean.hunger = S.healHunger - 1;
+    minutes(lean, 0.5);
+    expect(lean.health).toBe(10);
+    const fed = new Health();
+    fed.health = 14;
+    minutes(fed, 0.5); // 5 s wait, then a point every 4 s: 6 points in 30 s
+    expect(fed.health).toBe(20);
+    // 6 points healed at half a point each, and half a minute standing.
+    expect(fed.hunger).toBe(S.maxHunger - 3);
+  });
+
+  it('starving costs a point every 4 s, down to 1 and no further', () => {
+    const h = new Health();
+    h.health = 5;
+    h.hunger = 0;
+    for (let t = 0; t < 4.05 * 60; t++) h.step(1 / 60, STILL);
+    expect(h.health).toBe(4);
+    expect(h.cause).toBe('starving');
+    minutes(h, 1);
+    expect(h.health).toBe(1);
+    expect(h.dead).toBe(false);
+  });
+
+  it('comes back eating, as much as the food gives, and not when full', () => {
+    const h = new Health();
+    expect(h.eat(foodOf(Item.CookedMeat))).toBe(false);
+    h.hunger = 5;
+    expect(h.eat(foodOf(Item.RawMeat))).toBe(true);
+    expect(h.hunger).toBe(8);
+    expect(h.eat(foodOf(Item.CookedMeat))).toBe(true);
+    expect(h.hunger).toBe(16);
+    expect(h.eat(foodOf(Item.Berries))).toBe(true);
+    expect(h.eat(foodOf(Item.CookedMeat))).toBe(true);
+    expect(h.hunger).toBe(S.maxHunger);
+    h.reset();
+    h.hunger = 3;
+    h.reset();
+    expect(h.hunger).toBe(S.maxHunger);
+  });
+
+  it('food is meat, raw or cooked in the furnace, and berries; nothing else is eaten', () => {
+    expect([foodOf(Item.RawMeat), foodOf(Item.CookedMeat), foodOf(Item.Berries)]).toEqual([3, 8, 2]);
+    expect(foodOf(Item.Coal)).toBe(0);
+    expect(foodOf(Block.Dirt)).toBe(0);
+    expect(foodOf(undefined)).toBe(0);
+    expect(SMELTS.get(Item.RawMeat)).toBe(Item.CookedMeat);
   });
 });

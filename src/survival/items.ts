@@ -23,6 +23,9 @@ export enum Item {
   IronSpade,
   RawCopper,
   RawIron,
+  RawMeat,
+  CookedMeat,
+  Berries,
 }
 
 /** What a tool digs: a pick stone and ores, an axe wood, a spade earth. */
@@ -43,6 +46,8 @@ export interface ItemInfo {
   /** Most of it a slot holds. */
   stack: number;
   tool?: Tool;
+  /** Hunger points it gives back, eaten. */
+  food?: number;
 }
 
 const S = TUNING.survival;
@@ -69,6 +74,9 @@ const ITEMS: readonly ItemInfo[] = [
   ).flatMap(([what, tier]) => [tool(`${what} pick`, 'pick', tier), tool(`${what} axe`, 'axe', tier), tool(`${what} spade`, 'spade', tier)]),
   material('Raw copper'),
   material('Raw iron'),
+  { name: 'Raw meat', stack: S.stack, food: S.food.rawMeat },
+  { name: 'Cooked meat', stack: S.stack, food: S.food.cookedMeat },
+  { name: 'Berries', stack: S.stack, food: S.food.berries },
 ];
 
 const PLACEABLE_SET = new Set<number>(PLACEABLE);
@@ -86,6 +94,9 @@ export function itemInfo(id: number): ItemInfo {
   if (!info) throw new Error(`not an item: ${id}`);
   return info;
 }
+
+/** The hunger points `id` gives back eaten, or 0 if it isn't food. */
+export const foodOf = (id: number | undefined): number => (id !== undefined && isItem(id) ? (itemInfo(id).food ?? 0) : 0);
 
 /** The tool `id` is, if it's one. */
 export const toolOf = (id: number | undefined): Tool | undefined => (id !== undefined && isItem(id) ? itemInfo(id).tool : undefined);

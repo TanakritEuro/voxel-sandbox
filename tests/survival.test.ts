@@ -32,7 +32,7 @@ describe('items', () => {
     expect(isItem(Block.Air)).toBe(false);
     expect(isItem(Block.SwitchOn)).toBe(false); // a state, not an item
     expect(isItem(Item.Stick)).toBe(true);
-    expect(isItem(Item.RawIron + 1)).toBe(false);
+    expect(isItem(Item.Berries + 1)).toBe(false);
     for (const id of ALL_ITEMS) expect(itemInfo(id).name).not.toBe('');
     expect(itemInfo(Item.StoneAxe)).toMatchObject({ name: 'Stone axe', stack: 1, tool: { kind: 'axe', tier: 2, speed: 4, wear: 130 } });
     expect(itemInfo(Block.Planks).stack).toBe(64);
@@ -166,12 +166,20 @@ describe('drops and digging', () => {
     expect(digTime(Block.CrystalOre, stone)).toBe(digTime(Block.CrystalOre, undefined));
   });
 
-  it('gives a stick from leaves one time in eight, the same rolls each run', () => {
+  it('gives a stick from leaves one time in eight and berries one in twenty, the same rolls each run', () => {
     let sticks = 0;
-    for (let i = 0; i < 8000; i++) sticks += dropsOf(Block.Leaves, undefined, hash3(7, i, 64, -i)).length;
+    let berries = 0;
+    for (let i = 0; i < 8000; i++)
+      for (const [item] of dropsOf(Block.Leaves, undefined, hash3(7, i, 64, -i))) {
+        if (item === Item.Stick) sticks++;
+        if (item === Item.Berries) berries++;
+      }
     expect(sticks).toBeGreaterThan(900);
     expect(sticks).toBeLessThan(1100);
+    expect(berries).toBeGreaterThan(320);
+    expect(berries).toBeLessThan(480);
     expect(dropsOf(Block.SpruceLeaves, undefined, 0.01)).toEqual([[Item.Stick, 1]]);
+    expect(dropsOf(Block.SpruceLeaves, undefined, 0.14)).toEqual([[Item.Berries, 1]]);
     expect(dropsOf(Block.SpruceLeaves, undefined, 0.5)).toEqual([]);
   });
 

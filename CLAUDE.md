@@ -125,7 +125,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
-  wear, without a pick, sticks from leaves, health, falls, air, cactus, healing, items on the ground), net.
+  wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
+  eating, meat from animals, smelting time, items on the ground), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
@@ -160,7 +161,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   timing (`timeOf`: in survival by the tool held) and crack stage).
 - `src/survival/` — survival worlds, pure: `items.ts` (items: placeable blocks by their ids, and
   `Item` from 256: sticks, coal, copper, iron, crystal, picks, axes and spades of wood, stone and
-  iron; `itemInfo`, `toolOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
+  iron, raw copper and iron, raw and cooked meat, berries; `itemInfo`, `toolOf`, `foodOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
   spending, picking up and putting down, Shift moves, tools wearing out; `from` cleans what was
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
   held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`breakWith`: what a broken block gives and the
@@ -168,7 +169,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `ground.ts` (`GroundItems`: items lying on the ground, boxes
   under the block physics at 60 Hz, asleep at rest, floating, merging, picked up within reach of a
   player's box, aging out, a cap), `health.ts` (`Health`: falls from where the feet last stood,
-  air and drowning, cactus, healing, death; stepped a frame at a time with how the body is).
+  air and drowning, cactus, hunger (faster working hard; starving down to 1; `eat`), healing only well
+  fed, death; stepped a frame at a time with how the body is).
 - `src/mobs/` — `kinds.ts` (the four kinds: size, speeds, climb and drop, biomes, ground,
   groups), `brain.ts` (a mob: idle, wander, flee, rest; following paths, jumping, getting
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:

@@ -64,11 +64,14 @@ export function digTime(block: Block, tool: Tool | undefined): number {
  * What breaking `block` with `tool` gives: usually the block itself, as placed (a lit lamp a lamp,
  * powered wire wire, a gate off facing the first way), something else for grass and ores, nothing
  * from glass or without the pick a block needs, and from leaves a stick when `roll` (in [0, 1)) is
- * under one in `TUNING.survival.leafStick`.
+ * under one in `TUNING.survival.leafStick`, or berries in the one in `leafBerries` after that.
  */
 export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cost {
   if (!canHarvest(block, tool)) return [];
-  if (block === Block.Leaves || block === Block.SpruceLeaves) return roll < 1 / TUNING.survival.leafStick ? [[Item.Stick, 1]] : [];
+  if (block === Block.Leaves || block === Block.SpruceLeaves) {
+    const stick = 1 / TUNING.survival.leafStick;
+    return roll < stick ? [[Item.Stick, 1]] : roll < stick + 1 / TUNING.survival.leafBerries ? [[Item.Berries, 1]] : [];
+  }
   if (block === Block.Glass) return [];
   const given = GIVES.get(block);
   if (given !== undefined) return [[given, 1]];
