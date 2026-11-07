@@ -5,6 +5,7 @@
 // where it is, back to front. Drawn on canvases once at startup, as data URLs.
 
 import { Block, BLOCKS, type BlockInfo, type Box } from '../world/blocks';
+import { connectedBoxes } from '../world/shapes';
 import { makeTextures, TEXTURE_SIZE, type TextureName, textureLayer } from '../world/textures';
 
 /** Icon size in pixels (drawn crisp; CSS scales it). */
@@ -47,8 +48,10 @@ export function blockIcons(pixels: Uint8Array = makeTextures()): string[] {
     canvas.width = canvas.height = SIZE;
     const ctx = canvas.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
-    if (info.boxes) {
-      drawBoxes(ctx, info, layer);
+    // A fence or pane as if joined on either side along x.
+    const boxes = info.connects ? connectedBoxes(info.connects, 3) : info.boxes;
+    if (boxes) {
+      drawBoxes(ctx, info, boxes, layer);
       return canvas.toDataURL();
     }
     for (const { map, shade, face } of FACES) {
@@ -71,8 +74,8 @@ export function blockIcons(pixels: Uint8Array = makeTextures()): string[] {
  * and its +z side) showing the part of the texture where it is, the boxes further back and lower
  * first. A point (x, y, z) of the block is at (4 + 20x + 20z, 34 - 10x + 10z - 20y) on the icon.
  */
-function drawBoxes(ctx: CanvasRenderingContext2D, info: BlockInfo, layer: (name: TextureName) => HTMLCanvasElement): void {
-  const order = [...info.boxes!].sort((a: Box, b: Box) => a[1] - b[1] || a[5] - a[0] - (b[5] - b[0]));
+function drawBoxes(ctx: CanvasRenderingContext2D, info: BlockInfo, boxes: readonly Box[], layer: (name: TextureName) => HTMLCanvasElement): void {
+  const order = [...boxes].sort((a: Box, b: Box) => a[1] - b[1] || a[5] - a[0] - (b[5] - b[0]));
   for (const [x0, y0, z0, x1, y1, z1] of order) {
     // Each face: the map from texels (u across, v down) to the icon, and the texels it shows.
     const faces: [number[], number, number, number, number, number, 'top' | 'side'][] = [

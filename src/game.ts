@@ -64,7 +64,7 @@ import { MobRenderer } from './render/mobRenderer';
 import { bedOf, Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, wheat, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
-import { isShape, shapePlacement } from './world/shapes';
+import { blockBoxes, isShape, shapePlacement } from './world/shapes';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock, touches } from './world/physics';
@@ -1723,8 +1723,8 @@ function frame(now: number): void {
   playTogether(now);
   outline.visible = target !== null;
   if (target) {
-    // Round a door's, bed's, slab's or stairs' boxes; round the block for the rest.
-    const boxes = BLOCKS[target.block].boxes;
+    // Round a door's, bed's, slab's, stairs', fence's or pane's boxes; round the block for the rest.
+    const boxes = blockBoxes(world, target.x, target.y, target.z);
     const box = boxes ? [0, 1, 2].map((a) => Math.min(...boxes.map((b) => b[a]))).concat([3, 4, 5].map((a) => Math.max(...boxes.map((b) => b[a])))) : WHOLE_BLOCK;
     outline.position.set(target.x + (box[0] + box[3]) / 2, target.y + (box[1] + box[4]) / 2, target.z + (box[2] + box[5]) / 2);
     outline.scale.set(box[3] - box[0], box[4] - box[1], box[5] - box[2]);

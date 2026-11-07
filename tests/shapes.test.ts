@@ -44,7 +44,7 @@ describe('slabs and stairs', () => {
     }
     expect(slabOf(Block.Stone)).toBe(null);
     expect(stairsOf(slab(2, true))).toBe(null);
-    expect(BLOCKS.length).toBe(Block.Stairs + 24);
+    expect(Block.Fence).toBe(Block.Stairs + 24);
     expect(BLOCKS[slab(1, false)].name).toBe('Plank slab');
     expect(BLOCKS[stairs(0, 0, false)].name).toBe('Stone stairs');
   });

@@ -13,6 +13,7 @@
 
 import { TUNING } from '../config';
 import { type Block, BLOCKS } from './blocks';
+import { connectedBoxes, joinsAt } from './shapes';
 
 /** The player's box: half its width (x and z), and its height. */
 export const HALF_WIDTH = 0.3;
@@ -119,27 +120,32 @@ export function moveStepping(body: Body, dx: number, dy: number, dz: number, wor
 }
 
 /**
- * Is a block of boxes (a door, a bed, a slab, stairs) anywhere the body's box could be during a move
- * of (dx, dy, dz): in the box stretched by the move on each axis?
+ * Is a block of boxes (a door, a bed, a slab, stairs, a fence, a pane) anywhere the body's box could
+ * be during a move of (dx, dy, dz): in the box stretched by the move on each axis, and a block lower
+ * (a fence's boxes reach up into the block above it)?
  */
 function nearBox(body: Body, dx: number, dy: number, dz: number, world: BlockSource): boolean {
   const w = body.halfWidth;
   const x0 = Math.floor(body.x - w + Math.min(dx, 0) + EPS);
   const x1 = Math.floor(body.x + w + Math.max(dx, 0) - EPS);
-  const y0 = Math.floor(body.y + Math.min(dy, 0) + EPS);
+  const y0 = Math.floor(body.y + Math.min(dy, 0) + EPS) - 1;
   const y1 = Math.floor(body.y + body.height + Math.max(dy, 0) - EPS);
   const z0 = Math.floor(body.z - w + Math.min(dz, 0) + EPS);
   const z1 = Math.floor(body.z + w + Math.max(dz, 0) - EPS);
-  for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (SOLID_BOX[world.getBlock(x, y, z)] === 2) return true;
+  for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (SOLID_BOX[world.getBlock(x, y, z)] >= 2) return true;
   return false;
 }
 
 const solid = (world: BlockSource, x: number, y: number, z: number): boolean => !BLOCKS[world.getBlock(x, y, z)].passable;
 
+/** Component `a` (0 x, 1 y, 2 z) of (x, y, z). */
+const pick = (a: number, x: number, y: number, z: number): number => (a === 0 ? x : a === 1 ? y : z);
+
 /**
  * What a body bumps into in each block: SOLID_BOX[b] 0 for passable blocks, 1 for a whole cube, 2
  * for boxes of its own (`BlockInfo.boxes`: a door's panel, a bed, a slab, stairs' two), which are
- * BOXES[k .. k + 5] for k from BOX_START[b] * 6 up to BOX_START[b + 1] * 6.
+ * BOXES[k .. k + 5] for k from BOX_START[b] * 6 up to BOX_START[b + 1] * 6; 3 for a fence or pane,
+ * whose boxes come from its neighbours (`connectedBoxes`, a fence's 1.5 high).
  */
 const SOLID_BOX = new Uint8Array(256);
 const BOX_START = new Uint16Array(257);
@@ -147,7 +153,7 @@ const BOXES = new Float64Array(BLOCKS.reduce((n, info) => n + (info.boxes?.lengt
 {
   let n = 0;
   BLOCKS.forEach((info, b) => {
-    SOLID_BOX[b] = info.passable ? 0 : info.boxes ? 2 : 1;
+    SOLID_BOX[b] = info.passable ? 0 : info.connects ? 3 : info.boxes ? 2 : 1;
     BOX_START[b] = n;
     for (const box of info.boxes ?? [[0, 0, 0, 1, 1, 1] as const]) BOXES.set(box, n++ * 6);
   });
@@ -171,11 +177,27 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource, boxed
   // The blocks the box covers across the move, on the other two axes.
   const a1 = (axis + 1) % 3;
   const a2 = (axis + 2) % 3;
-  const lo1 = Math.floor(min[a1] + EPS);
+  // With boxes about, a block lower too on y (a fence below reaches up into the body's blocks).
+  const reach = (a: number) => (boxed && a === 1 ? 1 : 0);
+  const lo1 = Math.floor(min[a1] + EPS) - reach(a1);
   const hi1 = Math.floor(max[a1] - EPS);
-  const lo2 = Math.floor(min[a2] + EPS);
+  const lo2 = Math.floor(min[a2] + EPS) - reach(a2);
   const hi2 = Math.floor(max[a2] - EPS);
+  /** The lowest block the body is in: whole blocks below it (the extra row) are never in the way. */
+  const feet = Math.floor(min[1] + EPS);
   const cell = [0, 0, 0];
+  /** One box, at (u, v) on the other two axes and `c` along the axis: the nearest face ahead so far. */
+  let best = NaN;
+  const boxStop = (u: number, v: number, c: number, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void => {
+    // Clear of the body on the other two axes: no bump.
+    if (u + pick(a1, x0, y0, z0) >= max[a1] - EPS || u + pick(a1, x1, y1, z1) <= min[a1] + EPS) return;
+    if (v + pick(a2, x0, y0, z0) >= max[a2] - EPS || v + pick(a2, x1, y1, z1) <= min[a2] + EPS) return;
+    const lo = c + pick(axis, x0, y0, z0);
+    const hi = c + pick(axis, x1, y1, z1);
+    if (d > 0) {
+      if (lo >= face - EPS && lo <= face + d - EPS && !(lo >= best)) best = lo;
+    } else if (hi <= face + EPS && hi >= face + d + EPS && !(hi <= best)) best = hi;
+  };
   const face = d > 0 ? max[axis] : min[axis];
   /**
    * In the layer of blocks at `c` along the axis, the nearest face ahead within the move: the
@@ -183,7 +205,7 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource, boxed
    */
   const layerStop = (c: number): number => {
     cell[axis] = c;
-    let best = NaN;
+    best = NaN;
     for (let u = lo1; u <= hi1; u++) {
       cell[a1] = u;
       for (let v = lo2; v <= hi2; v++) {
@@ -192,21 +214,20 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource, boxed
         const kind = SOLID_BOX[block];
         if (kind === 0) continue;
         if (kind === 1) {
+          if (cell[1] < feet && axis !== 1) continue;
           if (d > 0) {
             if (c >= face - EPS && c <= face + d - EPS && !(c >= best)) best = c;
           } else if (c + 1 <= face + EPS && c + 1 >= face + d + EPS && !(c + 1 <= best)) best = c + 1;
           continue;
         }
-        for (let k = BOX_START[block] * 6, end = BOX_START[block + 1] * 6; k < end; k += 6) {
-          // Clear of the body on the other two axes: no bump.
-          if (u + BOXES[k + a1] >= max[a1] - EPS || u + BOXES[k + 3 + a1] <= min[a1] + EPS) continue;
-          if (v + BOXES[k + a2] >= max[a2] - EPS || v + BOXES[k + 3 + a2] <= min[a2] + EPS) continue;
-          const lo = c + BOXES[k + axis];
-          const hi = c + BOXES[k + 3 + axis];
-          if (d > 0) {
-            if (lo >= face - EPS && lo <= face + d - EPS && !(lo >= best)) best = lo;
-          } else if (hi <= face + EPS && hi >= face + d + EPS && !(hi <= best)) best = hi;
+        if (kind === 3) {
+          // A fence or pane: its boxes by what's beside it.
+          const kindOf = BLOCKS[block].connects!;
+          for (const b of connectedBoxes(kindOf, joinsAt(world, kindOf, cell[0], cell[1], cell[2]), true)) boxStop(u, v, c, b[0], b[1], b[2], b[3], b[4], b[5]);
+          continue;
         }
+        for (let k = BOX_START[block] * 6, end = BOX_START[block + 1] * 6; k < end; k += 6)
+          boxStop(u, v, c, BOXES[k], BOXES[k + 1], BOXES[k + 2], BOXES[k + 3], BOXES[k + 4], BOXES[k + 5]);
       }
     }
     return best;
@@ -224,7 +245,7 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource, boxed
       }
     }
   } else {
-    for (let c = boxed ? Math.floor(max[axis] - EPS) : Math.floor(face + EPS) - 1; c >= Math.floor(face + d + EPS); c--) {
+    for (let c = boxed ? Math.floor(max[axis] - EPS) : Math.floor(face + EPS) - 1; c >= Math.floor(face + d + EPS) - reach(axis); c--) {
       const at = layerStop(c);
       if (at === at) {
         stop = at + below;

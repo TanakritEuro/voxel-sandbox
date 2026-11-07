@@ -15,6 +15,7 @@ for (let f = 0; f < 4; f++) for (const lit of [false, true]) RIGHT_TOOL.set(furn
 for (const b of [Block.Wood, Block.SpruceWood, Block.Planks]) RIGHT_TOOL.set(b, 'axe');
 // Chests, doors and beds: wood.
 for (let b = Block.Chest; b < Block.Farmland; b++) RIGHT_TOOL.set(b as Block, 'axe');
+RIGHT_TOOL.set(Block.Fence, 'axe');
 for (const b of [Block.Dirt, Block.Grass, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass, Block.Farmland]) RIGHT_TOOL.set(b, 'spade');
 
 // Slabs and stairs dig as their material does.
@@ -87,7 +88,8 @@ export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cos
     const stick = 1 / TUNING.survival.leafStick;
     return roll < stick ? [[Item.Stick, 1]] : roll < stick + 1 / TUNING.survival.leafBerries ? [[Item.Berries, 1]] : [];
   }
-  if (block === Block.Glass) return [];
+  // Glass breaks to nothing, a pane as well.
+  if (block === Block.Glass || block === Block.Pane) return [];
   // Grass gives its dirt, and seeds one time in `farming.seedsFromGrass`; wheat ripe gives wheat and
   // 1 to `farming.ripeSeeds` seeds, unripe just its seed back.
   const F = TUNING.survival.farming;

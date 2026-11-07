@@ -77,6 +77,9 @@ export enum Block {
   Slab = 143,
   /** Stairs by material, facing (the way the player looked placing them: the tall back) and upside down (149–172): `stairs`, `stairsOf`. */
   Stairs = 149,
+  /** A wooden fence and a glass pane: their boxes from what's beside them (`connects`, `world/shapes.ts`). */
+  Fence = 173,
+  Pane = 174,
 }
 
 type RGB = [number, number, number];
@@ -101,6 +104,11 @@ export interface BlockInfo {
    * wire (a 1/16 sheet), a switch, a button, or a gate's plate (1/8).
    */
   shape: 'cube' | 'torch' | 'wire' | 'switch' | 'button' | 'plate' | 'panel' | 'slab' | 'cross';
+  /**
+   * A fence or a pane: its boxes come from its four neighbours (`connectedBoxes`), a post or a
+   * sheet and an arm to each fence (or pane) and whole solid block beside it.
+   */
+  connects?: 'fence' | 'pane';
   /**
    * What a body bumps into when it isn't the whole block (a door's panel, a bed, a slab, stairs'
    * two parts), each box from (x0, y0, z0) to (x1, y1, z1) within the block, 0–1. Only for blocks
@@ -399,6 +407,8 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
       })),
     ),
   ),
+  { ...solid('Fence', 2, faces('planks'), 0xb88c55), opaque: false, shape: 'slab', connects: 'fence' },
+  { ...solid('Glass pane', 0.4, faces('glass'), 0xcfe8f2), opaque: false, transparent: true, shape: 'slab', connects: 'pane' },
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
@@ -440,6 +450,10 @@ const SOUNDS: Partial<Record<Block, BlockSound>> = {
   [Block.Farmland]: 'dirt',
 };
 for (let b = Block.Chest; b < Block.Farmland; b++) SOUNDS[b as Block] = 'wood';
+SOUNDS[Block.Fence] = 'wood';
+SOUNDS[Block.Pane] = 'glass';
+// Plank slabs and stairs sound of wood.
+for (let b = Block.Slab; b < Block.Fence; b++) if ((slabOf(b as Block) ?? stairsOf(b as Block))!.material === 1) SOUNDS[b as Block] = 'wood';
 for (let b = Block.Wheat; b < Block.Wheat + 8; b++) SOUNDS[b as Block] = 'leaves';
 
 export const BLOCKS: readonly BlockInfo[] = TABLE.map((info, b) => ({ ...info, sound: SOUNDS[b as Block] ?? 'stone' }));

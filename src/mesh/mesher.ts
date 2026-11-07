@@ -33,6 +33,7 @@
 import { TUNING } from '../config';
 import { bedOf, Block, BLOCKS, FACINGS, gateOf } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
+import { connectedBoxes, joins } from '../world/shapes';
 import { textureLayer } from '../world/textures';
 import { FACE_ORDER, MeshBuilder, type MeshData } from './builder';
 import { ALL_SUNLIT, PADDED } from './padding';
@@ -83,6 +84,9 @@ const LAYER = new Uint8Array(256 * 6);
  * for k from BOX_START[b] * 6 up to BOX_START[b + 1] * 6.
  */
 const BOX_START = new Uint16Array(257);
+/** Fences (1) and panes (2): boxes from their neighbours, made into JOINED as each is meshed. */
+const CONNECTS = new Uint8Array(256);
+const JOINED = new Float64Array(16 * 6);
 const BOXES = new Float64Array(BLOCKS.reduce((n, info) => n + (info.boxes?.length ?? 0), 0) * 6);
 BLOCKS.forEach((info, b) => {
   OPAQUE[b] = info.opaque ? 1 : 0;
@@ -97,6 +101,7 @@ BLOCKS.forEach((info, b) => {
   const bedHalf = bedOf(b);
   if (bedHalf) [FACE_X[b], FACE_Z[b]] = FACINGS[bedHalf.facing];
   BOX_START[b + 1] = BOX_START[b] + (info.boxes?.length ?? 0);
+  CONNECTS[b] = info.connects === 'fence' ? 1 : info.connects === 'pane' ? 2 : 0;
   info.boxes?.forEach((box, j) => BOXES.set(box, (BOX_START[b] + j) * 6));
   if (info.wall) {
     WALL_X[b] = info.wall.x;
@@ -523,19 +528,32 @@ function piece(padded: Uint8Array, light: Uint8Array, i: number, origin: number[
   const sun = (l >> 4) * 17;
   const glow = Math.max((l & 15) * 17, GLOW[b]);
   const turned = FACE_X[b] !== 0 || FACE_Z[b] !== 0;
-  const first = BOX_START[b];
-  const last = BOX_START[b + 1];
+  // A fence's or pane's boxes from what's beside it (in the padded border across chunk borders);
+  // the rest from the table.
+  let src = BOXES;
+  let first = BOX_START[b];
+  let last = BOX_START[b + 1];
+  const kind = CONNECTS[b] === 1 ? 'fence' : CONNECTS[b] === 2 ? 'pane' : null;
+  if (kind) {
+    const sides = (joins(kind, padded[i + 1]) ? 1 : 0) | (joins(kind, padded[i - 1]) ? 2 : 0) | (joins(kind, padded[i + P]) ? 4 : 0) | (joins(kind, padded[i - P]) ? 8 : 0);
+    const boxes = connectedBoxes(kind, sides);
+    boxes.forEach((box, n) => JOINED.set(box, n * 6));
+    src = JOINED;
+    first = 0;
+    last = boxes.length;
+  }
+  const out = TRANSPARENT[b] ? transparent : opaque;
   const lo = [0, 0, 0];
   const hi = [0, 0, 0];
   let quads = 0;
   for (let box = first; box < last; box++) {
     const k = box * 6;
-    lo[0] = BOXES[k];
-    lo[1] = BOXES[k + 1];
-    lo[2] = BOXES[k + 2];
-    hi[0] = BOXES[k + 3];
-    hi[1] = BOXES[k + 4];
-    hi[2] = BOXES[k + 5];
+    lo[0] = src[k];
+    lo[1] = src[k + 1];
+    lo[2] = src[k + 2];
+    hi[0] = src[k + 3];
+    hi[1] = src[k + 4];
+    hi[2] = src[k + 5];
     for (let dir = 0; dir < 6; dir++) {
       const d = dir >> 1;
       const s = dir & 1 ? -1 : 1;
@@ -549,15 +567,15 @@ function piece(padded: Uint8Array, light: Uint8Array, i: number, origin: number[
       for (let other = first; other < last && !covered; other++) {
         if (other === box) continue;
         const o = other * 6;
-        if ((s > 0 ? BOXES[o + d] : BOXES[o + 3 + d]) !== plane) continue;
-        covered = BOXES[o + ua] <= lo[ua] && BOXES[o + 3 + ua] >= hi[ua] && BOXES[o + va] <= lo[va] && BOXES[o + 3 + va] >= hi[va];
+        if ((s > 0 ? src[o + d] : src[o + 3 + d]) !== plane) continue;
+        covered = src[o + ua] <= lo[ua] && src[o + 3 + ua] >= hi[ua] && src[o + va] <= lo[va] && src[o + 3 + va] >= hi[va];
       }
       if (covered) continue;
       const tu = d === 0 ? 2 : 0;
       const tv = d === 1 ? 2 : 1;
       const layer = LAYER[b * 6 + dir];
       const shade = SHADED[dir * 4 + 3];
-      opaque.reserve(1);
+      out.reserve(1);
       for (let c = 0; c < 4; c++) {
         const cu = c === 1 || c === 2;
         const cv = c >= 2;
@@ -582,9 +600,9 @@ function piece(padded: Uint8Array, light: Uint8Array, i: number, origin: number[
         const fv = Math.floor(ty + 1e-6);
         const eu = Math.round((tx - fu) * 8);
         const ev = Math.round((ty - fv) * 8);
-        opaque.vertex(p[0], p[1], p[2], shade, sun, glow, fu + (eu >> 3), fv + (ev >> 3), layer, (ev & 7) | ((eu & 7) << 3));
+        out.vertex(p[0], p[1], p[2], shade, sun, glow, fu + (eu >> 3), fv + (ev >> 3), layer, (ev & 7) | ((eu & 7) << 3));
       }
-      opaque.quad();
+      out.quad();
       quads++;
     }
   }

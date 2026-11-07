@@ -142,7 +142,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
   `furnaceOf`; a block's `front` texture on the side it faces), chests 106–109, doors 110–125, beds
-  126–133, farmland 134, wheat 135–142, slabs 143–148 and stairs 149–172 in `SHAPE_MATERIALS` (`chest`, `door`,
+  126–133, farmland 134, wheat 135–142, slabs 143–148 and stairs 149–172 in `SHAPE_MATERIALS`, fence 173, glass pane 174 (`connects`: boxes from
+  their neighbours) (`chest`, `door`,
   `doorSide`, `bed`, `wheat`, `slab`, `stairs` and their `…Of`; `boxes`: what a body bumps into when it
   isn't the whole block, a door's panel, a bed's half, a slab, stairs' two):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
@@ -151,7 +152,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   thin logic blocks, wheat and a door's lower half)),
   `torches.ts` (`torchesHeldBy`: the torches, thin logic blocks, wheat and doors a block holds up), `parts.ts` (blocks in pairs: a door's
   halves, a bed's; `pairPlacement`, `partnerOf`, `useAt`: a click's blocks, a door's two halves), `shapes.ts`
-  (`shapePlacement`: a slab in the half clicked or made whole, stairs the way the player looks), `textures.ts`
+  (`shapePlacement`: a slab in the half clicked or made whole, stairs the way the player looks; `joins`,
+  `joinsAt`, `connectedBoxes`: a fence's post and rails (1.5 high to bump into), a pane's sheet;
+  `blockBoxes`: any block's boxes as drawn), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
@@ -171,7 +174,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   woken when a column loads: in it if saved, on its neighbours' faces), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
   at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
   buttons let go, doors opened while signalled (each door's last signal kept, so a click lasts until it changes); changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with boxes hit only where they are, the nearest; the hit point), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
-  blocks' boxes, every box of a block (looked for inside the blocks the body is in only with one about, `nearBox`), walking, jumping,
+  blocks' boxes, every box of a block, fences' and panes' from their neighbours (looked for inside the blocks
+  the body is in, and a block lower for a fence's top, only with one about, `nearBox`), walking, jumping,
   stepping up half a block on the ground (`moveStepping`, players and mobs),
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
@@ -203,7 +207,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   the prey and fading by day, their hits kept for the game (`takeAttacks`, `takeFaded`); the sounds they make; round every player when playing together, the cap
   by players; not saved), `hit.ts` (the mob under the
   crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
-  cutting, swimming at the surface, through open doors and not closed ones, node and range limits; typed arrays reused between
+  cutting, swimming at the surface, through open doors and not closed ones, never over a fence, node and range limits; typed arrays reused between
   searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
   `World.getBlock`), `models.ts` (each kind's boxes, pivots, textures and how each part moves; pure
   data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
@@ -214,8 +218,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `faceStarts`: quads by face direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then torches),
   `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes,
   thin logic blocks as boxes (a gate's top turned to its facing), doors' panels, beds, slabs and stairs
-  as their boxes (`piece`: faces on another of the block's boxes left out, texture cropped to where each
-  face is, in eighths both ways), wheat as two crossed
+  as their boxes, fences and panes (in the transparent pass) as theirs from the padded neighbours (`piece`:
+  faces on another of the block's boxes left out, texture cropped to where each face is, in eighths both ways), wheat as two crossed
   sheets in the cutout pass (`cross`),
   flowing water block by block at its depth, sides between waters only above the shallower; opaque, cutout (leaves) and transparent passes;
   `flatFaces` for far chunks), `lod.ts` (far chunks: the padded input coarsened in place into

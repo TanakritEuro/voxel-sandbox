@@ -2,6 +2,7 @@
 // ray, always crossing the nearest cell boundary next, so no block is ever skipped.
 
 import { BLOCKS, type Block, type Box } from './blocks';
+import { connectedBoxes, joinsAt } from './shapes';
 import type { World } from './world';
 
 export interface RayHit {
@@ -52,10 +53,11 @@ export function raycast(
     const block = world.getBlock(x, y, z);
     const info = BLOCKS[block];
     if (info.targetable) {
-      if (!info.boxes) return at(origin, dir, x, y, z, block, nx, ny, nz, t);
-      // A door, bed, slab or stairs: only where its boxes are (the nearest); through the rest of the block.
+      const boxes = info.connects ? connectedBoxes(info.connects, joinsAt(world, info.connects, x, y, z)) : info.boxes;
+      if (!boxes) return at(origin, dir, x, y, z, block, nx, ny, nz, t);
+      // A door, bed, slab, stairs, fence or pane: only where its boxes are (the nearest); through the rest of the block.
       let best: [number, number] | null = null;
-      for (const box of info.boxes) {
+      for (const box of boxes) {
         const hit = intoBox(origin, dir, x, y, z, box);
         if (hit && (!best || hit[0] < best[0])) best = hit;
       }

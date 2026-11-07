@@ -128,7 +128,7 @@ where there are no shapes.
    `piece` drawing them; slabs and stairs as blocks. Built (2026-11-07).
 2. **Placing slabs and stairs,** slabs made whole, the picker, recipes and drops. Built (2026-11-07).
 3. **Step-up** for players and mobs. Built (2026-11-07).
-4. **Fences and panes:** boxes from neighbours, in collision, raycast and the mesher; 1.5 high fences.
+4. **Fences and panes:** boxes from neighbours, in collision, raycast and the mesher; 1.5 high fences. Built (2026-11-07).
 5. **Measurements,** notes and playtest questions.
 
 ## Decisions to agree
@@ -288,4 +288,69 @@ rounds each; the machine was slower than at the end of Milestone 13):
   far side and down;
 - no console errors.
 - **For the playtest:** how it feels, especially the eye easing up.
+
+## Step 4: fences and panes — built (2026-11-07)
+
+**What's there:**
+- **Blocks:** `Fence` (173) and `Pane` (174), `BlockInfo.connects`. Their boxes come from their four
+  neighbours (`world/shapes.ts`: `joins`, `joinsAt`, `connectedBoxes`, `blockBoxes`).
+  - They join their own kind and whole solid blocks; not air, slabs, glass or the other kind.
+- **A fence:**
+  - drawn as a post 4/16 across and two rails (2/16 thick) to each side it joins;
+  - bumped into as the post and a bar to each side, 1.5 high, so nothing jumps it;
+  - a fence alone is a post.
+- **A pane:** a sheet 2/16 thick from the middle to each side it joins, or a cross with none; drawn
+  in the transparent pass with the glass.
+- **Collision:** a fence or pane is a third kind of block in the sweep, its boxes worked out from its
+  neighbours (four lookups, only for these).
+  - With a box about, the sweep also looks a block lower, as a fence's top half reaches into the block
+    above it.
+  - `nearBox` looks there too.
+- **The raycast and the outline** use the boxes as drawn.
+- **The mesher** works them out from the padded border, so across chunk borders too; the faces between
+  a pane's parts are left out as stairs' are.
+- **Mobs:** a fence's top isn't a place to stand, so no path goes over one; a gap lets them through.
+- **Survival:**
+  - 3 fences from 4 planks and 2 sticks; 16 panes from 6 glass;
+  - a fence gives itself (the axe digs it faster);
+  - a pane gives nothing, as glass doesn't (the plan said each gives itself).
+- **Icons:** a fence and a pane joined along x.
+- **Also:** plank slabs and stairs now sound of wood (they had stone's since step 1).
+
+**Tests** (11 new, 505 in all, `tests/fences.test.ts`):
+- **Joining:** what joins a fence and a pane, and what doesn't.
+- **The boxes:** a lone post; post and rails; 1.5 high collision; a lone pane's cross, a sheet along x.
+- **Collision:**
+  - walking and jumping at a fence for 2 s, the body stays on its side;
+  - dropped onto a fence, it stands at 1.5;
+  - from a block one higher beside it, it's stopped by the half that reaches up;
+  - through between two posts that stand apart, not where they join;
+  - stopped at a pane's sheet.
+  - Without looking a block lower, the jump test and the reaching test both fail.
+- **Raycast:** hits a post, passes beside it.
+- **Mesher:**
+  - a lone fence is 6 quads;
+  - with a fence beside it across a chunk border, post and rails in both chunks;
+  - a lone pane's 22 quads in the transparent pass, none in the opaque.
+- **Mobs:** no path over a fence line, one through a gap.
+- **Survival:** the recipes, drops and the axe.
+
+**Bench** (against the last commit, two rounds each):
+
+| | greedy meshing (ms) | µs a player step |
+| --- | --- | --- |
+| Before | 1,070 / 1,081 | 4.22 / 4.01 |
+| After | 1,095 / 1,101 | 5.24 / 4.64 |
+
+- Meshing is the same within noise.
+- A player step costs about 0.6–1 µs more (0.002–0.004 ms a frame): `nearBox` now looks a block
+  lower on every move, for fences.
+- Floating ground items: 0.36 ms a frame median, as at step 1.
+
+**Looked at in the browser** (`?seed=7&nolock`, creative):
+- two fences side by side joined by their rails;
+- glass panes drawn with the glass, lone ones as crosses;
+- the outline round the fence's parts;
+- the icons of both in the hotbar.
+- No console errors.
 

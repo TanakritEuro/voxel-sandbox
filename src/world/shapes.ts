@@ -7,7 +7,7 @@
 // - Stairs' back goes the way the player looks; they're upside down on a ceiling or the upper half
 //   of a side.
 
-import { Block, BLOCKS, facingFromYaw, SHAPE_MATERIALS, slab, slabOf, stairs, stairsOf } from './blocks';
+import { Block, BLOCKS, type Box, facingFromYaw, SHAPE_MATERIALS, slab, slabOf, stairs, stairsOf } from './blocks';
 
 interface Blocks {
   getBlock(x: number, y: number, z: number): Block;
@@ -69,4 +69,69 @@ export function shapePlacement(world: Blocks, item: Block, click: ShapeClick, ya
     return free(world, x, y, z) ? [x, y, z, stairs(t.material, facingFromYaw(yaw), high(click))] : null;
   }
   return null;
+}
+
+// --- Fences and panes ---------------------------------------------------------------------------
+
+const px = (n: number) => n / 16;
+
+/** Do a fence or pane of kind `kind` and the block `nb` beside it join: the same kind, or a whole solid block? */
+export function joins(kind: 'fence' | 'pane', nb: Block): boolean {
+  const info = BLOCKS[nb];
+  return info.connects === kind || (info.opaque && info.shape === 'cube');
+}
+
+/** Which of its four sides (bits by `FACINGS` index: +x, -x, +z, -z) the fence or pane at (x, y, z) joins. */
+export function joinsAt(world: Blocks, kind: 'fence' | 'pane', x: number, y: number, z: number): number {
+  return (
+    (joins(kind, world.getBlock(x + 1, y, z)) ? 1 : 0) |
+    (joins(kind, world.getBlock(x - 1, y, z)) ? 2 : 0) |
+    (joins(kind, world.getBlock(x, y, z + 1)) ? 4 : 0) |
+    (joins(kind, world.getBlock(x, y, z - 1)) ? 8 : 0)
+  );
+}
+
+/** An arm from the middle band (`a` to `b` across) to side `side` (a `FACINGS` index), from height y0 to y1. */
+function arm(side: number, a: number, b: number, y0: number, y1: number): Box {
+  switch (side) {
+    case 0:
+      return [b, y0, a, 1, y1, b];
+    case 1:
+      return [0, y0, a, a, y1, b];
+    case 2:
+      return [a, y0, b, b, y1, 1];
+    default:
+      return [a, y0, 0, b, y1, a];
+  }
+}
+
+/**
+ * A fence's or pane's boxes, joining the sides in `sides` (bits as `joinsAt`):
+ * - a fence drawn: a post (4/16 across) and two rails (2/16 thick) to each side it joins;
+ * - a fence bumped into (`collision`): the post and a bar to each side, 1.5 high, so it can't be jumped;
+ * - a pane: a sheet 2/16 thick from the middle to each side it joins, or to all four with none.
+ */
+export function connectedBoxes(kind: 'fence' | 'pane', sides: number, collision = false): Box[] {
+  const out: Box[] = [];
+  if (kind === 'fence') {
+    const top = collision ? 1.5 : 1;
+    out.push([px(6), 0, px(6), px(10), top, px(10)]);
+    for (let side = 0; side < 4; side++) {
+      if (!(sides & (1 << side))) continue;
+      if (collision) out.push(arm(side, px(6), px(10), 0, 1.5));
+      else out.push(arm(side, px(7), px(9), px(6), px(9)), arm(side, px(7), px(9), px(12), px(15)));
+    }
+    return out;
+  }
+  out.push([px(7), 0, px(7), px(9), 1, px(9)]);
+  const to = sides || 15;
+  for (let side = 0; side < 4; side++) if (to & (1 << side)) out.push(arm(side, px(7), px(9), 0, 1));
+  return out;
+}
+
+/** The boxes of the block at (x, y, z) as drawn (and clicked): its own, a fence's or pane's by its neighbours; null for a whole cube. */
+export function blockBoxes(world: Blocks, x: number, y: number, z: number): readonly Box[] | null {
+  const info = BLOCKS[world.getBlock(x, y, z)];
+  if (info.connects) return connectedBoxes(info.connects, joinsAt(world, info.connects, x, y, z));
+  return info.boxes ?? null;
 }

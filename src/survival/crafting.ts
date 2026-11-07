@@ -35,6 +35,8 @@ export const RECIPES: readonly Recipe[] = [
   r(Block.Bed, 1, [Block.Planks, 3], [Item.Moss, 3]),
   // Slabs and stairs of stone, planks and sandstone.
   ...SHAPE_MATERIALS.flatMap((m, i) => [r(slab(i, false), 6, [m.block, 3]), r(stairs(i, 0, false), 4, [m.block, 6])]),
+  r(Block.Fence, 3, [Block.Planks, 4], [Item.Stick, 2]),
+  r(Block.Pane, 16, [Block.Glass, 6]),
   r(Block.Sandstone, 1, [Block.Sand, 4]),
   r(Block.Lamp, 1, [Block.Glass, 4], [Item.Crystal, 1]),
   r(Block.Wire, 8, [Item.Copper, 1]),
