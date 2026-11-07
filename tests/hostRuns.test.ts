@@ -143,9 +143,9 @@ describe('what the host runs, for its guests', () => {
       hitMob: (player, id, points) => hits.push([player, id, points]),
       drop: () => {},
       take: () => null,
-      furnace: () => null,
-      furnacePut: (_p, _x, _y, _z, _slot, stack) => stack,
-      furnaceTake: () => null,
+      container: () => null,
+      containerPut: (_p, _x, _y, _z, _slot, stack) => stack,
+      containerTake: () => null,
     };
     const room = net.room();
     const host = new HostSession(room, world, 'Host', () => t);

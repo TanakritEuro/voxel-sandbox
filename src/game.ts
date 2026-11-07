@@ -26,7 +26,7 @@ import { breakWith, heldTool, placeableIn } from './survival/play';
 import { type GroundItem, GroundItems, inReach } from './survival/ground';
 import type { Stack } from './survival/inventory';
 import { Furnace, Furnaces } from './survival/furnace';
-import { Chests } from './survival/chest';
+import { CHEST_SLOTS, Chests } from './survival/chest';
 import { Crops, sowable, tillable } from './survival/farming';
 import { type BedPlace, bedFoot, bedFrom, canSleep, wakeAt } from './survival/sleep';
 import { hostSurvival } from './net/hostSurvival';
@@ -191,10 +191,11 @@ const survivalRecord: SurvivalRecord = { inventory: pack.slots, health: health.t
 if (bed) survivalRecord.bed = bed;
 record.survival = survivalRecord;
 /**
- * Asleep in a bed: where (its foot), and seconds so far; the screen dims, and after
- * `TUNING.sleep.dim` s it is morning. Null awake.
+ * Asleep in a bed: where (its foot), seconds so far, and what it last said about the others; the
+ * screen dims, and after `TUNING.sleep.dim` s it is morning (playing together, once everyone is
+ * asleep). Null awake.
  */
-let asleep: { foot: BedPlace; for: number } | null = null;
+let asleep: { foot: BedPlace; for: number; waiting?: string } | null = null;
 /** Started again with a bed: put beside it once its land has loaded (or at the spawn if it's gone). */
 let wakeAtBed: BedPlace | null = null;
 
@@ -531,14 +532,19 @@ if (guest) {
     if (backpack.open) backpack.refresh();
   };
   guest.onHurt = (damage, push, fromX, fromZ) => struck(damage, push, fromX, fromZ);
-  guest.onFurnace = (x, y, z, state) => {
-    const open = hostFurnace;
+  guest.onContainer = (x, y, z, state) => {
+    const open = hostContainer;
     if (!open || open.x !== x || open.y !== y || open.z !== z) return;
-    const heard = Furnace.from(state);
-    heard.slots.slots.forEach((st, i) => (open.furnace.slots.slots[i] = st));
-    open.furnace.burn = heard.burn;
-    open.furnace.burnTotal = heard.burnTotal;
-    open.furnace.progress = heard.progress;
+    if (open.furnace) {
+      const heard = Furnace.from(state);
+      heard.slots.slots.forEach((st, i) => (open.furnace!.slots.slots[i] = st));
+      open.furnace.burn = heard.burn;
+      open.furnace.burnTotal = heard.burnTotal;
+      open.furnace.progress = heard.progress;
+    } else if (open.chest) {
+      const heard = SurvivalInventory.from(state.slots, CHEST_SLOTS);
+      heard.slots.forEach((st, i) => (open.chest!.slots[i] = st));
+    }
     backpack.refresh();
   };
   setInterval(sendKept, TUNING.net.keptEvery * 1000);
@@ -567,7 +573,7 @@ function openToFriends(room: Room): HostSession {
       edit: (x, y, z, block) => guestEdit(x, y, z, block),
       hitMob: (id, mobId, points) => guestHit(id, mobId, points),
       // Guests' survival on this world's ground and in its furnaces.
-      ...hostSurvival(ground, furnaces, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
+      ...hostSurvival(ground, furnaces, chests, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
       mode: () => modeOf(record),
       kept: (name) => {
         const k = record.guests?.[name];
@@ -669,6 +675,7 @@ function playTogether(now: number): void {
       crouching: player.crouching(),
       swimming: b.inWater,
       onGround: b.onGround,
+      sleeping: asleep !== null,
       held: heldBlock(),
       swings,
       digging: mining.target?.block ?? 0,
@@ -678,7 +685,7 @@ function playTogether(now: number): void {
   if (host && now / 1000 - lastMobsSent >= 1 / TUNING.net.mobRate) {
     lastMobsSent = now / 1000;
     host.shareGround(ground.items);
-    host.shareFurnaces();
+    host.shareContainers();
     if (mobs) host.shareMobs(mobs.mobs, mobSoundsOut);
     mobSoundsOut = [];
   }
@@ -867,7 +874,7 @@ const cropWorld = {
 
 /**
  * A right click on a bed: in survival it becomes where this player wakes; at night, with nothing
- * hostile near, they lie down in it. A guest can't sleep in a friend's world yet.
+ * hostile near, they lie down in it.
  */
 function useBed(x: number, y: number, z: number): void {
   const foot = bedFoot(world, x, y, z);
@@ -880,11 +887,10 @@ function useBed(x: number, y: number, z: number): void {
   }
   const p = player.body;
   let nearest = Infinity;
-  for (const m of mobs?.mobs ?? []) if (KINDS[m.kind].hostile) nearest = Math.min(nearest, Math.hypot(m.body.x - p.x, m.body.y - p.y, m.body.z - p.z));
+  for (const m of mobs?.mobs ?? guest?.mobs.mobs ?? []) if (KINDS[m.kind].hostile) nearest = Math.min(nearest, Math.hypot(m.body.x - p.x, m.body.y - p.y, m.body.z - p.z));
   const check = canSleep(daylightNow, nearest);
   if (check === 'day') return say('You can only sleep at night.');
   if (check === 'near') return say("You can't sleep with something near.");
-  if (guest) return say("Sleeping in a friend's world can't be done yet.");
   // Lie down on the foot, still.
   asleep = { foot, for: 0 };
   player.moveTo(foot[0] + 0.5, foot[1] + TUNING.sleep.onBed, foot[2] + 0.5);
@@ -925,8 +931,30 @@ function sleeping(dt: number): void {
   camera.position.y -= TUNING.player.eyeHeight - 0.25;
   asleep.for += dt;
   if (asleep.for < TUNING.sleep.dim) return;
-  // Morning.
+  // Playing together, the night goes only when everyone is asleep (the host decides, and its
+  // guests see the time jump to morning).
+  if (host || guest) {
+    const others = [...(host ?? guest)!.remotes.values()];
+    const sleepers = 1 + others.filter((r) => r.latest?.sleeping).length;
+    const everyone = 1 + others.length;
+    if (guest && daylightNow >= TUNING.sleep.night) return wakeUp(foot);
+    if (sleepers < everyone || guest) {
+      const text = `Waiting for the others to sleep (${sleepers} of ${everyone}).`;
+      if (text !== asleep.waiting) say(text);
+      asleep.waiting = text;
+      return;
+    }
+    if (!timeHeld) time = TUNING.sleep.morning;
+    // Told at once, not at the next time share.
+    lastTimeSent = Number.NEGATIVE_INFINITY;
+    return wakeUp(foot);
+  }
   if (!timeHeld) time = TUNING.sleep.morning;
+  wakeUp(foot);
+}
+
+/** Morning: up, beside the bed, and saved. */
+function wakeUp(foot: BedPlace): void {
   const spot = wakeAt(world, foot);
   getUp();
   if (spot) player.moveTo(spot[0], spot[1], spot[2]);
@@ -936,9 +964,9 @@ function sleeping(dt: number): void {
 function closeBackpack(): void {
   backpack.hide();
   input.lock();
-  if (hostFurnace) {
-    guest?.closeFurnace();
-    hostFurnace = null;
+  if (hostContainer) {
+    guest?.closeContainer();
+    hostContainer = null;
   }
 }
 /** Items' pictures, made once each, for holding them. */
@@ -1048,7 +1076,19 @@ function pickUpFromHost(now: number): void {
 }
 
 /** A guest's view of the host's furnace it has open: where, and what was last heard of it. */
-let hostFurnace: { x: number; y: number; z: number; furnace: Furnace } | null = null;
+let hostContainer: { x: number; y: number; z: number; furnace: Furnace | null; chest: SurvivalInventory | null } | null = null;
+
+/** A guest opens the host's furnace or chest at (x, y, z): shown as last heard, its changes asked of the host. */
+function openHostContainer(x: number, y: number, z: number, kind: 'furnace' | 'chest'): void {
+  if (!guest) return;
+  const g = guest;
+  hostContainer = { x, y, z, furnace: kind === 'furnace' ? new Furnace() : null, chest: kind === 'chest' ? new SurvivalInventory(CHEST_SLOTS) : null };
+  g.openContainer(x, y, z);
+  const ask = { put: (slot: number, stack: Stack) => g.containerPut(x, y, z, slot, stack), take: (slot: number) => g.containerTake(x, y, z, slot) };
+  if (hostContainer.furnace) backpack.show(hostContainer.furnace, ask);
+  else backpack.showChest(hostContainer.chest!, ask);
+  input.unlock();
+}
 
 /** Creative or survival from now on, saved with the world; each keeps its own hotbar. */
 function setMode(toSurvival: boolean): void {
@@ -1224,6 +1264,8 @@ function edit(x: number, y: number, z: number, block: Block, share = true): void
 
 /** A guest's edit, checked by the session: made as the host's would be, the torches a broken block held going too, and what a furnace held. */
 function guestEdit(x: number, y: number, z: number, block: Block): void {
+  // Wheat a guest sowed grows here, with the host's.
+  if (block === wheat(0)) crops.sow(x, y, z);
   const held = block === Block.Air ? torchesHeldBy(world, x, y, z) : [];
   // A half broken: the other goes too (the guest asks for it as well; whichever comes second does nothing).
   const partner = block === Block.Air ? partnerOf(world, x, y, z) : null;
@@ -1323,30 +1365,23 @@ function editing(dt: number): void {
     // built against; with Shift held it's built against as usual.
     const shift = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight');
     const used = shift ? null : useBlock(target.block);
-    // A furnace clicked in survival opens (a guest's furnaces are the host's: to come).
+    // A furnace or chest clicked in survival opens (a guest's are the host's).
     const holding = survival ? pack.slots[selected] : null;
     if (survival && !shift && holding && (holding.item === Item.Seeds || toolOf(holding.item)?.kind === 'spade') && farm(target, holding.item === Item.Seeds)) {
-      // Tilled or sown (or, a guest, told it can't be yet).
+      // Tilled or sown.
     } else if (!shift && bedOf(target.block)) {
       useBed(target.x, target.y, target.z);
     } else if (survival && !shift && chestOf(target.block)) {
-      // A chest opens on the inventory screen (a guest's chests are the host's: to come).
-      if (guest) say("A friend's chests can't be opened yet.");
+      // A chest opens on the inventory screen.
+      if (guest) openHostContainer(target.x, target.y, target.z, 'chest');
       else {
         backpack.showChest(chests.at(target.x, target.y, target.z));
         input.unlock();
-        sound.play({ name: 'place', material: 'wood', gain: 0.5 });
       }
+      sound.play({ name: 'place', material: 'wood', gain: 0.5 });
     } else if (survival && !shift && furnaceOf(target.block)) {
       if (!guest) openBackpack(furnaces.at(target.x, target.y, target.z));
-      else {
-        // The host's furnace: opened there, its contents shown as they come.
-        const { x, y, z } = target;
-        hostFurnace = { x, y, z, furnace: new Furnace() };
-        guest.openFurnace(x, y, z);
-        backpack.show(hostFurnace.furnace, { put: (slot, stack) => guest!.furnacePut(x, y, z, slot, stack), take: (slot) => guest!.furnaceTake(x, y, z, slot) });
-        input.unlock();
-      }
+      else openHostContainer(target.x, target.y, target.z, 'furnace');
     }
     else if (used !== null) {
       // A guest shows it at once and asks the host to use the block as the host has it. A door's
@@ -1366,18 +1401,15 @@ function editing(dt: number): void {
 /**
  * A spade's click tills grass or dirt with air above into farmland (the spade worn a little); seeds'
  * click on farmland's top sows wheat above it. Returns false if there's nothing to till or sow
- * there (the click then does what it would otherwise). A guest can't farm yet.
+ * there (the click then does what it would otherwise). A guest's is an edit the host checks, and
+ * the wheat grows on the host.
  */
 function farm(target: RayHit, sowing: boolean): boolean {
   const { x, y, z } = target;
   if (sowing ? !(sowable(world, x, y, z) && target.ny > 0) : !tillable(world, x, y, z)) return false;
-  if (guest) {
-    say("Farming in a friend's world can't be done yet.");
-    return true;
-  }
   if (sowing) {
     edit(x, y + 1, z, wheat(0));
-    crops.sow(x, y + 1, z);
+    if (!guest) crops.sow(x, y + 1, z);
     pack.takeOne(selected);
     sound.play({ name: 'place', material: 'leaves', gain: 0.8 });
   } else {
@@ -1600,7 +1632,10 @@ function frame(now: number): void {
   // Items on the ground fall and settle, and are picked up by a survival player within reach.
   pickUpFromHost(now);
   // A guest's furnace screen closes when the furnace is broken.
-  if (hostFurnace && !furnaceOf(world.getBlock(hostFurnace.x, hostFurnace.y, hostFurnace.z))) closeBackpack();
+  if (hostContainer) {
+    const b = world.getBlock(hostContainer.x, hostContainer.y, hostContainer.z);
+    if (!(hostContainer.furnace ? furnaceOf(b) : chestOf(b))) closeBackpack();
+  }
   if (litter && !player.waiting && !guest) {
     scatter(litter, player.body.x, player.body.z);
     litter = 0;

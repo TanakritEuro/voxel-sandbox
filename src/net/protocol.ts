@@ -7,6 +7,7 @@
 // Mismatched versions are turned away.
 
 import type { WorldMode } from '../save/store';
+import { CHEST_SLOTS } from '../survival/chest';
 import { Inventory, type Stack } from '../survival/inventory';
 import { unpackGround } from './itemState';
 import { BLOCKS } from '../world/blocks';
@@ -14,7 +15,7 @@ import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/c
 import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackState } from './playerState';
 
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;
@@ -110,13 +111,13 @@ export type Message =
   /** Host → guest: a hostile mob hit you, for `damage` points and a `push` away from (fromX, fromZ). */
   | { type: 'hurt'; damage: number; push: number; fromX: number; fromZ: number }
   /** Guest → host: this player opened the furnace at (x, y, z) (see what's in it), or closed it. */
-  | { type: 'fopen'; x: number; y: number; z: number }
-  | { type: 'fclose' }
+  | { type: 'copen'; x: number; y: number; z: number }
+  | { type: 'cclose' }
   /** Host → guest: what's in the furnace it has open (`Furnace.toJSON`; cleaned by `Furnace.from` where used). */
-  | { type: 'furnace'; x: number; y: number; z: number; state: Record<string, unknown> }
+  | { type: 'contents'; x: number; y: number; z: number; state: Record<string, unknown> }
   /** Guest → host: put `stack` into slot `slot` of the furnace at (x, y, z); or take what's in the slot. */
-  | { type: 'fput'; x: number; y: number; z: number; slot: number; stack: Stack }
-  | { type: 'ftake'; x: number; y: number; z: number; slot: number };
+  | { type: 'cput'; x: number; y: number; z: number; slot: number; stack: Stack }
+  | { type: 'ctake'; x: number; y: number; z: number; slot: number };
 
 /** A block set: where, and what. */
 export type BlockChange = [number, number, number, number];
@@ -299,20 +300,20 @@ export function parseMessage(raw: unknown): Message | null {
       return isCount(raw.damage, 1, 20) && isNumber(raw.push) && Math.abs(raw.push) <= 30 && isNumber(raw.fromX) && isNumber(raw.fromZ)
         ? { type: 'hurt', damage: raw.damage, push: raw.push, fromX: raw.fromX, fromZ: raw.fromZ }
         : null;
-    case 'fopen':
-      return isBlockPlace(raw.x, raw.y, raw.z) ? { type: 'fopen', x: raw.x as number, y: raw.y as number, z: raw.z as number } : null;
-    case 'fclose':
-      return { type: 'fclose' };
-    case 'furnace':
-      return isBlockPlace(raw.x, raw.y, raw.z) && isKept(raw.state) ? { type: 'furnace', x: raw.x as number, y: raw.y as number, z: raw.z as number, state: raw.state } : null;
-    case 'fput': {
+    case 'copen':
+      return isBlockPlace(raw.x, raw.y, raw.z) ? { type: 'copen', x: raw.x as number, y: raw.y as number, z: raw.z as number } : null;
+    case 'cclose':
+      return { type: 'cclose' };
+    case 'contents':
+      return isBlockPlace(raw.x, raw.y, raw.z) && isKept(raw.state) ? { type: 'contents', x: raw.x as number, y: raw.y as number, z: raw.z as number, state: raw.state } : null;
+    case 'cput': {
       const stack = stackOf(raw.stack);
-      return stack && isBlockPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, 2)
-        ? { type: 'fput', x: raw.x as number, y: raw.y as number, z: raw.z as number, slot: raw.slot, stack }
+      return stack && isBlockPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, CHEST_SLOTS - 1)
+        ? { type: 'cput', x: raw.x as number, y: raw.y as number, z: raw.z as number, slot: raw.slot, stack }
         : null;
     }
-    case 'ftake':
-      return isBlockPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, 2) ? { type: 'ftake', x: raw.x as number, y: raw.y as number, z: raw.z as number, slot: raw.slot } : null;
+    case 'ctake':
+      return isBlockPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, CHEST_SLOTS - 1) ? { type: 'ctake', x: raw.x as number, y: raw.y as number, z: raw.z as number, slot: raw.slot } : null;
     case 'time':
       return isNumber(raw.time) && raw.time >= 0 && raw.time < 1 ? { type: 'time', time: raw.time } : null;
     case 'state':

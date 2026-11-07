@@ -19,6 +19,7 @@ const state = (over: Partial<PlayerState> = {}): PlayerState => ({
   crouching: true,
   swimming: false,
   onGround: true,
+  sleeping: false,
   held: Block.Torch,
   swings: 3,
   digging: Block.Stone,
@@ -28,6 +29,7 @@ const state = (over: Partial<PlayerState> = {}): PlayerState => ({
 describe('player states', () => {
   it('pack into 80 bytes and come back as they were', () => {
     const s = state({ time: 123456.789012, flying: true, swimming: true });
+    expect(unpackState(packState(state({ sleeping: true })))!.sleeping).toBe(true);
     const data = packState(s);
     expect(data.byteLength).toBe(STATE_BYTES);
     expect(unpackState(data)).toEqual(s);
@@ -120,9 +122,9 @@ describe('states over the network', () => {
     hitMob: () => {},
     drop: () => {},
     take: () => null,
-    furnace: () => null,
-    furnacePut: (_p, _x, _y, _z, _slot, stack) => stack,
-    furnaceTake: () => null,
+    container: () => null,
+    containerPut: (_p, _x, _y, _z, _slot, stack) => stack,
+    containerTake: () => null,
   };
 
   it("go from each guest to the host and the other guests, and the host's to everyone, on the host's clock", async () => {

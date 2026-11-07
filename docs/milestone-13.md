@@ -170,7 +170,7 @@ matters). The budget holds: 60 fps at radius 8 beside a field of 500 growing whe
 3. **Chests:** contents, the screen, saving, drops. Built (2026-11-07).
 4. **Farming:** farmland, seeds, wheat growing, harvest, bread. Built (2026-11-07).
 5. **Beds:** sleeping through the night, waking at the bed, moss. Built (2026-11-07).
-6. **Together:** containers, doors, crops and sleeping for guests.
+6. **Together:** containers, doors, crops and sleeping for guests. Built (2026-11-07).
 7. **Measurements,** notes and playtest questions.
 
 ## Decisions to agree
@@ -506,4 +506,60 @@ asleep.
 - No console errors.
 - **Not tried in the browser:** dying and waking at the bed (I couldn't steer the player into the sea
   to drown in a reasonable time). The tests cover where you wake; "Start again" calls it.
+
+## Step 6: together — built (2026-11-07)
+
+**What a guest now has:**
+- **The host's chests** (and furnaces, as before), through container messages: the furnace ones
+  renamed and widened to any block with slots.
+  - `copen` and `cclose`; `contents` (host to guest, when it changes); `cput` and `ctake`, slots
+    0–26.
+  - `HostWorld`'s `container`, `containerPut` and `containerTake`; `hostSurvival` takes the chests
+    and checks a chest as it does a furnace: in reach, a slot that exists, never swapping a
+    different item (it comes back).
+  - The inventory screen shows the host's chest as last heard. A click puts the stack held in, or
+    asks for what's in a slot (whole stacks). Shift and a click puts a stack into the first slot
+    that would take it, as last heard. It closes if the chest is broken.
+- **Doors:** already a use made by the host (step 2).
+- **Farming:**
+  - a guest's spade and seeds are edits the host checks: farmland only where the ground can be
+    tilled, wheat just sown only on farmland (`settable` takes both; `hostWorld.edit` checks);
+  - the wheat is sown in the host's crops and grows there; its stages reach the guests as edits.
+- **Sleeping:**
+  - a player's state carries a sleeping flag (bit 16 of its flags; the 80 bytes are the same);
+  - the night goes only when everyone is asleep. The host decides: once its own dimming is done, it
+    makes it morning as soon as every guest says it's asleep, and tells them the time at once;
+  - until then each sleeper sees "Waiting for the others to sleep (1 of 2).";
+  - a guest gets up beside its bed when the morning reaches it;
+  - "something near" counts the host's mobs as a guest sees them.
+  - The host doesn't wait for a guest's own 2 s of dimming: a guest lying down last brings the
+    morning at once, and finishes its dimming in daylight.
+- `PROTOCOL` 5.
+
+**Tests** (3 new, 473 in all; and the furnace one over the new messages):
+- **A guest's chest:**
+  - its 27 slots heard;
+  - a put into slot 26 made and heard;
+  - sticks onto coal come back, more coal goes on;
+  - a take given and gone from the chest;
+  - out of reach, nothing.
+- **A guest's farming:** grass tilled; stone refused and put back; wheat sown on the farmland,
+  refused on the stone; wheat set ripe refused.
+- **Sleeping:** the flag reaches the host; a player state packs it and back.
+
+**Tried in two browser tabs** (host `?seed=7&survival&kit&nolock&mobs=0&daylength=90`, guest
+`?join=…&nolock`):
+- **Setting up:** the host crafted a second bed and a chest, placed both beds and the chest, and put
+  10 coal in it.
+- **The chest:** the guest opened it and saw "Coal × 10"; a click took it all into the guest's
+  inventory, and the chest showed empty.
+- **Sleeping:**
+  - at night the host lay down: "Waiting for the others to sleep (1 of 2).";
+  - the guest lay down in the other bed at 04:53, and within half a second it was 06:29 for both;
+  - the guest finished dimming and got up beside its bed, and the host was up beside its own.
+- No console errors in either tab.
+- **Not tried in the browser:** a guest farming (the guest had no spade or seeds); the test covers it.
+- **The host's tab in the background** draws a couple of frames a second, as in Milestone 12. Its
+  crosshair lagged behind a turn, and one click opened the chest instead of the bed. Two machines
+  don't have this.
 

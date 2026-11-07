@@ -8,8 +8,8 @@
 // a click as many times as it can. A furnace's output only gives; its fuel slot takes only fuel.
 // Closing with a stack picked up puts it back. Plain DOM, as the picker is.
 //
-// A guest's furnace is the host's (`FurnaceAsk`): the screen shows the host's furnace as last heard,
-// and a click puts the stack held (or Shift-clicked) into it, or asks for what's in a slot; the host
+// A guest's furnace or chest is the host's (`FurnaceAsk`): the screen shows it as last heard, and a
+// click puts the stack held (or Shift-clicked) into it, or asks for what's in a slot; the host
 // answers, with what didn't go in or what was taken.
 
 import { TUNING } from '../config';
@@ -20,7 +20,7 @@ import { HOTBAR_SLOTS, type Inventory, SLOTS, type Stack } from '../survival/inv
 import { itemInfo } from '../survival/items';
 import { el } from './dom';
 
-/** A furnace that is someone else's to change (a guest's view of the host's). */
+/** A furnace or chest that is someone else's to change (a guest's view of the host's). */
 export interface FurnaceAsk {
   /** Put `stack` into slot `slot` (what doesn't go in comes back). */
   put(slot: number, stack: Stack): void;
@@ -129,12 +129,12 @@ export class Backpack {
     this.refresh();
   }
 
-  /** Open it with a chest's slots beside the inventory. */
-  showChest(chest: Inventory): void {
+  /** Open it with a chest's slots beside the inventory (someone else's, with `ask`). */
+  showChest(chest: Inventory, ask: FurnaceAsk | null = null): void {
     this.isOpen = true;
     this.furnace = null;
     this.chest = chest;
-    this.ask = null;
+    this.ask = ask;
     this.crafting.classList.add('hidden');
     this.furnacePart.classList.add('hidden');
     this.chestPart.classList.remove('hidden');
@@ -194,7 +194,8 @@ export class Backpack {
     const inv = this.inventory;
     if (!this.held) {
       if (shift && !right) {
-        if (this.chest) moveAll(inv, slot, this.chest);
+        if (this.chest && this.ask) this.askIntoChest(slot);
+        else if (this.chest) moveAll(inv, slot, this.chest);
         else if (!this.furnace || !this.intoFurnace(slot)) inv.shiftMove(slot);
       } else this.held = inv.pick(slot, right);
     } else this.held = inv.put(slot, this.held, right);
@@ -206,12 +207,33 @@ export class Backpack {
   private clickChest(slot: number, right: boolean, shift: boolean): void {
     const chest = this.chest;
     if (!chest) return;
+    if (this.ask) {
+      // Someone else's: the stack held goes in; with nothing held, what's there is asked for (whole stacks).
+      if (this.held) {
+        this.ask.put(slot, this.held);
+        this.held = null;
+      } else if (chest.slots[slot]) this.ask.take(slot);
+      this.refresh();
+      this.events.changed();
+      return;
+    }
     if (!this.held) {
       if (shift && !right) moveAll(chest, slot, this.inventory);
       else this.held = chest.pick(slot, right);
     } else this.held = chest.put(slot, this.held, right);
     this.refresh();
     this.events.changed();
+  }
+
+  /** Shift and a click on the inventory with someone else's chest open: the stack asked into the first slot that takes it, as last heard. */
+  private askIntoChest(slot: number): void {
+    const s = this.inventory.slots[slot];
+    const chest = this.chest!;
+    if (!s) return;
+    let target = chest.slots.findIndex((t) => t !== null && t.item === s.item && t.count < itemInfo(t.item).stack);
+    if (target < 0) target = chest.slots.findIndex((t) => t === null);
+    if (target < 0) return;
+    this.ask!.put(target, this.inventory.pick(slot)!);
   }
 
   /** Shift and a click on the inventory with a furnace open: the stack into its fuel or its input, if it fits there. */

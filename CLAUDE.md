@@ -264,23 +264,24 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (4), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (5), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
   blocks; the world's mode in the welcome and when it changes, guests' survival states kept by name
-  and given back; the ground near each guest (only when it changed, or a second on), the furnace each
-  has open (when it changed), a hostile mob's hit on a guest (`hurt`); guests' drops, takes and
-  furnace moves passed to the world, what they get back sent (`given`);
+  and given back; the ground near each guest (only when it changed, or a second on), the furnace or
+  chest each has open (`contents`, when it changed), a hostile mob's hit on a guest (`hurt`); guests'
+  drops, takes and container moves passed to the world, what they get back sent (`given`);
   `GuestSession`: the welcome, `RemoteSaves` (the loader's `ChunkSaves`: edited chunks from the
   host), edits and uses (a switch, a button, a delay clicked) asked of the host and the host's made
   in its order, its survival state sent to keep, blocks kept for columns not here
-  yet; the host's items on the ground (`ground`), drops, takes and furnace moves asked of the host; states relayed, the host's clock learned from the quickest pings; pure, the clock passed in),
+  yet; the host's items on the ground (`ground`), drops, takes and container moves (`copen`, `cput`,
+  `ctake`) asked of the host; states relayed, the host's clock learned from the quickest pings; pure, the clock passed in),
   `hostWorld.ts` (the host's world and saver as its session sees them; `settable`: logic blocks only as
-  placed, `editAllowed`: reach and not inside anyone; a use made on the block as the host has it),
-  `hostSurvival.ts` (guests' survival on the host's ground and in its furnaces: drops, takes (the first
-  to ask), furnace contents, puts (only what the slot takes, never swapped) and takes, each checked
+  placed, farmland where it can be tilled and wheat just sown on farmland, `editAllowed`: reach and not inside anyone; a use made on the block as the host has it),
+  `hostSurvival.ts` (guests' survival on the host's ground and in its furnaces and chests: drops, takes
+  (the first to ask), contents, puts (only what the slot takes, never swapped) and takes, each checked
   against where the guest was last heard; pure), `itemState.ts` (items on the ground 24 bytes each,
-  host → guests), `playerState.ts` (a player's state packed in 80 bytes),
+  host → guests), `playerState.ts` (a player's state packed in 80 bytes, asleep or not),
   `remotePlayer.ts` (states → where to draw someone now: 0.1 s behind, between states, guessed on
   briefly past the newest), `mobState.ts` (mobs 52 bytes each and their sounds, host → guests),
   `mobMirror.ts` (a guest's mobs: real `Mob`s placed between the host's snapshots, for drawing and

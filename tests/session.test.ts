@@ -13,10 +13,11 @@ import { World } from '../src/world/world';
 import { hostSurvival } from '../src/net/hostSurvival';
 import type { PlayerState } from '../src/net/playerState';
 import { Furnace, Furnaces } from '../src/survival/furnace';
+import { Chests } from '../src/survival/chest';
 import { GroundItems } from '../src/survival/ground';
 import { Item } from '../src/survival/items';
 import type { Stack } from '../src/survival/inventory';
-import { door, doorOf, furnace } from '../src/world/blocks';
+import { chest, door, doorOf, furnace, wheat } from '../src/world/blocks';
 import { useAt } from '../src/world/parts';
 
 const SEED = 20261022;
@@ -65,6 +66,7 @@ async function makeHost(env: Env) {
   // Its ground and furnaces, as the game's.
   const ground = new GroundItems();
   const furnaces = new Furnaces();
+  const chests = new Chests();
   const edit = (x: number, y: number, z: number, b: Block) => {
     if (world.setBlock(x, y, z, b).length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
     logic.wake(x, y, z);
@@ -78,7 +80,7 @@ async function makeHost(env: Env) {
       allowed: () => allow.ok,
       edit,
       hitMob: () => {},
-      ...hostSurvival(ground, furnaces, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
+      ...hostSurvival(ground, furnaces, chests, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
       mode: () => mode.value,
       kept: (name) => kept.get(name) ?? null,
       keep: (name, s) => void kept.set(name, s),
@@ -97,7 +99,7 @@ async function makeHost(env: Env) {
     world.setBlocks(changes);
     session.shareEdits(changes, 0, 0, true);
   };
-  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces };
+  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces, chests };
 }
 
 async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, name: string) {
@@ -530,20 +532,20 @@ describe('survival over the network', () => {
     host.furnaces.at(6, y, 4).slots.slots[1] = { item: Item.Coal, count: 2 };
     await standAt(env, a, 4.5, y, 4.5);
     const seen: Furnace[] = [];
-    a.session.onFurnace = (_x, _y, _z, state) => seen.push(Furnace.from(state));
+    a.session.onContainer = (_x, _y, _z, state) => seen.push(Furnace.from(state));
     const given: Stack[] = [];
     a.session.onGiven = (st) => given.push(st);
-    a.session.openFurnace(6, y, 4);
+    a.session.openContainer(6, y, 4);
     await env.pump(0.3);
     expect(seen.at(-1)!.slots.slots[1]).toEqual({ item: Item.Coal, count: 2 });
     // Raw iron in: it's there, and the guest hears.
-    a.session.furnacePut(6, y, 4, 0, { item: Item.RawIron, count: 3 });
+    a.session.containerPut(6, y, 4, 0, { item: Item.RawIron, count: 3 });
     await env.pump(0.3);
     expect(host.furnaces.at(6, y, 4).slots.slots[0]).toEqual({ item: Item.RawIron, count: 3 });
     expect(seen.at(-1)!.slots.slots[0]).toEqual({ item: Item.RawIron, count: 3 });
     // Sticks as fuel onto the coal: not the same, so they come back; raw iron as fuel: not a fuel, back.
-    a.session.furnacePut(6, y, 4, 1, { item: Item.Stick, count: 4 });
-    a.session.furnacePut(6, y, 4, 1, { item: Item.RawIron, count: 1 });
+    a.session.containerPut(6, y, 4, 1, { item: Item.Stick, count: 4 });
+    a.session.containerPut(6, y, 4, 1, { item: Item.RawIron, count: 1 });
     await env.pump(0.3);
     expect(given).toEqual([
       { item: Item.Stick, count: 4 },
@@ -552,29 +554,29 @@ describe('survival over the network', () => {
     expect(host.furnaces.at(6, y, 4).slots.slots[1]).toEqual({ item: Item.Coal, count: 2 });
     // The host's furnace burns: the guest hears it changed, and only when it has.
     const before = seen.length;
-    host.session.shareFurnaces();
+    host.session.shareContainers();
     await env.pump(0.2);
     expect(seen.length).toBe(before);
     host.furnaces.at(6, y, 4).step(1);
-    host.session.shareFurnaces();
+    host.session.shareContainers();
     await env.pump(0.2);
     expect(seen.length).toBe(before + 1);
     expect(seen.at(-1)!.progress).toBeGreaterThan(0);
     // What's left of the fuel taken: given, and gone from the furnace.
-    a.session.furnaceTake(6, y, 4, 1);
+    a.session.containerTake(6, y, 4, 1);
     await env.pump(0.3);
     expect(given.at(-1)!.item).toBe(Item.Coal);
     expect(host.furnaces.at(6, y, 4).slots.slots[1]).toBe(null);
     // Closed: no more news.
-    a.session.closeFurnace();
+    a.session.closeContainer();
     await env.pump(0.2);
     const closed = seen.length;
     host.furnaces.at(6, y, 4).step(1);
-    host.session.shareFurnaces();
+    host.session.shareContainers();
     await env.pump(0.2);
     expect(seen.length).toBe(closed);
     // Where there's no furnace: what's put in comes back.
-    a.session.furnacePut(9, y, 4, 0, { item: Item.RawIron, count: 1 });
+    a.session.containerPut(9, y, 4, 0, { item: Item.RawIron, count: 1 });
     await env.pump(0.3);
     expect(given.at(-1)).toEqual({ item: Item.RawIron, count: 1 });
   });
@@ -588,5 +590,82 @@ describe('survival over the network', () => {
     host.session.hurt(a.session.you, 2, 5, 3.5, -1);
     await env.pump(0.3);
     expect(hurts).toEqual([[2, 5, 3.5, -1]]);
+  });
+
+  it("opens the host's chest for a guest: its slots heard, a put and a take made there, a different item never swapped", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    const y = surface(host.world, 4, 4);
+    host.hostEdit(6, y, 4, chest(1));
+    host.chests.at(6, y, 4).slots[0] = { item: Item.Coal, count: 5 };
+    await standAt(env, a, 4.5, y, 4.5);
+    const seen: (Stack | null)[][] = [];
+    a.session.onContainer = (_x, _y, _z, state) => seen.push((state as { slots: (Stack | null)[] }).slots);
+    const given: Stack[] = [];
+    a.session.onGiven = (st) => given.push(st);
+    a.session.openContainer(6, y, 4);
+    await env.pump(0.3);
+    expect(seen.at(-1)![0]).toEqual({ item: Item.Coal, count: 5 });
+    expect(seen.at(-1)!.length).toBe(27);
+    // Into the last slot: there, and heard.
+    a.session.containerPut(6, y, 4, 26, { item: Item.Wheat, count: 9 });
+    await env.pump(0.3);
+    expect(host.chests.at(6, y, 4).slots[26]).toEqual({ item: Item.Wheat, count: 9 });
+    expect(seen.at(-1)![26]).toEqual({ item: Item.Wheat, count: 9 });
+    // Onto the coal: sticks come back; more coal goes on.
+    a.session.containerPut(6, y, 4, 0, { item: Item.Stick, count: 3 });
+    a.session.containerPut(6, y, 4, 0, { item: Item.Coal, count: 2 });
+    await env.pump(0.3);
+    expect(given).toEqual([{ item: Item.Stick, count: 3 }]);
+    expect(host.chests.at(6, y, 4).slots[0]).toEqual({ item: Item.Coal, count: 7 });
+    // Taken out: given, gone from the chest.
+    a.session.containerTake(6, y, 4, 26);
+    await env.pump(0.3);
+    expect(given.at(-1)).toEqual({ item: Item.Wheat, count: 9 });
+    expect(host.chests.at(6, y, 4).slots[26]).toBe(null);
+    // Out of reach: nothing.
+    await standAt(env, a, 40.5, y, 4.5);
+    a.session.containerTake(6, y, 4, 0);
+    await env.pump(0.3);
+    expect(host.chests.at(6, y, 4).slots[0]).toEqual({ item: Item.Coal, count: 7 });
+  });
+
+  it("makes a guest's tilling and sowing where the ground allows it, and refuses them elsewhere", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    for (const [cx, cz] of COLUMNS) await a.load(cx, cz);
+    const y = surface(host.world, 4, 4);
+    host.hostEdit(5, y, 5, Block.Grass);
+    host.hostEdit(6, y, 5, Block.Stone);
+    await env.pump(0.3);
+    await standAt(env, a, 4.5, y + 1, 4.5);
+    // Tilled grass: made. Tilled stone: put back.
+    a.guestEdit(5, y, 5, Block.Farmland);
+    a.guestEdit(6, y, 5, Block.Farmland);
+    await env.pump(0.5);
+    expect(host.world.getBlock(5, y, 5)).toBe(Block.Farmland);
+    expect(host.world.getBlock(6, y, 5)).toBe(Block.Stone);
+    expect(a.world.getBlock(6, y, 5)).toBe(Block.Stone);
+    // Sown on the farmland: made. Sown on the stone, or wheat further on: put back.
+    a.guestEdit(5, y + 1, 5, wheat(0));
+    a.guestEdit(6, y + 1, 5, wheat(0));
+    a.guestEdit(5, y + 1, 5, wheat(7));
+    await env.pump(0.5);
+    expect(host.world.getBlock(5, y + 1, 5)).toBe(wheat(0));
+    expect(host.world.getBlock(6, y + 1, 5)).toBe(Block.Air);
+    expect(a.world.getBlock(5, y + 1, 5)).toBe(wheat(0));
+  });
+
+  it("tells the host who is asleep", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    await standAt(env, a, 4.5, 70, 4.5);
+    expect(host.session.remotes.get(a.session.you)!.latest!.sleeping).toBe(false);
+    a.session.sendState({ x: 4.5, y: 70, z: 4.5, yaw: 0, pitch: 0, flying: false, crouching: false, swimming: false, onGround: true, sleeping: true, held: Block.Air, swings: 0, digging: Block.Air });
+    await env.pump(0.3);
+    expect(host.session.remotes.get(a.session.you)!.latest!.sleeping).toBe(true);
   });
 });

@@ -61,11 +61,11 @@ export interface HostWorld {
   /** Player `player` picks up `count` of item `id` on the ground: what they get (taken off the ground), or null (gone, or out of reach). */
   take(player: number, id: number, count: number): Stack | null;
   /** What's in the furnace at (x, y, z) for player `player` (`Furnace.toJSON`), or null if there's none there or it's out of reach. */
-  furnace(player: number, x: number, y: number, z: number): Record<string, unknown> | null;
+  container(player: number, x: number, y: number, z: number): Record<string, unknown> | null;
   /** Player `player` puts `stack` into a slot of the furnace at (x, y, z): what didn't go in (back to them), or null. */
-  furnacePut(player: number, x: number, y: number, z: number, slot: number, stack: Stack): Stack | null;
+  containerPut(player: number, x: number, y: number, z: number, slot: number, stack: Stack): Stack | null;
   /** Player `player` takes what's in a slot of the furnace at (x, y, z): what they get, or null. */
-  furnaceTake(player: number, x: number, y: number, z: number, slot: number): Stack | null;
+  containerTake(player: number, x: number, y: number, z: number, slot: number): Stack | null;
 }
 
 /** What a guest's game gives its session, once the world is made. */
@@ -194,8 +194,8 @@ export class HostSession {
   }
 
   /** What's in the furnaces guests have open, to each of them, when it has changed. */
-  shareFurnaces(): void {
-    for (const [id, [x, y, z]] of this.watching) this.sendFurnace(id, x, y, z);
+  shareContainers(): void {
+    for (const [id, [x, y, z]] of this.watching) this.sendContainer(id, x, y, z);
   }
 
   /** A hostile mob hit guest `player` for `damage` and a push away from (fromX, fromZ). */
@@ -203,9 +203,9 @@ export class HostSession {
     this.guests.get(player)?.send({ type: 'hurt', damage, push, fromX, fromZ });
   }
 
-  private sendFurnace(id: number, x: number, y: number, z: number, always = false): void {
+  private sendContainer(id: number, x: number, y: number, z: number, always = false): void {
     const link = this.guests.get(id);
-    const state = this.world.furnace(id, x, y, z);
+    const state = this.world.container(id, x, y, z);
     if (!link) return;
     if (!state) {
       // Gone (broken) or out of reach: it's closed for them.
@@ -216,7 +216,7 @@ export class HostSession {
     const json = JSON.stringify(state);
     if (!always && this.watched.get(id) === json) return;
     this.watched.set(id, json);
-    link.send({ type: 'furnace', x, y, z, state });
+    link.send({ type: 'contents', x, y, z, state });
   }
 
   /** The time of day now (every `TUNING.net.timeEvery` seconds): to every guest. */
@@ -315,24 +315,24 @@ export class HostSession {
         if (got) link.send({ type: 'given', stack: got });
         break;
       }
-      case 'fopen':
+      case 'copen':
         this.watching.set(id, [m.x, m.y, m.z]);
-        this.sendFurnace(id, m.x, m.y, m.z, true);
+        this.sendContainer(id, m.x, m.y, m.z, true);
         break;
-      case 'fclose':
+      case 'cclose':
         this.watching.delete(id);
         this.watched.delete(id);
         break;
-      case 'fput': {
-        const back = this.world.furnacePut(id, m.x, m.y, m.z, m.slot, m.stack);
+      case 'cput': {
+        const back = this.world.containerPut(id, m.x, m.y, m.z, m.slot, m.stack);
         if (back) link.send({ type: 'given', stack: back });
-        this.sendFurnace(id, m.x, m.y, m.z, true);
+        this.sendContainer(id, m.x, m.y, m.z, true);
         break;
       }
-      case 'ftake': {
-        const got = this.world.furnaceTake(id, m.x, m.y, m.z, m.slot);
+      case 'ctake': {
+        const got = this.world.containerTake(id, m.x, m.y, m.z, m.slot);
         if (got) link.send({ type: 'given', stack: got });
-        this.sendFurnace(id, m.x, m.y, m.z, true);
+        this.sendContainer(id, m.x, m.y, m.z, true);
         break;
       }
       case 'kept': {
@@ -447,7 +447,7 @@ export class GuestSession {
   /** A hostile mob hit this player. */
   onHurt: (damage: number, push: number, fromX: number, fromZ: number) => void = () => {};
   /** What's in the furnace this player has open, as the host has it. */
-  onFurnace: (x: number, y: number, z: number, state: Record<string, unknown>) => void = () => {};
+  onContainer: (x: number, y: number, z: number, state: Record<string, unknown>) => void = () => {};
   /** Recent round trips and the offsets they gave. */
   private readonly samples: { rtt: number; offset: number }[] = [];
   /** Something to tell the player (someone joined, left). */
@@ -542,23 +542,23 @@ export class GuestSession {
     if (!this.closed) this.link.send({ type: 'take', id, count });
   }
 
-  /** Open the furnace at (x, y, z): `onFurnace` brings what's in it, and its changes, until it's closed. */
-  openFurnace(x: number, y: number, z: number): void {
-    if (!this.closed) this.link.send({ type: 'fopen', x, y, z });
+  /** Open the furnace at (x, y, z): `onContainer` brings what's in it, and its changes, until it's closed. */
+  openContainer(x: number, y: number, z: number): void {
+    if (!this.closed) this.link.send({ type: 'copen', x, y, z });
   }
 
-  closeFurnace(): void {
-    if (!this.closed) this.link.send({ type: 'fclose' });
+  closeContainer(): void {
+    if (!this.closed) this.link.send({ type: 'cclose' });
   }
 
   /** Put `stack` into slot `slot` of the furnace at (x, y, z) (what doesn't go in comes back through `onGiven`). */
-  furnacePut(x: number, y: number, z: number, slot: number, stack: Stack): void {
-    if (!this.closed) this.link.send({ type: 'fput', x, y, z, slot, stack });
+  containerPut(x: number, y: number, z: number, slot: number, stack: Stack): void {
+    if (!this.closed) this.link.send({ type: 'cput', x, y, z, slot, stack });
   }
 
   /** Take what's in slot `slot` of the furnace at (x, y, z) (it comes through `onGiven`). */
-  furnaceTake(x: number, y: number, z: number, slot: number): void {
-    if (!this.closed) this.link.send({ type: 'ftake', x, y, z, slot });
+  containerTake(x: number, y: number, z: number, slot: number): void {
+    if (!this.closed) this.link.send({ type: 'ctake', x, y, z, slot });
   }
 
   /** This player set a block (it shows already): ask the host to make it. */
@@ -639,8 +639,8 @@ export class GuestSession {
       case 'hurt':
         this.onHurt(m.damage, m.push, m.fromX, m.fromZ);
         break;
-      case 'furnace':
-        this.onFurnace(m.x, m.y, m.z, m.state);
+      case 'contents':
+        this.onContainer(m.x, m.y, m.z, m.state);
         break;
       case 'joined':
         this.players = [...this.players.filter((p) => p.id !== m.player.id), m.player].sort((a, b) => a.id - b.id);

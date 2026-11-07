@@ -11,7 +11,8 @@ import { TUNING } from '../config';
 import { encodeRle } from '../save/rle';
 import type { WorldSaver } from '../save/saver';
 import type { SavedChunk } from '../workers/protocol';
-import { bed, Block, BLOCKS, chest, delay, door, FACINGS, furnace, inverter, isTorch } from '../world/blocks';
+import { bed, Block, BLOCKS, chest, delay, door, FACINGS, furnace, inverter, isTorch, wheat } from '../world/blocks';
+import { sowable, tillable } from '../survival/farming';
 import { useAt } from '../world/parts';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
 import { createBody, overlapsBlock } from '../world/physics';
@@ -32,9 +33,9 @@ export interface HostGame {
   /** Guests' survival on the host's ground and in its furnaces (`HostWorld`'s). */
   drop: HostWorld['drop'];
   take: HostWorld['take'];
-  furnace: HostWorld['furnace'];
-  furnacePut: HostWorld['furnacePut'];
-  furnaceTake: HostWorld['furnaceTake'];
+  container: HostWorld['container'];
+  containerPut: HostWorld['containerPut'];
+  containerTake: HostWorld['containerTake'];
   /** The world's mode, and guests' survival states kept by name (`HostWorld`'s). */
   mode(): WorldMode;
   kept(name: string): Record<string, unknown> | null;
@@ -63,8 +64,8 @@ const PLACED_GATES = new Set<number>(
 );
 
 /**
- * A block a player can set: air (breaking), one from the picker, a torch (on a floor or a wall), or
- * a gate as placed (facing the way the player looks). Not a logic block in any other state (wire
+ * A block a player can set: air (breaking), one from the picker, a torch (on a floor or a wall), a
+ * gate as placed (facing the way the player looks), farmland (tilled) or wheat just sown. Not a logic block in any other state (wire
  * with power in it, a switch on, a lamp lit, a gate on): those are the signals' to set, or come of
  * using a block (`use`).
  */
@@ -72,7 +73,9 @@ export const settable = (block: number): boolean =>
   block === Block.Air ||
   BLOCKS[block]?.pickable === true ||
   (BLOCKS[block] !== undefined && isTorch(block as Block)) ||
-  PLACED_GATES.has(block);
+  PLACED_GATES.has(block) ||
+  block === Block.Farmland ||
+  block === wheat(0);
 
 export function hostWorld(world: World, saver: WorldSaver, game: HostGame): HostWorld {
   return {
@@ -99,6 +102,9 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
     },
     edit: (player, x, y, z, block) => {
       if (!settable(block) || !world.hasColumn(toChunk(x), toChunk(z))) return false;
+      // Farmland only where the ground can be tilled; wheat only sown on farmland.
+      if (block === Block.Farmland && !tillable(world, x, y, z)) return false;
+      if (block === wheat(0) && !sowable(world, x, y - 1, z)) return false;
       if (!game.allowed(player, x, y, z, block as Block)) return false;
       if (world.getBlock(x, y, z) !== block) game.edit(x, y, z, block as Block);
       return true;
@@ -115,9 +121,9 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
     hitMob: (player, id, points) => game.hitMob(player, id, points),
     drop: (...a) => game.drop(...a),
     take: (...a) => game.take(...a),
-    furnace: (...a) => game.furnace(...a),
-    furnacePut: (...a) => game.furnacePut(...a),
-    furnaceTake: (...a) => game.furnaceTake(...a),
+    container: (...a) => game.container(...a),
+    containerPut: (...a) => game.containerPut(...a),
+    containerTake: (...a) => game.containerTake(...a),
     mode: () => game.mode(),
     kept: (name) => game.kept(name),
     keep: (name, survival) => game.keep(name, survival),

@@ -16,6 +16,8 @@ export interface PlayerState {
   crouching: boolean;
   swimming: boolean;
   onGround: boolean;
+  /** Asleep in a bed (playing together, the night goes when everyone is). */
+  sleeping?: boolean;
   /** The block in hand. */
   held: number;
   /** Arm swings so far (digging hits, breaks, places): each new one swings the avatar's arm. */
@@ -28,10 +30,11 @@ const FLYING = 1;
 const CROUCHING = 2;
 const SWIMMING = 4;
 const ON_GROUND = 8;
+const SLEEPING = 16;
 export const STATE_BYTES = 80;
 
 export function packState(s: PlayerState): ArrayBuffer {
-  const flags = (s.flying ? FLYING : 0) | (s.crouching ? CROUCHING : 0) | (s.swimming ? SWIMMING : 0) | (s.onGround ? ON_GROUND : 0);
+  const flags = (s.flying ? FLYING : 0) | (s.crouching ? CROUCHING : 0) | (s.swimming ? SWIMMING : 0) | (s.onGround ? ON_GROUND : 0) | (s.sleeping ? SLEEPING : 0);
   return new Float64Array([s.time, s.x, s.y, s.z, s.yaw, s.pitch, flags, s.held, s.swings, s.digging]).buffer;
 }
 
@@ -54,6 +57,7 @@ export function unpackState(data: ArrayBuffer): PlayerState | null {
     crouching: (flags & CROUCHING) !== 0,
     swimming: (flags & SWIMMING) !== 0,
     onGround: (flags & ON_GROUND) !== 0,
+    sleeping: (flags & SLEEPING) !== 0,
     held,
     swings,
     digging,
