@@ -32,6 +32,9 @@ const BERRY = palette(0x7b2fa6, 0x3f1758, 0xc58ae6);
 const EMBER = palette(0xff8a2a, 0x8a2a12, 0xfff0a0);
 const RAW_COPPER = palette(0xb5683c, 0x6b6560, 0xe0925a);
 const RAW_IRON = palette(0xb8a898, 0x6b6560, 0xe3d6c8);
+const SEED = palette(0xa08a4a, 0x5e4f24, 0xd8c47a);
+const GRAIN = palette(0xd8b54a, 0x8a6a1e, 0xf6e08a);
+const CRUST = palette(0xc0803a, 0x7a4a1c, 0xe8b46a);
 
 // Masks, row 0 at the top: '.' empty, m/d/l the material's main, dark and light, h a handle.
 const PICK = [
@@ -124,6 +127,61 @@ const BERRIES = [
   '......dd........',
   '................',
 ];
+const SEEDS = [
+  '................',
+  '................',
+  '................',
+  '.....dd.........',
+  '....dlmd...dd...',
+  '....dmmd..dlmd..',
+  '.....dd...dmmd..',
+  '...........dd...',
+  '..dd....dd......',
+  '.dlmd..dlmd.....',
+  '.dmmd..dmmd..dd.',
+  '..dd....dd..dlmd',
+  '............dmmd',
+  '.....dd......dd.',
+  '....dlmd........',
+  '.....dd.........',
+];
+/** A sheaf: ears at the top, stalks tied in the middle (h, the band). */
+const SHEAF = [
+  '................',
+  '...l..l.l..l....',
+  '..lml.lmlml.l...',
+  '..dmlmmmlmmlml..',
+  '...dmmdmmdmmd...',
+  '....dmdmmdmd....',
+  '.....mdmmdm.....',
+  '......mmmm......',
+  '.....hhhhhh.....',
+  '......mmmm......',
+  '.....dmmmmd.....',
+  '....dm.mm.md....',
+  '...dm..mm..md...',
+  '..dm...mm...md..',
+  '..d....dd....d..',
+  '................',
+];
+const LOAF = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '.....llllll.....',
+  '...llmmlmmlll...',
+  '..lmmdmmdmmdml..',
+  '.lmmmmmmmmmmmmd.',
+  '.mmmmmmmmmmmmmd.',
+  '.mmmmmmmmmmmmmd.',
+  '.dmmmmmmmmmmmdd.',
+  '..ddddddddddddd.',
+  '................',
+  '................',
+  '................',
+  '................',
+];
 const LUMP = [
   '................',
   '................',
@@ -208,6 +266,9 @@ const ART: Record<number, [string[], Palette]> = {
   [Item.CookedMeat]: [MEAT, COOKED_MEAT],
   [Item.Berries]: [BERRIES, BERRY],
   [Item.Ember]: [LUMP, EMBER],
+  [Item.Seeds]: [SEEDS, SEED],
+  [Item.Wheat]: [SHEAF, GRAIN],
+  [Item.Bread]: [LOAF, CRUST],
 };
 
 /** Item `item`'s picture: 16 × 16 RGBA, row 0 at the top, transparent where empty; null for a block (it has its own icon). */

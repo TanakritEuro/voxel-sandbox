@@ -4,7 +4,7 @@
 // sticks come from a roll the caller makes (seeded, so a test can say what drops). Pure.
 
 import { TUNING } from '../config';
-import { bedOf, Block, BLOCKS, chestOf, doorOf, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, wirePower } from '../world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, doorOf, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, wheatStage, wirePower } from '../world/blocks';
 import type { Cost } from './inventory';
 import { Item, type Tool, type ToolKind } from './items';
 
@@ -67,7 +67,8 @@ export function digTime(block: Block, tool: Tool | undefined): number {
  * What breaking `block` with `tool` gives: usually the block itself, as placed (a lit lamp a lamp,
  * powered wire wire, a gate off facing the first way), something else for grass and ores, nothing
  * from glass or without the pick a block needs, and from leaves a stick when `roll` (in [0, 1)) is
- * under one in `TUNING.survival.leafStick`, or berries in the one in `leafBerries` after that.
+ * under one in `TUNING.survival.leafStick`, or berries in the one in `leafBerries` after that; seeds
+ * from grass by the roll too, and wheat's seeds.
  */
 export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cost {
   if (!canHarvest(block, tool)) return [];
@@ -76,6 +77,13 @@ export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cos
     return roll < stick ? [[Item.Stick, 1]] : roll < stick + 1 / TUNING.survival.leafBerries ? [[Item.Berries, 1]] : [];
   }
   if (block === Block.Glass) return [];
+  // Grass gives its dirt, and seeds one time in `farming.seedsFromGrass`; wheat ripe gives wheat and
+  // 1 to `farming.ripeSeeds` seeds, unripe just its seed back.
+  const F = TUNING.survival.farming;
+  if (block === Block.Grass) return roll < 1 / F.seedsFromGrass ? [[Block.Dirt, 1], [Item.Seeds, 1]] : [[Block.Dirt, 1]];
+  const stage = wheatStage(block);
+  if (stage === 7) return [[Item.Wheat, 1], [Item.Seeds, 1 + Math.floor(roll * F.ripeSeeds)]];
+  if (stage >= 0) return [[Item.Seeds, 1]];
   const given = GIVES.get(block);
   if (given !== undefined) return [[given, 1]];
   if (isTorch(block)) return [[Block.Torch, 1]];

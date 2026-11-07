@@ -27,6 +27,10 @@ export enum Item {
   CookedMeat,
   Berries,
   Ember,
+  /** Farming (Milestone 13). */
+  Seeds,
+  Wheat,
+  Bread,
 }
 
 /** What a tool digs: a pick stone and ores, an axe wood, a spade earth. */
@@ -79,6 +83,9 @@ const ITEMS: readonly ItemInfo[] = [
   { name: 'Cooked meat', stack: S.stack, food: S.food.cookedMeat },
   { name: 'Berries', stack: S.stack, food: S.food.berries },
   material('Ember'),
+  material('Seeds'),
+  material('Wheat'),
+  { name: 'Bread', stack: S.stack, food: S.food.bread },
 ];
 
 const PLACEABLE_SET = new Set<number>(PLACEABLE);

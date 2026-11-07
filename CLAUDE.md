@@ -132,7 +132,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, light, day length, sky, mobs, water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
   wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
-  eating, meat from animals, smelting time, items on the ground), net.
+  eating, meat from animals, smelting time, items on the ground, farming), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
@@ -171,13 +171,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   timing (`timeOf`: in survival by the tool held) and crack stage).
 - `src/survival/` — survival worlds, pure: `items.ts` (items: placeable blocks by their ids, and
   `Item` from 256: sticks, coal, copper, iron, crystal, picks, axes and spades of wood, stone and
-  iron, raw copper and iron, raw and cooked meat, berries, embers; `itemInfo`, `toolOf`, `foodOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
+  iron, raw copper and iron, raw and cooked meat, berries, embers, seeds, wheat, bread; `itemInfo`, `toolOf`, `foodOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
   spending, picking up and putting down, Shift moves, tools wearing out; `from` cleans what was
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
   held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`breakWith`: what a broken block gives and the
   tool worn; `placeableIn`, `heldTool`), `furnace.ts` (`Furnace`: input, fuel and output, burning and
   smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `chest.ts` (`Chests`: 27
-  slots each by place, saved in the world record's `containers`), `ground.ts` (`GroundItems`: items lying on the ground, boxes
+  slots each by place, saved in the world record's `containers`), `farming.ts` (`tillable`, `sowable`,
+  `stageTime`, `growingLight`; `Crops`: wheat by place, a slice stepped each frame, growing a stage
+  every ~70 s in light 9 or more, saved in the record's `crops`), `ground.ts` (`GroundItems`: items lying on the ground, boxes
   under the block physics at 60 Hz, asleep at rest, floating, merging, picked up within reach of a
   player's box, aging out, a cap), `health.ts` (`Health`: falls from where the feet last stood,
   air and drowning, cactus, hunger (faster working hard; starving down to 1; `eat`), healing only well
@@ -249,7 +251,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
-  inventory and health), `furnaces`, `containers` (chests) and `guests` (guests' survival states by name)), `saver.ts` (`WorldSaver`: which chunks a world
+  inventory and health), `furnaces`, `containers` (chests), `crops` and `guests` (guests' survival states by name)), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -310,7 +312,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   play an unsaved world; `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
-  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?litter` (`?litter=100`) drops items round you (256 by default), `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

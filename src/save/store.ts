@@ -47,6 +47,8 @@ export interface WorldRecord {
   furnaces?: Record<string, unknown>;
   /** Chests' contents by place ("x,y,z"), cleaned by `Chests.from`; missing until a chest has something in it. */
   containers?: Record<string, unknown>;
+  /** Wheat growing, seconds into its stage by place ("x,y,z"), cleaned by `Crops.from`; missing until something is sown. */
+  crops?: Record<string, unknown>;
   /** Guests' survival states, by name, kept by the host for when they come back. */
   guests?: Record<string, SurvivalRecord>;
 }

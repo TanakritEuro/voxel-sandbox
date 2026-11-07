@@ -398,11 +398,13 @@ export function torchFor(nx: number, ny: number, nz: number): Block | null {
 
 /**
  * For a torch, the step to the block holding it up (below, or its wall); for a thin logic block,
- * the block below; null for other blocks.
+ * wheat or a door's lower half, the block below; null for other blocks (a bed stands on its own, a
+ * door's upper half goes with its lower).
  */
 export function torchSupport(block: Block): [number, number, number] | null {
   const info = BLOCKS[block];
-  if (info.shape === 'cube') return null;
+  if (info.shape === 'cube' || info.shape === 'slab') return null;
+  if (info.shape === 'panel') return doorOf(block)!.upper ? null : [0, -1, 0];
   return info.wall ? [info.wall.x, 0, info.wall.z] : [0, -1, 0];
 }
 

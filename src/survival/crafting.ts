@@ -30,6 +30,7 @@ export const RECIPES: readonly Recipe[] = [
   ).flatMap(([from, pick]) => [r(pick, 1, [from, 3], [Item.Stick, 2]), r(pick + 1, 1, [from, 3], [Item.Stick, 2]), r(pick + 2, 1, [from, 1], [Item.Stick, 2])]),
   r(Block.Furnace, 1, [Block.Stone, 8]),
   r(Block.Chest, 1, [Block.Planks, 8]),
+  r(Item.Bread, 1, [Item.Wheat, 3]),
   r(Block.Door, 1, [Block.Planks, 6]),
   r(Block.Sandstone, 1, [Block.Sand, 4]),
   r(Block.Lamp, 1, [Block.Glass, 4], [Item.Crystal, 1]),

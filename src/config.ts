@@ -118,9 +118,13 @@ export const TUNING = {
     leafStick: 8,
     leafBerries: 20,
     /** Hunger points each food gives back. */
-    food: { rawMeat: 3, cookedMeat: 8, berries: 2 },
+    food: { rawMeat: 3, cookedMeat: 8, berries: 2, bread: 5 },
     /** Raw meat an animal leaves when it goes in a puff: from and to. */
     meat: [1, 2] as [number, number],
+    /** Farming: one in this many grass blocks dug gives seeds; wheat grows a stage every `stageSeconds` (give or
+     *  take a fifth) in light of at least `light`, stepped every `tickSeconds`; ripe, it gives 1 wheat and
+     *  1 to `ripeSeeds` seeds. */
+    farming: { seedsFromGrass: 8, stageSeconds: 70, light: 9, tickSeconds: 1, ripeSeeds: 3 },
     /** Health (points; the HUD shows a pip for two). */
     maxHealth: 20,
     /** A fall up to this many blocks costs nothing; a point a block beyond. */

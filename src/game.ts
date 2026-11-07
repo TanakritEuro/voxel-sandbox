@@ -21,12 +21,13 @@ import { Backpack } from './ui/backpack';
 import { itemArt, itemIcons } from './render/itemIcons';
 import { digTime } from './survival/drops';
 import { HOTBAR_SLOTS, Inventory as SurvivalInventory } from './survival/inventory';
-import { foodOf, isBlockItem, Item, itemInfo } from './survival/items';
+import { foodOf, isBlockItem, Item, itemInfo, toolOf } from './survival/items';
 import { breakWith, heldTool, placeableIn } from './survival/play';
 import { type GroundItem, GroundItems, inReach } from './survival/ground';
 import type { Stack } from './survival/inventory';
 import { Furnace, Furnaces } from './survival/furnace';
 import { Chests } from './survival/chest';
+import { Crops, sowable, tillable } from './survival/farming';
 import { hostSurvival } from './net/hostSurvival';
 import { Health } from './survival/health';
 import { hash3 } from './math';
@@ -59,7 +60,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, wheat, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
 import { CHUNK_SIZE, toChunk } from './world/coords';
@@ -192,7 +193,7 @@ let dead = false;
 if (unsaved && !guest && params.has('kit')) {
   for (const item of [Item.StonePick, Item.WoodAxe, Item.IronSpade, Block.Torch, Block.Planks, Item.WoodPick, Item.IronPick, Item.StoneAxe, Item.WoodSpade])
     pack.add(item, isBlockItem(item) ? 16 : 1);
-  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6]] as const) pack.add(item, n);
+  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6], [Item.Seeds, 16], [Item.Wheat, 6]] as const) pack.add(item, n);
   // A little hungry, to try eating at once.
   health.hunger = 12;
 }
@@ -204,6 +205,8 @@ const ground = new GroundItems();
 const furnaces = Furnaces.from(record.furnaces);
 /** Chests' contents by place (`survival/chest.ts`), saved with the record. */
 const chests = Chests.from(record.containers);
+/** Wheat growing (`survival/farming.ts`), saved with the record. */
+const crops = Crops.from(record.crops);
 let time = timeHeld ? Number(timeParam) : record.time;
 
 const world = new World(record.seed);
@@ -251,6 +254,29 @@ function scatter(n: number, x: number, z: number): void {
     while (y > 1 && BLOCKS[world.getBlock(gx, y - 1, gz)].passable) y--;
     ground.drop(gx + 0.5, y + 4, gz + 0.5, { item: kinds[i % kinds.length], count: 1 }, Math.random() - 0.5, 2, Math.random() - 0.5);
   }
+}
+
+/** `?farm`: a field of wheat round the player once the ground is there (for measuring). */
+let farmParam = params.has('farm');
+
+/**
+ * Up to 528 wheat at random stages (not ripe) on farmland, 23 × 23 blocks round (x, z) but the 3 × 3
+ * the player stands on, wherever the ground's top is grass or dirt: made at once, as a tick's changes are.
+ */
+function plantField(x: number, z: number): void {
+  const changes: [number, number, number, Block][] = [];
+  for (let dz = -11; dz <= 11; dz++)
+    for (let dx = -11; dx <= 11; dx++) {
+      if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1) continue;
+      const gx = Math.floor(x) + dx;
+      const gz = Math.floor(z) + dz;
+      let y = 200;
+      while (y > 1 && BLOCKS[world.getBlock(gx, y, gz)].passable) y--;
+      if (!tillable(world, gx, y, gz)) continue;
+      changes.push([gx, y, gz, Block.Farmland], [gx, y + 1, gz, wheat(Math.floor(Math.random() * 7))]);
+      crops.sow(gx, y + 1, gz);
+    }
+  applyChanges(changes);
 }
 
 /** `?showcase`: one of each kind in front of the player once the ground is there. */
@@ -807,6 +833,23 @@ function tickFurnaces(dt: number): void {
     furnaces.remove(x, y, z);
   }
 }
+/**
+ * Once a frame (not on a guest): a slice of the crops grows (each looked at about every
+ * `farming.tickSeconds`), and their new stages are made at once as a tick of water's are (light in
+ * one update, remeshed in the workers, shared with guests).
+ */
+function tickCrops(dt: number): void {
+  if (!crops.size) return;
+  const changes = crops.step(dt, cropWorld, daylightNow);
+  if (changes.length) applyChanges(changes);
+}
+/** The world as the crops see it. */
+const cropWorld = {
+  getBlock: (x: number, y: number, z: number) => world.getBlock(x, y, z),
+  getLight: (x: number, y: number, z: number) => world.getLight(x, y, z),
+  loaded: (x: number, z: number) => world.hasColumn(toChunk(x), toChunk(z)),
+};
+
 function closeBackpack(): void {
   backpack.hide();
   input.lock();
@@ -1094,6 +1137,11 @@ function guestEdit(x: number, y: number, z: number, block: Block): void {
   // A half broken: the other goes too (the guest asks for it as well; whichever comes second does nothing).
   const partner = block === Block.Air ? partnerOf(world, x, y, z) : null;
   if (partner) held.push(partner);
+  // A door standing on it goes with its upper half.
+  for (const [hx, hy, hz] of [...held]) {
+    const half = partnerOf(world, hx, hy, hz);
+    if (half && !held.some(([a, b, c]) => a === half[0] && b === half[1] && c === half[2]) && !(half[0] === x && half[1] === y && half[2] === z)) held.push(half);
+  }
   if (block === Block.Air && (furnaceOf(world.getBlock(x, y, z)) || chestOf(world.getBlock(x, y, z)))) containerGone(x, y, z);
   edit(x, y, z, block, false);
   for (const [tx, ty, tz] of held) edit(tx, ty, tz, Block.Air);
@@ -1169,9 +1217,12 @@ function editing(dt: number): void {
     // A furnace broken: what's in it drops too (in survival), and it's forgotten (a guest's is the host's to drop).
     if ((furnaceOf(broken.block) || chestOf(broken.block)) && !guest) containerGone(broken.x, broken.y, broken.z);
     // Torches go with the block they stood on or hung from (in survival, into the inventory).
+    // (Wheat on farmland, and a door standing on it with its upper half, as well.)
     for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) {
       if (survival) gather(world.getBlock(x, y, z), x, y, z, false);
+      const half = partnerOf(world, x, y, z);
       edit(x, y, z, Block.Air);
+      if (half) edit(half[0], half[1], half[2], Block.Air);
     }
   }
   if (input.take('Mouse2') && target) {
@@ -1180,7 +1231,10 @@ function editing(dt: number): void {
     const shift = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight');
     const used = shift ? null : useBlock(target.block);
     // A furnace clicked in survival opens (a guest's furnaces are the host's: to come).
-    if (survival && !shift && chestOf(target.block)) {
+    const holding = survival ? pack.slots[selected] : null;
+    if (survival && !shift && holding && (holding.item === Item.Seeds || toolOf(holding.item)?.kind === 'spade') && farm(target, holding.item === Item.Seeds)) {
+      // Tilled or sown (or, a guest, told it can't be yet).
+    } else if (survival && !shift && chestOf(target.block)) {
       // A chest opens on the inventory screen (a guest's chests are the host's: to come).
       if (guest) say("A friend's chests can't be opened yet.");
       else {
@@ -1212,6 +1266,34 @@ function editing(dt: number): void {
   }
   eating(dt);
   cracks.show(mining.target, mining.stage);
+}
+
+/**
+ * A spade's click tills grass or dirt with air above into farmland (the spade worn a little); seeds'
+ * click on farmland's top sows wheat above it. Returns false if there's nothing to till or sow
+ * there (the click then does what it would otherwise). A guest can't farm yet.
+ */
+function farm(target: RayHit, sowing: boolean): boolean {
+  const { x, y, z } = target;
+  if (sowing ? !(sowable(world, x, y, z) && target.ny > 0) : !tillable(world, x, y, z)) return false;
+  if (guest) {
+    say("Farming in a friend's world can't be done yet.");
+    return true;
+  }
+  if (sowing) {
+    edit(x, y + 1, z, wheat(0));
+    crops.sow(x, y + 1, z);
+    pack.takeOne(selected);
+    sound.play({ name: 'place', material: 'leaves', gain: 0.8 });
+  } else {
+    edit(x, y, z, Block.Farmland);
+    const tool = pack.slots[selected]!.item;
+    if (pack.wearTool(selected)) say(`Your ${itemInfo(tool).name.toLowerCase()} wore out.`);
+    sound.play({ name: 'dig', material: 'dirt', gain: 1 });
+  }
+  swing();
+  renderHotbar();
+  return true;
 }
 
 /**
@@ -1416,6 +1498,7 @@ function frame(now: number): void {
     flowWater(dt);
     tickLogic(dt);
     tickFurnaces(dt);
+    tickCrops(dt);
   }
   backpack.tick();
   // Items on the ground fall and settle, and are picked up by a survival player within reach.
@@ -1425,6 +1508,10 @@ function frame(now: number): void {
   if (litter && !player.waiting && !guest) {
     scatter(litter, player.body.x, player.body.z);
     litter = 0;
+  }
+  if (farmParam && !player.waiting && !guest) {
+    plantField(player.body.x, player.body.z);
+    farmParam = false;
   }
   if (ground.items.length && worldRuns())
     ground.update(dt, world, (x, z) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z))), survival && !dead && !player.waiting ? [player.body] : [], pickUp);
@@ -1571,6 +1658,7 @@ function saveRecord(): Promise<void> {
   survivalRecord.health = health.toJSON();
   record.furnaces = furnaces.toJSON();
   record.containers = chests.toJSON();
+  record.crops = crops.toJSON();
   return saver.saveRecord(playerState(), time);
 }
 

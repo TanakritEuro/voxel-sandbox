@@ -32,7 +32,7 @@ describe('items', () => {
     expect(isItem(Block.Air)).toBe(false);
     expect(isItem(Block.SwitchOn)).toBe(false); // a state, not an item
     expect(isItem(Item.Stick)).toBe(true);
-    expect(isItem(Item.Ember + 1)).toBe(false);
+    expect(isItem(Item.Bread + 1)).toBe(false);
     for (const id of ALL_ITEMS) expect(itemInfo(id).name).not.toBe('');
     expect(itemInfo(Item.StoneAxe)).toMatchObject({ name: 'Stone axe', stack: 1, tool: { kind: 'axe', tier: 2, speed: 4, wear: 130 } });
     expect(itemInfo(Block.Planks).stack).toBe(64);

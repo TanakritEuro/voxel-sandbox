@@ -168,7 +168,7 @@ matters). The budget holds: 60 fps at radius 8 beside a field of 500 growing whe
    blocks in pairs. Built (2026-11-07).
 2. **Doors:** opening by hand and by signal, mobs kept out. Built (2026-11-07).
 3. **Chests:** contents, the screen, saving, drops. Built (2026-11-07).
-4. **Farming:** farmland, seeds, wheat growing, harvest, bread.
+4. **Farming:** farmland, seeds, wheat growing, harvest, bread. Built (2026-11-07).
 5. **Beds:** sleeping through the night, waking at the bed, moss.
 6. **Together:** containers, doors, crops and sleeping for guests.
 7. **Measurements,** notes and playtest questions.
@@ -374,5 +374,88 @@ half a block high. A test checks the eighths.
 - coal, raw iron and berries Shift-clicked in;
 - closed and opened again, all still there;
 - broken with the stone axe: the chest and all three picked up again walking over.
+- No console errors.
+
+## Step 4: farming — built (2026-11-07)
+
+**What's there** (numbers in `TUNING.survival.farming`):
+- **Tilling:** a spade's right click on grass or dirt with air above makes farmland, and wears the
+  spade by one.
+- **Seeds:** grass dug up gives seeds one time in eight, with its dirt.
+- **Sowing:** seeds' right click on the top of farmland with air above: wheat at stage 0.
+- **Growing** (`survival/farming.ts`, `Crops`, saved in the record's `crops`):
+  - a stage every 70 s, give or take a fifth for each plant and stage (from its place), so a field
+    doesn't grow in step: about 8 minutes from seed to ripe;
+  - only in light 9 or more (the sun by the daylight, or a torch's light), and only in loaded land;
+  - a stage's change is made as a tick of water's is (light, remeshing in the workers, guests told).
+- **Harvest:**
+  - ripe wheat gives 1 wheat and 1–3 seeds; unripe, its seed back;
+  - wheat goes with the farmland under it, as torches go with their block;
+  - farmland gives dirt.
+- **Bread:** 3 wheat, food for 5.
+- **Items:** seeds, wheat and bread, with pictures (seeds scattered, a tied sheaf, a loaf).
+- **`?kit`** adds 16 seeds and 6 wheat.
+- **`?farm`** (new) plants a field round the player at random stages, up to 528 on whatever grass or
+  dirt is there, for measuring.
+- **Not yet:** a guest's spade or seeds say "Farming in a friend's world can't be done yet."
+  (step 6).
+
+**Fixed on the way:** `torchSupport` took every block that isn't a cube as standing on the block
+below, so since step 1 breaking the floor under a door or bed would have taken only that half.
+Now a door's lower half and wheat stand on the block below, and a door's upper half goes with its
+lower one. A bed stands on its own.
+
+**Changed while measuring:** I first stepped every plant once a second.
+- The bench gave 0.4–1.0 ms a step (5–6 ms at worst) for 1,000, splitting each place's key back into
+  numbers.
+- Now each plant keeps its numbers, and the game steps the crops every frame, a slice of them each
+  time. Each plant is looked at about once a second and grows by the time since it was last looked at.
+- The time in unloaded land or the dark doesn't count.
+
+**Tests** (11 new, 462 in all, `tests/farming.test.ts`):
+- **Tilling and sowing:** tilling grass and dirt, not stone, sand or anything under a torch; sowing
+  only on farmland with air above.
+- **What wheat stands on:** wheat and a door's lower half stand on the block below; a door's upper
+  half and a bed don't.
+- **Growing:**
+  - six plants in full light reach ripe in 0.8–1.2 of 8 minutes, each stage when its own time says
+    (to the second), not all in step, then stop;
+  - every stage of 40 places is between 0.8 and 1.2 of 70 s;
+  - light: 9 or more grows, the sun at half daylight doesn't, a torch's 10 at night does, the dark
+    doesn't (600 s at stage 0);
+  - unloaded land waits;
+  - a plant that isn't wheat any more is forgotten;
+  - saved and loaded with its seconds, junk dropped.
+- **Harvest:** seeds from grass by the roll; ripe wheat 1 wheat and 1–3 seeds; unripe a seed; bread
+  of 3 wheat, food for 5.
+
+**Bench** (`crops`, new: 1,000 wheat in full sun, 10 minutes at 60 frames a second, all ripe by the
+end):
+- before the change: 0.36–0.98 ms a step once a second (it varied run to run), 3–6 ms at worst;
+- after it: 0.006 ms a frame median, 0.012–0.014 p95, 1.2–1.5 worst; at most 5 stages in a frame.
+
+**In the browser** (the browser pane, `?seed=7&survival&nolock&stats&time=0.5&mobs=0`, radius 8;
+the machine was busier than in Milestone 12's measurements, so the baseline is higher):
+
+| | main thread, ms a frame (avg, a second at a time) |
+| --- | --- |
+| No field | 2.5–2.6 |
+| `?farm` (about 500), in view | 2.8–3.4, about 3.1 |
+| The same at midnight (nothing grows) | 3.1 |
+| The same with the crops not stepped (a throwaway flag, taken out) | 2.8–3.2 |
+| The same, looking at the sky | 2.4–2.5 |
+
+- The field costs about 0.5 ms of main thread while it's in view, whether it grows or not. It's
+  drawing it, not growing it.
+- The GPU time was the same, 3.2–3.4 ms, with it and without.
+- I couldn't find what on the main thread grows with the wheat in view: the draw calls go up by 1–3
+  and the plants are in the cutout pass with the leaves. Inside the budget; for the laptop
+  measurement.
+
+**Tried in the browser** (`?seed=7&survival&kit&nolock`):
+- the iron spade tilled two grass blocks to furrowed farmland;
+- seeds sowed both, 16 to 14, sprouts showing;
+- `?farm`'s field drew every stage from sprouts to tall green-gold stalks;
+- breaking wheat and farmland gave seeds and dirt, picked up walking over them.
 - No console errors.
 

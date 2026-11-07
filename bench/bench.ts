@@ -28,9 +28,10 @@ import { wakeColumn, WaterFlow } from '../src/world/water';
 import { LogicFlow } from '../src/world/logic';
 import { GroundItems } from '../src/survival/ground';
 import { CHEST_SLOTS, Chests } from '../src/survival/chest';
+import { Crops } from '../src/survival/farming';
 import { FUEL, Furnaces, INPUT } from '../src/survival/furnace';
 import { ALL_ITEMS, Item } from '../src/survival/items';
-import { furnace, furnaceOf } from '../src/world/blocks';
+import { furnace, furnaceOf, wheat, wheatStage } from '../src/world/blocks';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -758,4 +759,33 @@ it('chests', () => {
     }
   }
   console.log(`\nchests: 100 full (2700 stacks), ${(bytes / 1024).toFixed(1)} KB of JSON; saving ${median(out).toFixed(3)} ms, loading ${median(back).toFixed(3)} ms\n`);
+});
+
+it('crops', () => {
+  // 1,000 wheat on farmland in the generated world (a 40 × 25 field at y 120, in full sun), stepped
+  // every 60 fps frame as the game steps them (a slice of the field each time), for 10 minutes of
+  // growing: ms a frame, and how many changed in the biggest one.
+  const world = new World(SEED);
+  for (const [cx, cz] of columns(2)) world.ensureColumn(cx, cz);
+  const crops = new Crops();
+  const blocks: [number, number, number, Block][] = [];
+  for (let x = 0; x < 40; x++)
+    for (let z = 0; z < 25; z++) {
+      blocks.push([x, 119, z, Block.Farmland], [x, 120, z, wheat(0)]);
+      crops.sow(x, 120, z);
+    }
+  world.setBlocks(blocks);
+  const cropWorld = { getBlock: (x: number, y: number, z: number) => world.getBlock(x, y, z), getLight: (x: number, y: number, z: number) => world.getLight(x, y, z), loaded: () => true };
+  const times: number[] = [];
+  let most = 0;
+  let ripe = 0;
+  for (let s = 0; s < 600 * 60; s++) {
+    const t0 = performance.now();
+    const changes = crops.step(1 / 60, cropWorld, 1);
+    times.push(performance.now() - t0);
+    most = Math.max(most, changes.length);
+    world.setBlocks(changes);
+  }
+  for (let x = 0; x < 40; x++) for (let z = 0; z < 25; z++) if (wheatStage(world.getBlock(x, 120, z)) === 7) ripe++;
+  console.log(`\ncrops: 1000 wheat, 10 minutes at 60 frames a second: ${ripe} ripe; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}; at most ${most} stages in one frame\n`);
 });
