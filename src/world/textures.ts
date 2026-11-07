@@ -66,6 +66,26 @@ export const TEXTURE_NAMES = [
   'furnace_top',
   'furnace_front',
   'furnace_front_lit',
+  // Homes (Milestone 13).
+  'chest_top',
+  'chest_side',
+  'chest_front',
+  'door_lower',
+  'door_upper',
+  'door_item',
+  'bed_head',
+  'bed_foot',
+  'bed_side',
+  'bed_item',
+  'farmland',
+  'wheat_0',
+  'wheat_1',
+  'wheat_2',
+  'wheat_3',
+  'wheat_4',
+  'wheat_5',
+  'wheat_6',
+  'wheat_7',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -447,6 +467,93 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   },
   furnace_front: (c) => furnaceFront(c, false),
   furnace_front_lit: (c) => furnaceFront(c, true),
+  chest_top(c) {
+    chestBoards(c);
+    frame(c, 0, 0, 16, 16, CHEST_EDGE);
+  },
+  chest_side(c) {
+    chestBoards(c);
+    frame(c, 0, 0, 16, 16, CHEST_EDGE);
+    // The lid's edge.
+    for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, 5, CHEST_EDGE, 0.85);
+  },
+  chest_front(c) {
+    PAINTERS.chest_side(c);
+    // An iron latch over the lid's edge.
+    for (let y = 4; y < 9; y++) for (let x = 7; x < 9; x++) c.set(x, y, IRON, y === 4 ? 1.15 : 1);
+    c.set(7, 7, hex(0x3a3a3e));
+  },
+  door_lower(c) {
+    doorBoards(c);
+    frame(c, 0, 0, 16, 16, DOOR_FRAME);
+    // A cross brace, and the handle.
+    for (let k = 2; k < 14; k++) c.set(k, 15 - k, DOOR_FRAME, 1.05);
+    c.set(12, 1, IRON, 1.1);
+    c.set(12, 2, IRON);
+  },
+  door_upper(c) {
+    doorBoards(c);
+    frame(c, 0, 0, 16, 16, DOOR_FRAME);
+    // A window of four small panes.
+    for (let y = 3; y < 11; y++)
+      for (let x = 3; x < 13; x++) {
+        const bar = x === 7 || x === 8 || y === 6 || y === 7;
+        c.set(x, y, bar ? DOOR_FRAME : WINDOW, bar ? 1 : 1 + (c.rng() - 0.5) * 0.08);
+      }
+    c.set(4, 4, hex(0xffffff), 1, 255);
+    c.set(10, 9, hex(0xffffff), 0.9, 255);
+  },
+  door_item(c) {
+    // The whole door, half as wide: boards, the window up top, the handle.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 4; x < 12; x++) {
+        const edge = x === 4 || x === 11 || y === 0 || y === 15 || y === 7;
+        const pane = y >= 2 && y < 6 && x >= 6 && x < 10 && x !== 7 && y !== 3;
+        c.set(x, y, edge ? DOOR_FRAME : pane ? WINDOW : DOOR_WOOD, 1 + (c.rng() - 0.5) * 0.12);
+      }
+    c.set(10, 10, IRON);
+  },
+  bed_head(c) {
+    // From the head end (row 0, the way the bed points): a frame, the pillow, then the blanket.
+    bedTop(c, 7);
+    for (let y = 1; y < 6; y++) for (let x = 2; x < 14; x++) c.set(x, y, PILLOW, 1 + (c.rng() - 0.5) * 0.06 - (y === 5 ? 0.12 : 0));
+  },
+  bed_foot(c) {
+    bedTop(c, 0);
+    // The blanket's folded end.
+    for (let x = 1; x < 15; x++) c.set(x, 13, BLANKET, 0.8);
+  },
+  bed_side(c) {
+    // Only the bottom 8 rows show (a bed is half a block high): blanket, sheet, then the wooden frame.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const colour = y < 12 ? BLANKET : y < 13 ? PILLOW : DOOR_WOOD;
+        c.set(x, y, colour, 1 + (c.rng() - 0.5) * (y < 12 ? 0.1 : 0.14) - (y === 13 ? 0.15 : 0));
+      }
+  },
+  bed_item(c) {
+    // Side on: the frame and legs, the blanket, the pillow at the head (right).
+    for (let x = 1; x < 15; x++) {
+      for (let y = 7; y < 10; y++) c.set(x, y, x > 10 ? PILLOW : BLANKET, 1 + (c.rng() - 0.5) * 0.1);
+      for (let y = 10; y < 12; y++) c.set(x, y, DOOR_WOOD, 1 + (c.rng() - 0.5) * 0.12);
+    }
+    for (const x of [1, 2, 13, 14]) c.set(x, 12, DOOR_FRAME);
+    for (let y = 5; y < 12; y++) c.set(14, y, DOOR_FRAME);
+  },
+  farmland(c) {
+    // Dark, damp earth in furrows.
+    c.speckle(hex(0x5e4126), 0.22);
+    for (let y = 1; y < TEXTURE_SIZE; y += 4) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, hex(0x40291a), 1 + (c.rng() - 0.5) * 0.2);
+    c.spots(5, hex(0x7a5634));
+  },
+  wheat_0: (c) => wheatStage(c, 0),
+  wheat_1: (c) => wheatStage(c, 1),
+  wheat_2: (c) => wheatStage(c, 2),
+  wheat_3: (c) => wheatStage(c, 3),
+  wheat_4: (c) => wheatStage(c, 4),
+  wheat_5: (c) => wheatStage(c, 5),
+  wheat_6: (c) => wheatStage(c, 6),
+  wheat_7: (c) => wheatStage(c, 7),
   glass(c) {
     // Nearly clear, a light frame and a few highlights.
     const pane = hex(0xcfe8f2);
@@ -458,6 +565,72 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
     for (const [x, y] of [[3, 3], [4, 4], [5, 5], [3, 5], [10, 11], [11, 12]]) c.set(x, y, hex(0xffffff), 1, 130);
   },
 };
+
+const CHEST_WOOD = hex(0x9a6a3a);
+const CHEST_EDGE = hex(0x5a3a1e);
+const IRON = hex(0xb9bcc0);
+const DOOR_WOOD = hex(0xa67c4a);
+const DOOR_FRAME = hex(0x6a4a2a);
+const WINDOW = hex(0x9fc7d8);
+const BLANKET = hex(0xb04a3a);
+const PILLOW = hex(0xece6da);
+const STALK = hex(0x5f9a3a);
+const RIPE = hex(0xd8b54a);
+
+/** A frame one pixel wide round the rectangle from (x0, y0), `w` × `h`. */
+function frame(c: Canvas, x0: number, y0: number, w: number, h: number, colour: RGB): void {
+  for (let x = x0; x < x0 + w; x++) {
+    c.set(x, y0, colour, 1 + (c.rng() - 0.5) * 0.1);
+    c.set(x, y0 + h - 1, colour, 1 + (c.rng() - 0.5) * 0.1);
+  }
+  for (let y = y0; y < y0 + h; y++) {
+    c.set(x0, y, colour, 1 + (c.rng() - 0.5) * 0.1);
+    c.set(x0 + w - 1, y, colour, 1 + (c.rng() - 0.5) * 0.1);
+  }
+}
+
+/** A chest's boards: across, 4 rows each, a darker seam under each. */
+function chestBoards(c: Canvas): void {
+  for (let y = 0; y < TEXTURE_SIZE; y++) {
+    const shade = 0.92 + ((y >> 2) % 2) * 0.1;
+    for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, CHEST_WOOD, (y % 4 === 3 ? 0.75 : shade) * (1 + (c.rng() - 0.5) * 0.1));
+  }
+}
+
+/** A door's boards: upright, 4 wide each, a darker seam beside each. */
+function doorBoards(c: Canvas): void {
+  for (let y = 0; y < TEXTURE_SIZE; y++)
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      const shade = 0.94 + ((x >> 2) % 2) * 0.08;
+      c.set(x, y, DOOR_WOOD, (x % 4 === 3 ? 0.78 : shade) * (1 + (c.rng() - 0.5) * 0.1));
+    }
+}
+
+/** A bed's top from above: a wooden frame round a blanket, the blanket's top edge from row `from`. */
+function bedTop(c: Canvas, from: number): void {
+  for (let y = 0; y < TEXTURE_SIZE; y++)
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      const edge = x === 0 || x === 15 || (from > 0 && y === 0);
+      const colour = edge ? DOOR_WOOD : y >= from ? BLANKET : PILLOW;
+      c.set(x, y, colour, 1 + (c.rng() - 0.5) * 0.1);
+    }
+}
+
+/**
+ * Wheat at `stage` (0–7): stalks from the bottom row, taller each stage, the tips turning to ears
+ * and the whole gold at 7. Clear elsewhere (it's drawn with holes).
+ */
+function wheatStage(c: Canvas, stage: number): void {
+  for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, STALK, 1, 0);
+  const height = 3 + Math.round((stage * 12) / 7);
+  for (const x of [1, 4, 6, 9, 11, 14]) {
+    const h = Math.max(2, height - Math.floor(c.rng() * 3));
+    const colour = stage === 7 ? RIPE : stage >= 5 ? hex(0x9fae44) : STALK;
+    for (let k = 0; k < h; k++) c.set(x, 15 - k, colour, 1 + (c.rng() - 0.5) * 0.15);
+    // Ears at the tips from stage 4.
+    if (stage >= 4) for (let k = 0; k < 3; k++) c.set(x + (k % 2 ? 1 : 0), 15 - h + k, stage === 7 ? hex(0xe8c860) : hex(0xb5b450), 1 + (c.rng() - 0.5) * 0.12);
+  }
+}
 
 /** Stone bricks: courses 4 high, joints offset course to course, mortar darker. */
 function bricks(c: Canvas): void {

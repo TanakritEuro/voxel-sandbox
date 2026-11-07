@@ -60,6 +60,7 @@ import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
 import { Block, BLOCKS, furnace, furnaceOf, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
+import { isPaired, pairPlacement, partnerOf } from './world/parts';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock, touches } from './world/physics';
@@ -730,6 +731,7 @@ const outline = new THREE.LineSegments(
 );
 outline.visible = false;
 scene.add(outline);
+const WHOLE_BLOCK = [0, 0, 0, 1, 1, 1] as const;
 const cracks = new CrackOverlay();
 scene.add(cracks.mesh);
 
@@ -1085,6 +1087,9 @@ function edit(x: number, y: number, z: number, block: Block, share = true): void
 /** A guest's edit, checked by the session: made as the host's would be, the torches a broken block held going too, and what a furnace held. */
 function guestEdit(x: number, y: number, z: number, block: Block): void {
   const held = block === Block.Air ? torchesHeldBy(world, x, y, z) : [];
+  // A half broken: the other goes too (the guest asks for it as well; whichever comes second does nothing).
+  const partner = block === Block.Air ? partnerOf(world, x, y, z) : null;
+  if (partner) held.push(partner);
   if (block === Block.Air && furnaceOf(world.getBlock(x, y, z))) furnaceGone(x, y, z);
   edit(x, y, z, block, false);
   for (const [tx, ty, tz] of held) edit(tx, ty, tz, Block.Air);
@@ -1149,7 +1154,10 @@ function editing(dt: number): void {
   const broken = mining.update(target, input.isHeld('Mouse0'), dt);
   if (broken) {
     const info = BLOCKS[broken.block];
+    // A door's or bed's other half goes with it (giving nothing of its own).
+    const partner = partnerOf(world, broken.x, broken.y, broken.z);
     edit(broken.x, broken.y, broken.z, Block.Air);
+    if (partner) edit(partner[0], partner[1], partner[2], Block.Air);
     sound.play({ name: 'break', material: info.sound, gain: 1 });
     swing();
     particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
@@ -1204,12 +1212,25 @@ function place(target: RayHit): void {
   const z = target.z + target.nz;
   const selectedBlock = survival ? placeableIn(pack, selected) : hotbar[selected];
   if (selectedBlock === null) return;
+  if (isPaired(selectedBlock)) {
+    // A door or a bed: both halves, or nothing (no room, no floor, or one would be in the player).
+    const parts = pairPlacement(world, selectedBlock, x, y, z, input.yaw);
+    if (!parts || parts.some(([px, py, pz, pb]) => overlapsBlock(player.body, px, py, pz, pb))) return;
+    for (const [px, py, pz, pb] of parts) edit(px, py, pz, pb);
+    sound.play({ name: 'place', material: BLOCKS[selectedBlock].sound, gain: 1 });
+    swing();
+    if (survival) {
+      pack.takeOne(selected);
+      renderHotbar();
+    }
+    return;
+  }
   const block = isTorch(selectedBlock) ? torchFor(target.nx, target.ny, target.nz) : logicPlacement(selectedBlock, target.ny, input.yaw);
   if (block === null) return;
   const standing = isTorch(selectedBlock) || isThinLogic(selectedBlock);
   const fits = standing
     ? BLOCKS[world.getBlock(target.x, target.y, target.z)].opaque && world.getBlock(x, y, z) === Block.Air
-    : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z);
+    : BLOCKS[block].passable || !overlapsBlock(player.body, x, y, z, block);
   if (!fits) return;
   edit(x, y, z, block);
   sound.play({ name: 'place', material: BLOCKS[block].sound, gain: 1 });
@@ -1456,7 +1477,12 @@ function frame(now: number): void {
   }
   playTogether(now);
   outline.visible = target !== null;
-  if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
+  if (target) {
+    // Round a door's or bed's box; round the block for the rest.
+    const box = BLOCKS[target.block].box ?? WHOLE_BLOCK;
+    outline.position.set(target.x + (box[0] + box[3]) / 2, target.y + (box[1] + box[4]) / 2, target.z + (box[2] + box[5]) / 2);
+    outline.scale.set(box[3] - box[0], box[4] - box[1], box[5] - box[2]);
+  }
 
   const p = camera.position;
   info.textContent =

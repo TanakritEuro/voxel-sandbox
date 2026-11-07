@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 13 (homes: chests, doors, beds, farming) in progress, plan approved (`docs/milestone-13.md`).
 Milestones 1–12 built (`docs/milestone-1.md` to `docs/milestone-12.md`), waiting for playtests
 (Milestone 12, survival, part two: broken blocks drop onto the ground as small spinning items, falling,
 floating, merging and picked up within reach, thrown with Q (Shift+Q the stack), gone after 5 minutes;
@@ -135,12 +136,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/math.ts` — seeded PRNG and coordinate hash.
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
-  `furnaceOf`; a block's `front` texture on the side it faces):
+  `furnaceOf`; a block's `front` texture on the side it faces), chests 106–109, doors 110–125, beds
+  126–133, farmland 134, wheat 135–142 (`chest`, `door`, `doorSide`, `bed`, `wheat` and their `…Of`;
+  `box`: what a body bumps into when it isn't the whole block, a door's panel or a bed's half):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
   `useBlock`, `isThinLogic`), textures and sound per face, the default
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches and
   thin logic blocks)),
-  `torches.ts` (`torchesHeldBy`: the torches a block holds up), `textures.ts`
+  `torches.ts` (`torchesHeldBy`: the torches a block holds up), `parts.ts` (blocks in pairs: a door's
+  halves, a bed's; `pairPlacement`, `partnerOf`), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
@@ -159,10 +163,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `wake.ts` (what moves on its own
   woken when a column loads: in it if saved, on its neighbours' faces), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
   at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
-  buttons let go; changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal), `physics.ts` (a box of any size, the player's by default: swept collision, walking, jumping,
+  buttons let go; changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with a box hit only where its box is), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
+  blocks' boxes (looked for inside the blocks the body is in only with one about, `nearBox`), walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
-  `underLiquid` for the eye; `overlapsBlock` for placing; `stepMob` for mobs; `touches`: a kind of block against the box, for cactus), `mining.ts` (break
+  `underLiquid` for the eye; `overlapsBlock` for placing (a block's box if given); `stepMob` for mobs; `touches`: a kind of block against the box, for cactus), `mining.ts` (break
   timing (`timeOf`: in survival by the tool held) and crack stage).
 - `src/survival/` — survival worlds, pure: `items.ts` (items: placeable blocks by their ids, and
   `Item` from 256: sticks, coal, copper, iron, crystal, picks, axes and spades of wood, stone and
@@ -196,7 +201,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
   `faceStarts`: quads by face direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then torches),
   `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes,
-  thin logic blocks as boxes (a gate's top turned to its facing),
+  thin logic blocks as boxes (a gate's top turned to its facing), doors' panels and beds as their
+  boxes (`piece`: texture cropped to where each face is, in eighths up a side), wheat as two crossed
+  sheets in the cutout pass (`cross`),
   flowing water block by block at its depth, sides between waters only above the shallower; opaque, cutout (leaves) and transparent passes;
   `flatFaces` for far chunks), `lod.ts` (far chunks: the padded input coarsened in place into
   cells of 2³ or 4³ blocks, water kept exact, trunks kept, walls on seams between levels), `culled.ts` (the

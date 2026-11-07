@@ -11,7 +11,7 @@ import { TUNING } from '../config';
 import { encodeRle } from '../save/rle';
 import type { WorldSaver } from '../save/saver';
 import type { SavedChunk } from '../workers/protocol';
-import { Block, BLOCKS, delay, FACINGS, furnace, inverter, isTorch, useBlock } from '../world/blocks';
+import { bed, Block, BLOCKS, chest, delay, door, FACINGS, furnace, inverter, isTorch, useBlock } from '../world/blocks';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
 import { createBody, overlapsBlock } from '../world/physics';
 import type { World } from '../world/world';
@@ -52,12 +52,14 @@ export function editAllowed(who: PlayerState | undefined, everyone: Iterable<Pla
   const eye = who.y + (who.crouching ? P.crouchEyeHeight : P.eyeHeight);
   const far = Math.hypot(x + 0.5 - who.x, y + 0.5 - eye, z + 0.5 - who.z);
   if (far > TUNING.edit.reach + TUNING.net.reachSlack + 0.87) return false;
-  if (!BLOCKS[block].passable) for (const p of everyone) if (overlapsBlock(createBody(p.x, p.y, p.z), x, y, z)) return false;
+  if (!BLOCKS[block].passable) for (const p of everyone) if (overlapsBlock(createBody(p.x, p.y, p.z), x, y, z, block)) return false;
   return true;
 }
 
-/** Gates as placed: off, facing any way (a delay set to 1). */
-const PLACED_GATES = new Set<number>(FACINGS.flatMap((_, f) => [inverter(f, false), delay(f, 1, false), furnace(f, false)]));
+/** Gates as placed: off, facing any way (a delay set to 1); furnaces and chests any way; doors closed and beds, either half, any way. */
+const PLACED_GATES = new Set<number>(
+  FACINGS.flatMap((_, f) => [inverter(f, false), delay(f, 1, false), furnace(f, false), chest(f), door(f, false, false), door(f, false, true), bed(f, false), bed(f, true)]),
+);
 
 /**
  * A block a player can set: air (breaking), one from the picker, a torch (on a floor or a wall), or

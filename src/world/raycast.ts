@@ -46,7 +46,16 @@ export function raycast(
   let t = 0;
   while (t <= maxDistance) {
     const block = world.getBlock(x, y, z);
-    if (BLOCKS[block].targetable) return { x, y, z, block, nx, ny, nz, distance: t };
+    const info = BLOCKS[block];
+    if (info.targetable) {
+      if (!info.box) return { x, y, z, block, nx, ny, nz, distance: t };
+      // A door or bed: only where its box is; through the rest of the block.
+      const hit = intoBox(origin, dir, x, y, z, info.box);
+      if (hit && hit[0] <= maxDistance) {
+        const n = hit[1];
+        return n < 0 ? { x, y, z, block, nx, ny, nz, distance: t } : { x, y, z, block, nx: n === 0 ? -Math.sign(dir.x) : 0, ny: n === 1 ? -Math.sign(dir.y) : 0, nz: n === 2 ? -Math.sign(dir.z) : 0, distance: hit[0] };
+      }
+    }
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {
       x += stepX;
       t = tMaxX;
@@ -68,4 +77,43 @@ export function raycast(
     }
   }
   return null;
+}
+
+/**
+ * Where the ray meets the box (within block (x, y, z)): its distance, and the axis of the face it
+ * goes in by (-1 if it starts inside). Null if it misses.
+ */
+function intoBox(
+  origin: { x: number; y: number; z: number },
+  dir: { x: number; y: number; z: number },
+  x: number,
+  y: number,
+  z: number,
+  box: readonly [number, number, number, number, number, number],
+): [number, number] | null {
+  const o = [origin.x, origin.y, origin.z];
+  const v = [dir.x, dir.y, dir.z];
+  const at = [x, y, z];
+  let near = -Infinity;
+  let far = Infinity;
+  let axis = -1;
+  for (let a = 0; a < 3; a++) {
+    const lo = at[a] + box[a];
+    const hi = at[a] + box[a + 3];
+    if (v[a] === 0) {
+      if (o[a] < lo || o[a] > hi) return null;
+      continue;
+    }
+    let t0 = (lo - o[a]) / v[a];
+    let t1 = (hi - o[a]) / v[a];
+    if (t0 > t1) [t0, t1] = [t1, t0];
+    if (t0 > near) {
+      near = t0;
+      axis = a;
+    }
+    far = Math.min(far, t1);
+    if (near > far) return null;
+  }
+  if (far < 0) return null;
+  return near < 0 ? [0, -1] : [near, axis];
 }

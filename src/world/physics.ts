@@ -82,13 +82,46 @@ export interface Hits {
 
 /** Move the body by (dx, dy, dz) through the blocks: y first, then x, then z. */
 export function moveBody(body: Body, dx: number, dy: number, dz: number, world: BlockSource): Hits {
-  return { y: sweep(body, 1, dy, world), x: sweep(body, 0, dx, world), z: sweep(body, 2, dz, world) };
+  // Only with a door or bed about does a sweep look inside the blocks the body is already in.
+  const boxed = nearBox(body, dx, dy, dz, world);
+  return { y: sweep(body, 1, dy, world, boxed), x: sweep(body, 0, dx, world, boxed), z: sweep(body, 2, dz, world, boxed) };
+}
+
+/**
+ * Is a block with a box of its own (a door, a bed) anywhere the body's box could be during a move
+ * of (dx, dy, dz): in the box stretched by the move on each axis?
+ */
+function nearBox(body: Body, dx: number, dy: number, dz: number, world: BlockSource): boolean {
+  const w = body.halfWidth;
+  const x0 = Math.floor(body.x - w + Math.min(dx, 0) + EPS);
+  const x1 = Math.floor(body.x + w + Math.max(dx, 0) - EPS);
+  const y0 = Math.floor(body.y + Math.min(dy, 0) + EPS);
+  const y1 = Math.floor(body.y + body.height + Math.max(dy, 0) - EPS);
+  const z0 = Math.floor(body.z - w + Math.min(dz, 0) + EPS);
+  const z1 = Math.floor(body.z + w + Math.max(dz, 0) - EPS);
+  for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (SOLID_BOX[world.getBlock(x, y, z)] === 2) return true;
+  return false;
 }
 
 const solid = (world: BlockSource, x: number, y: number, z: number): boolean => !BLOCKS[world.getBlock(x, y, z)].passable;
 
-/** Move along one axis as far as `d`, stopping against the first solid block. True if it stopped. */
-function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource): boolean {
+/**
+ * What a body bumps into in each block: SOLID_BOX[b] 0 for passable blocks, 1 for a whole cube, 2
+ * for a box of its own (`BlockInfo.box`, in BOX_OF[b * 6 ..]: a door's panel, a bed).
+ */
+const SOLID_BOX = new Uint8Array(256);
+const BOX_OF = new Float64Array(256 * 6);
+BLOCKS.forEach((info, b) => {
+  SOLID_BOX[b] = info.passable ? 0 : info.box ? 2 : 1;
+  BOX_OF.set(info.box ?? [0, 0, 0, 1, 1, 1], b * 6);
+});
+
+/**
+ * Move along one axis as far as `d`, stopping against the first solid thing ahead: a whole block's
+ * face, or the face of a block's own box (a door's panel, a bed's top), which can be inside a block
+ * the body is already in. A box the body already overlaps doesn't stop it. True if it stopped.
+ */
+function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource, boxed: boolean): boolean {
   if (d === 0) return false;
   const pos = [body.x, body.y, body.z];
   // Distance from the body's position to the box's low and high side, per axis.
@@ -105,30 +138,55 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource): bool
   const lo2 = Math.floor(min[a2] + EPS);
   const hi2 = Math.floor(max[a2] - EPS);
   const cell = [0, 0, 0];
-  const layerSolid = (c: number): boolean => {
+  const face = d > 0 ? max[axis] : min[axis];
+  /**
+   * In the layer of blocks at `c` along the axis, the nearest face ahead within the move: the
+   * lowest low side (moving up the axis) or the highest high side (moving down); NaN if none.
+   */
+  const layerStop = (c: number): number => {
     cell[axis] = c;
+    let best = NaN;
     for (let u = lo1; u <= hi1; u++) {
       cell[a1] = u;
       for (let v = lo2; v <= hi2; v++) {
         cell[a2] = v;
-        if (solid(world, cell[0], cell[1], cell[2])) return true;
+        const block = world.getBlock(cell[0], cell[1], cell[2]);
+        const kind = SOLID_BOX[block];
+        if (kind === 0) continue;
+        let lo = c;
+        let hi = c + 1;
+        if (kind === 2) {
+          const k = block * 6;
+          // Clear of the body on the other two axes: no bump.
+          if (u + BOX_OF[k + a1] >= max[a1] - EPS || u + BOX_OF[k + 3 + a1] <= min[a1] + EPS) continue;
+          if (v + BOX_OF[k + a2] >= max[a2] - EPS || v + BOX_OF[k + 3 + a2] <= min[a2] + EPS) continue;
+          lo = c + BOX_OF[k + axis];
+          hi = c + BOX_OF[k + 3 + axis];
+        }
+        if (d > 0) {
+          if (lo >= face - EPS && lo <= face + d - EPS && !(lo >= best)) best = lo;
+        } else if (hi <= face + EPS && hi >= face + d + EPS && !(hi <= best)) best = hi;
       }
     }
-    return false;
+    return best;
   };
 
   let stop: number | null = null;
   if (d > 0) {
-    for (let c = Math.floor(max[axis] - EPS) + 1; c <= Math.floor(max[axis] + d - EPS); c++) {
-      if (layerSolid(c)) {
-        stop = c - above;
+    // From the layer the body's low side is in (a box there may be ahead of it) to the move's end;
+    // with no box about, from the first layer past its face, as only whole blocks can be there.
+    for (let c = boxed ? Math.floor(min[axis] + EPS) : Math.floor(face - EPS) + 1; c <= Math.floor(face + d - EPS); c++) {
+      const at = layerStop(c);
+      if (at === at) {
+        stop = at - above;
         break;
       }
     }
   } else {
-    for (let c = Math.floor(min[axis] + EPS) - 1; c >= Math.floor(min[axis] + d + EPS); c--) {
-      if (layerSolid(c)) {
-        stop = c + 1 + below;
+    for (let c = boxed ? Math.floor(max[axis] - EPS) : Math.floor(face + EPS) - 1; c >= Math.floor(face + d + EPS); c--) {
+      const at = layerStop(c);
+      if (at === at) {
+        stop = at + below;
         break;
       }
     }
@@ -243,14 +301,17 @@ export function touches(body: Body, world: BlockSource, block: Block, margin = 0
 }
 
 /** Would a block at (x, y, z) overlap the body's box? Touching isn't overlapping. For placing blocks. */
-export function overlapsBlock(body: Body, x: number, y: number, z: number): boolean {
+export function overlapsBlock(body: Body, x: number, y: number, z: number, block?: Block): boolean {
+  // A block with a box of its own (a door, a bed) only where its box is.
+  const k = block !== undefined && SOLID_BOX[block] === 2 ? block * 6 : -1;
+  const [x0, y0, z0, x1, y1, z1] = k < 0 ? [0, 0, 0, 1, 1, 1] : [BOX_OF[k], BOX_OF[k + 1], BOX_OF[k + 2], BOX_OF[k + 3], BOX_OF[k + 4], BOX_OF[k + 5]];
   return (
-    x < body.x + body.halfWidth - EPS &&
-    x + 1 > body.x - body.halfWidth + EPS &&
-    y < body.y + body.height - EPS &&
-    y + 1 > body.y + EPS &&
-    z < body.z + body.halfWidth - EPS &&
-    z + 1 > body.z - body.halfWidth + EPS
+    x + x0 < body.x + body.halfWidth - EPS &&
+    x + x1 > body.x - body.halfWidth + EPS &&
+    y + y0 < body.y + body.height - EPS &&
+    y + y1 > body.y + EPS &&
+    z + z0 < body.z + body.halfWidth - EPS &&
+    z + z1 > body.z - body.halfWidth + EPS
   );
 }
 

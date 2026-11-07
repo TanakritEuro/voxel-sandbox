@@ -4,7 +4,7 @@
 // sticks come from a roll the caller makes (seeded, so a test can say what drops). Pure.
 
 import { TUNING } from '../config';
-import { Block, BLOCKS, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, wirePower } from '../world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, doorOf, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, wirePower } from '../world/blocks';
 import type { Cost } from './inventory';
 import { Item, type Tool, type ToolKind } from './items';
 
@@ -13,7 +13,9 @@ for (const b of [Block.Stone, Block.Sandstone, Block.CoalOre, Block.CopperOre, B
   RIGHT_TOOL.set(b, 'pick');
 for (let f = 0; f < 4; f++) for (const lit of [false, true]) RIGHT_TOOL.set(furnace(f, lit), 'pick');
 for (const b of [Block.Wood, Block.SpruceWood, Block.Planks]) RIGHT_TOOL.set(b, 'axe');
-for (const b of [Block.Dirt, Block.Grass, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass]) RIGHT_TOOL.set(b, 'spade');
+// Chests, doors and beds: wood.
+for (let b = Block.Chest; b < Block.Farmland; b++) RIGHT_TOOL.set(b as Block, 'axe');
+for (const b of [Block.Dirt, Block.Grass, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass, Block.Farmland]) RIGHT_TOOL.set(b, 'spade');
 
 /** The pick tier a block needs to give anything (1 wood, 2 stone, 3 iron). */
 const PICK_TIER = new Map<Block, number>([
@@ -30,6 +32,7 @@ const PICK_TIER = new Map<Block, number>([
 const GIVES = new Map<Block, number>([
   [Block.Grass, Block.Dirt],
   [Block.SnowyGrass, Block.Dirt],
+  [Block.Farmland, Block.Dirt],
   [Block.CoalOre, Item.Coal],
   [Block.CopperOre, Item.RawCopper],
   [Block.IronOre, Item.RawIron],
@@ -80,5 +83,9 @@ export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cos
   const gate = gateOf(block);
   if (gate) return [[gate.kind === 'inverter' ? Block.Inverter : Block.Delay, 1]];
   if (furnaceOf(block)) return [[Block.Furnace, 1]];
+  // Either half of a door or bed gives the one (the other half goes with it, giving nothing).
+  if (chestOf(block)) return [[Block.Chest, 1]];
+  if (doorOf(block)) return [[Block.Door, 1]];
+  if (bedOf(block)) return [[Block.Bed, 1]];
   return PLACEABLE_SET.has(block) ? [[block, 1]] : [];
 }

@@ -31,7 +31,7 @@
 // other's surface (`steps`). So water of different depths meets with no hole and no doubled face.
 
 import { TUNING } from '../config';
-import { Block, BLOCKS, FACINGS, gateOf } from '../world/blocks';
+import { bedOf, Block, BLOCKS, FACINGS, gateOf } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
 import { textureLayer } from '../world/textures';
 import { FACE_ORDER, MeshBuilder, type MeshData } from './builder';
@@ -78,15 +78,21 @@ const LIQUID = new Uint8Array(256);
 const DEPTH = new Float64Array(256);
 /** Texture array layer by block and direction: LAYER[block * 6 + dir]. */
 const LAYER = new Uint8Array(256 * 6);
+/** A door's or bed's box within its block (`BlockInfo.box`): BOX[b * 6 .. b * 6 + 5]. */
+const BOX = new Float64Array(256 * 6);
 BLOCKS.forEach((info, b) => {
   OPAQUE[b] = info.opaque ? 1 : 0;
   TRANSPARENT[b] = info.transparent ? 1 : 0;
   CUTOUT[b] = info.cutout ? 1 : 0;
   SHAPED[b] = info.shape !== 'cube' ? 1 : 0;
-  SHAPE[b] = ['cube', 'torch', 'wire', 'switch', 'button', 'plate'].indexOf(info.shape);
+  SHAPE[b] = ['cube', 'torch', 'wire', 'switch', 'button', 'plate', 'panel', 'slab', 'cross'].indexOf(info.shape);
   ON[b] = b === Block.SwitchOn || b === Block.ButtonOn ? 1 : 0;
   const gate = gateOf(b);
   if (gate) [FACE_X[b], FACE_Z[b]] = FACINGS[gate.facing];
+  // A bed's top turned the way its head points.
+  const bedHalf = bedOf(b);
+  if (bedHalf) [FACE_X[b], FACE_Z[b]] = FACINGS[bedHalf.facing];
+  if (info.box) BOX.set(info.box, b * 6);
   if (info.wall) {
     WALL_X[b] = info.wall.x;
     WALL_Z[b] = info.wall.z;
@@ -323,7 +329,10 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   opaque.mark();
   cutout.mark();
   transparent.mark();
-  for (const i of shaped) quads += SHAPE[padded[i]] === 1 ? torch(padded, light, i, origin) : logicShape(padded, light, i, origin);
+  for (const i of shaped) {
+    const shape = SHAPE[padded[i]];
+    quads += shape === 1 ? torch(padded, light, i, origin) : shape <= 5 ? logicShape(padded, light, i, origin) : shape === 8 ? cross(padded, light, i, origin) : piece(padded, light, i, origin);
+  }
   for (const i of liquids) quads += water(padded, light, i, origin);
   for (let n = 0; n < steps.length; n += 2) {
     const i = steps[n];
@@ -494,6 +503,102 @@ function box(base: number[], lo: number[], hi: number[], topLayer: number, sideL
   }
   return quads;
 }
+
+/**
+ * A door's panel or a bed at padded index i: its box (`BlockInfo.box`), every face but those lying
+ * on the block's side against an opaque neighbour, in the opaque pass. Each face shows the part of
+ * its texture where it is in the block (a bed's sides the bottom half, a panel's edges a strip), and
+ * a bed's top is turned the way its head points. Lit flat by its own block's light. Returns the
+ * quads made.
+ */
+function piece(padded: Uint8Array, light: Uint8Array, i: number, origin: number[]): number {
+  const b = padded[i];
+  const base = [origin[0] + (i % P) - 1, origin[1] + Math.floor(i / (P * P)) - 1, origin[2] + (Math.floor(i / P) % P) - 1];
+  const lo = [BOX[b * 6], BOX[b * 6 + 1], BOX[b * 6 + 2]];
+  const hi = [BOX[b * 6 + 3], BOX[b * 6 + 4], BOX[b * 6 + 5]];
+  const l = light[i];
+  const sun = (l >> 4) * 17;
+  const glow = Math.max((l & 15) * 17, GLOW[b]);
+  const turned = FACE_X[b] !== 0 || FACE_Z[b] !== 0;
+  let quads = 0;
+  for (let dir = 0; dir < 6; dir++) {
+    const d = dir >> 1;
+    const s = dir & 1 ? -1 : 1;
+    // On the block's side, against something opaque: hidden.
+    const onSide = s > 0 ? hi[d] === 1 : lo[d] === 0;
+    if (onSide && OPAQUE[padded[i + TOWARDS[dir]]]) continue;
+    const ua = s > 0 ? (d + 1) % 3 : (d + 2) % 3;
+    const va = s > 0 ? (d + 2) % 3 : (d + 1) % 3;
+    const tu = d === 0 ? 2 : 0;
+    const tv = d === 1 ? 2 : 1;
+    const layer = LAYER[b * 6 + dir];
+    const shade = SHADED[dir * 4 + 3];
+    opaque.reserve(1);
+    for (let k = 0; k < 4; k++) {
+      const cu = k === 1 || k === 2;
+      const cv = k >= 2;
+      const p = pos;
+      p[d] = base[d] + (s > 0 ? hi[d] : lo[d]);
+      p[ua] = base[ua] + (cu ? hi[ua] : lo[ua]);
+      p[va] = base[va] + (cv ? hi[va] : lo[va]);
+      let tx = p[tu] - base[tu];
+      let ty = p[tv] - base[tv];
+      if (turned && dir === 2) {
+        // As a gate's top: up (row 0) along the facing, right a quarter turn from it.
+        const cx = tx - 0.5;
+        const cz = ty - 0.5;
+        const fx = FACE_X[b];
+        const fz = FACE_Z[b];
+        tx = 0.5 + cx * fz - cz * fx;
+        ty = 0.5 + cx * fx + cz * fz;
+      }
+      // Texture coordinates are whole blocks, v with eighths added: on a side, up to the box's
+      // height in eighths (a bed's 1/2 shows the texture's bottom half); elsewhere the nearest
+      // whole block (a panel's 3/16 edges show one row or column of it).
+      const ey = d !== 1 ? Math.round((ty - Math.floor(ty)) * 8) : 0;
+      opaque.vertex(p[0], p[1], p[2], shade, sun, glow, Math.round(tx), d !== 1 ? Math.floor(ty) : Math.round(ty), layer, ey);
+    }
+    opaque.quad();
+    quads++;
+  }
+  return quads;
+}
+
+/**
+ * Wheat at padded index i: two sheets crossing corner to corner, each seen from both sides (4
+ * quads, in the cutout pass: it has holes), the whole texture across each, lit flat by its own
+ * block's light. Returns the quads made.
+ */
+function cross(padded: Uint8Array, light: Uint8Array, i: number, origin: number[]): number {
+  const b = padded[i];
+  const x = origin[0] + (i % P) - 1;
+  const y = origin[1] + Math.floor(i / (P * P)) - 1;
+  const z = origin[2] + (Math.floor(i / P) % P) - 1;
+  const l = light[i];
+  const sun = (l >> 4) * 17;
+  const glow = Math.max((l & 15) * 17, GLOW[b]);
+  const layer = LAYER[b * 6];
+  const shade = SHADED[3];
+  // Each sheet from (x0, z0) to (x1, z1), then the same seen from behind (its corners the other way round).
+  for (const [x0, z0, x1, z1] of CROSS) {
+    for (const back of [false, true]) {
+      cutout.reserve(1);
+      const [ax, az, bx, bz] = back ? [x1, z1, x0, z0] : [x0, z0, x1, z1];
+      cutout.vertex(x + ax, y, z + az, shade, sun, glow, back ? 1 : 0, 0, layer);
+      cutout.vertex(x + bx, y, z + bz, shade, sun, glow, back ? 0 : 1, 0, layer);
+      cutout.vertex(x + bx, y + 1, z + bz, shade, sun, glow, back ? 0 : 1, 1, layer);
+      cutout.vertex(x + ax, y + 1, z + az, shade, sun, glow, back ? 1 : 0, 1, layer);
+      cutout.quad();
+    }
+  }
+  return 4;
+}
+
+/** Wheat's two sheets, a little in from the corners. */
+const CROSS = [
+  [0.1, 0.1, 0.9, 0.9],
+  [0.1, 0.9, 0.9, 0.1],
+] as const;
 
 /** A torch's box within its block: 2 × 10 × 2 sixteenths, standing in the middle of the floor. */
 const TORCH_LO = [7 / 16, 0, 7 / 16];

@@ -63,6 +63,16 @@ export enum Block {
   Delay = 66,
   /** Furnaces by facing (`FACINGS`: the way the front looks), out and burning (98–105): `furnace`, `furnaceOf`. */
   Furnace = 98,
+  /** Homes (Milestone 13). Chests by facing (106–109): `chest`, `chestOf`. */
+  Chest = 106,
+  /** Doors by facing (the way the player looked placing it), closed and open, lower and upper half (110–125): `door`, `doorOf`. */
+  Door = 110,
+  /** Beds by facing (the way the head points), foot and head (126–133): `bed`, `bedOf`. */
+  Bed = 126,
+  /** Tilled earth, for planting in. */
+  Farmland = 134,
+  /** Wheat by stage, 0 (just sown) to 7 (ripe) (135–142): `wheat`, `wheatStage`. */
+  Wheat = 135,
 }
 
 type RGB = [number, number, number];
@@ -83,7 +93,12 @@ export interface BlockInfo {
    * wall beside it (`wall`), never merged. Or a thin logic block standing on the block below:
    * wire (a 1/16 sheet), a switch, a button, or a gate's plate (1/8).
    */
-  shape: 'cube' | 'torch' | 'wire' | 'switch' | 'button' | 'plate';
+  shape: 'cube' | 'torch' | 'wire' | 'switch' | 'button' | 'plate' | 'panel' | 'slab' | 'cross';
+  /**
+   * What a body bumps into when it isn't the whole block (a door's panel, a bed): from (x0, y0, z0)
+   * to (x1, y1, z1) within the block, 0–1. Only for blocks that aren't passable.
+   */
+  box?: readonly [number, number, number, number, number, number];
   /** A wall torch's wall: the horizontal step from it to the block it hangs on. */
   wall?: { x: number; z: number };
   /** Offered by the block picker (wall torches aren't: they are the torch, placed on a wall). */
@@ -158,6 +173,34 @@ export const FACINGS: readonly (readonly [number, number])[] = [
   [0, 1],
   [0, -1],
 ];
+
+/** A door's panel and a bed's height, in blocks. */
+export const PANEL = 3 / 16;
+export const BED_HEIGHT = 1 / 2;
+
+/**
+ * The side of its block a door's panel is against (an index into `FACINGS`): closed, the side
+ * nearest the player who placed it (looking along `facing`); open, swung a quarter turn about the
+ * hinge on their left to the left side.
+ */
+export function doorSide(facing: number, open: boolean): number {
+  const [fx, fz] = FACINGS[facing];
+  if (!open) return facing ^ 1;
+  // Left of (fx, fz), seen from above with y up: (fz, -fx).
+  const lx = fz;
+  const lz = -fx;
+  return FACINGS.findIndex(([x, z]) => x === lx && z === lz);
+}
+
+/** A panel's box against side `side` (an index into `FACINGS`) of its block, the whole height. */
+function panelBox(side: number): readonly [number, number, number, number, number, number] {
+  const [sx, sz] = FACINGS[side];
+  const x0 = sx > 0 ? 1 - PANEL : 0;
+  const x1 = sx < 0 ? PANEL : 1;
+  const z0 = sz > 0 ? 1 - PANEL : 0;
+  const z1 = sz < 0 ? PANEL : 1;
+  return [x0, 0, z0, x1, 1, z1];
+}
 
 /** Water: a source (the sea, lakes, water placed), and what flowing and falling water copy. */
 const WATER: Omit<BlockInfo, 'sound'> = {
@@ -255,6 +298,46 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
       front: { texture: lit ? ('furnace_front_lit' as const) : ('furnace_front' as const), facing },
     })),
   ),
+  // Chests: boards and a latch on the front, facing the player who placed it.
+  ...FACINGS.map((_, facing) => ({
+    ...solid('Chest', 2.5, faces('chest_top', 'chest_side', 'chest_top'), 0x9a6a3a),
+    pickable: facing === 0,
+    front: { texture: 'chest_front' as const, facing },
+  })),
+  // Doors: a panel against one side of the block, the side by facing and whether it's open.
+  ...FACINGS.flatMap((_, facing) =>
+    [false, true].flatMap((open) =>
+      [false, true].map((upper) => ({
+        ...solid('Door', 3, faces(upper ? 'door_upper' : 'door_lower'), 0xa67c4a),
+        opaque: false,
+        shape: 'panel' as const,
+        box: panelBox(doorSide(facing, open)),
+        pickable: facing === 0 && !open && !upper,
+        icon: 'door_item' as const,
+      })),
+    ),
+  ),
+  // Beds: half a block high, a blanket over the foot and a pillow at the head.
+  ...FACINGS.flatMap((_, facing) =>
+    [false, true].map((head) => ({
+      ...solid('Bed', 0.4, faces(head ? 'bed_head' : 'bed_foot', 'bed_side', 'planks'), 0xb04a3a),
+      opaque: false,
+      shape: 'slab' as const,
+      box: [0, 0, 0, 1, BED_HEIGHT, 1] as const,
+      pickable: facing === 0 && !head,
+      icon: 'bed_item' as const,
+    })),
+  ),
+  { ...solid('Farmland', 0.6, faces('farmland', 'dirt'), 0x5e4126, 0x86603e), pickable: false },
+  // Wheat: two crossed sheets, growing taller and turning gold.
+  ...Array.from({ length: 8 }, (_, stage) => ({
+    ...solid('Wheat', 0.05, faces(`wheat_${stage}` as TextureName), stage < 7 ? 0x6aa84f : 0xd8b54a),
+    opaque: false,
+    passable: true,
+    shape: 'cross' as const,
+    cutout: true,
+    pickable: false,
+  })),
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
@@ -293,7 +376,10 @@ const SOUNDS: Partial<Record<Block, BlockSound>> = {
   [Block.ButtonOn]: 'wood',
   [Block.SignalLamp]: 'glass',
   [Block.SignalLampOn]: 'glass',
+  [Block.Farmland]: 'dirt',
 };
+for (let b = Block.Chest; b < Block.Farmland; b++) SOUNDS[b as Block] = 'wood';
+for (let b = Block.Wheat; b < Block.Wheat + 8; b++) SOUNDS[b as Block] = 'leaves';
 
 export const BLOCKS: readonly BlockInfo[] = TABLE.map((info, b) => ({ ...info, sound: SOUNDS[b as Block] ?? 'stone' }));
 
@@ -380,14 +466,51 @@ export function furnaceOf(block: Block): { facing: number; lit: boolean } | null
   return i >= 0 && i < 8 ? { facing: i >> 1, lit: (i & 1) === 1 } : null;
 }
 
+// --- Homes ------------------------------------------------------------------------------------
+
+/** A chest facing `facing` (`FACINGS`: the way its front looks). */
+export const chest = (facing: number): Block => (Block.Chest + facing) as Block;
+
+/** A chest's facing; null for any other block. */
+export function chestOf(block: Block): { facing: number } | null {
+  const i = block - Block.Chest;
+  return i >= 0 && i < 4 ? { facing: i } : null;
+}
+
+/** A door placed by a player looking along `facing`, open or closed, its lower or upper half. */
+export const door = (facing: number, open: boolean, upper: boolean): Block => (Block.Door + facing * 4 + (open ? 2 : 0) + (upper ? 1 : 0)) as Block;
+
+/** A door half's facing, whether it's open, and which half; null for any other block. */
+export function doorOf(block: Block): { facing: number; open: boolean; upper: boolean } | null {
+  const i = block - Block.Door;
+  return i >= 0 && i < 16 ? { facing: i >> 2, open: (i & 2) !== 0, upper: (i & 1) !== 0 } : null;
+}
+
+/** A bed whose head points along `facing`: its foot or its head. */
+export const bed = (facing: number, head: boolean): Block => (Block.Bed + facing * 2 + (head ? 1 : 0)) as Block;
+
+/** A bed half's facing (the way the head points) and which half; null for any other block. */
+export function bedOf(block: Block): { facing: number; head: boolean } | null {
+  const i = block - Block.Bed;
+  return i >= 0 && i < 8 ? { facing: i >> 1, head: (i & 1) === 1 } : null;
+}
+
+/** Wheat at `stage` (0 sown, 7 ripe). */
+export const wheat = (stage: number): Block => (Block.Wheat + stage) as Block;
+
+/** Wheat's stage, or -1 for any other block. */
+export const wheatStage = (block: Block): number => (block >= Block.Wheat && block < Block.Wheat + 8 ? block - Block.Wheat : -1);
+
 /**
  * The block to place for `block` from the hotbar against a face whose normal is (nx, ny, nz), by a
  * player looking along `yaw`: thin logic blocks only on a top, a gate facing the way the player
- * looks; a furnace with its front to the player; null where it can't go. Anything else as it is.
+ * looks; a furnace or chest with its front to the player; null where it can't go. Anything else as
+ * it is (doors and beds, two blocks each, are placed by `world/parts.ts`).
  */
 export function logicPlacement(block: Block, ny: number, yaw: number): Block | null {
   // Its front towards the player: the opposite of the way they look (facings come in pairs).
   if (furnaceOf(block)) return furnace(facingFromYaw(yaw) ^ 1, false);
+  if (chestOf(block)) return chest(facingFromYaw(yaw) ^ 1);
   if (!isThinLogic(block)) return block;
   if (ny <= 0) return null;
   const gate = gateOf(block);
