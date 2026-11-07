@@ -169,7 +169,7 @@ matters). The budget holds: 60 fps at radius 8 beside a field of 500 growing whe
 2. **Doors:** opening by hand and by signal, mobs kept out. Built (2026-11-07).
 3. **Chests:** contents, the screen, saving, drops. Built (2026-11-07).
 4. **Farming:** farmland, seeds, wheat growing, harvest, bread. Built (2026-11-07).
-5. **Beds:** sleeping through the night, waking at the bed, moss.
+5. **Beds:** sleeping through the night, waking at the bed, moss. Built (2026-11-07).
 6. **Together:** containers, doors, crops and sleeping for guests.
 7. **Measurements,** notes and playtest questions.
 
@@ -458,4 +458,52 @@ the machine was busier than in Milestone 12's measurements, so the baseline is h
 - `?farm`'s field drew every stage from sprouts to tall green-gold stalks;
 - breaking wheat and farmland gave seeds and dirt, picked up walking over them.
 - No console errors.
+
+## Step 5: beds — built (2026-11-07)
+
+**What's there** (numbers in `TUNING.sleep`):
+- **A right click on a bed** (either half; Shift builds against it):
+  - in survival it becomes where you wake after dying, "You'll wake here." It's kept with the
+    inventory and health (`SurvivalRecord.bed`, the foot's place, cleaned by `bedFrom`); a guest's
+    goes to the host with the rest and is kept by name;
+  - by day (daylight 0.3 or more): "You can only sleep at night.";
+  - with a hostile mob within 8 blocks: "You can't sleep with something near.";
+  - otherwise you lie on the bed, held still, the eye low, and the screen dims over 2 s. Then it's
+    morning (06:28), saved, and you get up beside the bed.
+  - Sleeping works in creative too; only survival keeps where you wake.
+- **Getting up early:** a movement key or Space, being hit, dying, or the bed going.
+- **Where you wake** (`survival/sleep.ts`, `wakeAt`, pure):
+  - beside the foot, on the floor where there's room for a body;
+  - else beside the head, then off the foot's end, then on the bed itself;
+  - nowhere if the bed is gone.
+- **Dying with a bed:** "Start again" puts you on the bed until its land has loaded, then beside it.
+  If it's gone: at the world's spawn, "Your bed was missing.", and the bed is forgotten.
+- **Moss:** a mossback leaves 1–2 moss with its meat (the drops now scatter a little).
+- **A bed from 3 planks and 3 moss.** `?kit` adds a bed and 3 moss.
+- **Not yet:** a guest's click says "Sleeping in a friend's world can't be done yet." (step 6),
+  though it does keep the bed.
+
+**Tests** (8 new, 470 in all, `tests/sleep.test.ts`):
+- **Sleeping:** only at night; not with something hostile within 8 blocks (8.5 is fine); by day it's
+  the day that says no.
+- **The bed's foot** found from either half.
+- **Saved beds:** three whole numbers kept; junk not.
+- **Waking:**
+  - beside the foot, in the middle of a block, on the floor;
+  - beside the head with the foot's sides walled, then off the end, then on the bed;
+  - not where there's no floor or a ceiling too low;
+  - nowhere with the bed gone, or with its head's place given.
+- **The recipe:** 3 planks and 3 moss, not 2 moss.
+
+**Bench:** nothing to measure. Sleeping is one check on a click and a few lines a frame while
+asleep.
+
+**Tried in the browser** (`?seed=7&survival&kit&nolock&mobs=0&daylength=40`, a 40 s day):
+- the bed from the kit placed on the grass, its head away from the player;
+- clicked at 08:27: "You'll wake here." and "You can only sleep at night.";
+- clicked at 18:56 (daylight 0.22): lying on the foot (feet at 67.8, on the bed), the screen dimmed;
+- 2 s later it was 06:46 and the player stood beside the foot.
+- No console errors.
+- **Not tried in the browser:** dying and waking at the bed (I couldn't steer the player into the sea
+  to drown in a reasonable time). The tests cover where you wake; "Start again" calls it.
 

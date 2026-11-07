@@ -121,6 +121,8 @@ export const TUNING = {
     food: { rawMeat: 3, cookedMeat: 8, berries: 2, bread: 5 },
     /** Raw meat an animal leaves when it goes in a puff: from and to. */
     meat: [1, 2] as [number, number],
+    /** Moss a mossback leaves as well: from and to. */
+    moss: [1, 2] as [number, number],
     /** Farming: one in this many grass blocks dug gives seeds; wheat grows a stage every `stageSeconds` (give or
      *  take a fifth) in light of at least `light`, stepped every `tickSeconds`; ripe, it gives 1 wheat and
      *  1 to `ripeSeeds` seeds. */
@@ -277,6 +279,9 @@ export const TUNING = {
     /** Sunlight at night, as a fraction of the day's (moonlight); block light stays as it is. */
     night: 0.2,
   },
+  /** Beds: sleeping when the daylight is under `night`, not with a hostile mob within `near` blocks; the screen dims
+   *  for `dim` seconds, then it is `morning` (time of day). Waking with no room round the bed is on it, `onBed` up. */
+  sleep: { night: 0.3, near: 8, dim: 2, morning: 0.27, onBed: 0.5 },
   sky: {
     /** The sky and the fog by day, at sunrise and sunset, and at night. */
     colour: 0x9fd0ff,

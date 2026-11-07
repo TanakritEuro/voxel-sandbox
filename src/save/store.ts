@@ -15,6 +15,8 @@ export type WorldMode = 'creative' | 'survival';
 export interface SurvivalRecord {
   inventory: (Stack | null)[];
   health?: { health: number; air: number };
+  /** Where this player wakes after dying: the foot of their bed (`bedFrom` cleans it); missing for the world's spawn. */
+  bed?: [number, number, number];
 }
 
 export interface PlayerState {

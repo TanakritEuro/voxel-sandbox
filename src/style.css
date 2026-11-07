@@ -462,6 +462,21 @@ body.menu-mode #hud {
   opacity: 1;
 }
 
+.sleep-dim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #05070c;
+  opacity: 0;
+  transition: opacity 0.4s ease-in;
+}
+
+/* Dimming over the sleep's length (--dim, set by the game), brightening quickly on getting up. */
+.sleep-dim.on {
+  opacity: 0.92;
+  transition-duration: var(--dim, 2s);
+}
+
 .hurt-flash {
   position: absolute;
   inset: 0;

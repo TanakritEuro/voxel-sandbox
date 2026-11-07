@@ -28,6 +28,7 @@ import type { Stack } from './survival/inventory';
 import { Furnace, Furnaces } from './survival/furnace';
 import { Chests } from './survival/chest';
 import { Crops, sowable, tillable } from './survival/farming';
+import { type BedPlace, bedFoot, bedFrom, canSleep, wakeAt } from './survival/sleep';
 import { hostSurvival } from './net/hostSurvival';
 import { Health } from './survival/health';
 import { hash3 } from './math';
@@ -46,7 +47,7 @@ import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import type { Mob } from './mobs/brain';
 import { mobOnRay } from './mobs/hit';
-import { KINDS } from './mobs/kinds';
+import { KINDS, MobKind } from './mobs/kinds';
 import { type MobSound, MobManager } from './mobs/mobs';
 import { BlockCache } from './mobs/blockCache';
 import { Bot } from './net/bot';
@@ -60,7 +61,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, wheat, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, wheat, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
 import { CHUNK_SIZE, toChunk } from './world/coords';
@@ -184,8 +185,19 @@ const saver = await WorldSaver.open(store, record);
 let survival = modeOf(record) === 'survival';
 const pack = SurvivalInventory.from(record.survival?.inventory);
 const health = Health.from(record.survival?.health);
-const survivalRecord = { inventory: pack.slots, health: health.toJSON() };
+/** Where this player wakes after dying (survival): the foot of their bed, or null for the spawn. */
+let bed: BedPlace | null = bedFrom(record.survival?.bed);
+const survivalRecord: SurvivalRecord = { inventory: pack.slots, health: health.toJSON() };
+if (bed) survivalRecord.bed = bed;
 record.survival = survivalRecord;
+/**
+ * Asleep in a bed: where (its foot), and seconds so far; the screen dims, and after
+ * `TUNING.sleep.dim` s it is morning. Null awake.
+ */
+let asleep: { foot: BedPlace; for: number } | null = null;
+/** Started again with a bed: put beside it once its land has loaded (or at the spawn if it's gone). */
+let wakeAtBed: BedPlace | null = null;
+
 /** Died, and not started again yet (the death screen is up). */
 let dead = false;
 // `?kit` (an unsaved world only): something of everything to try, a tool of each kind and tier,
@@ -193,7 +205,7 @@ let dead = false;
 if (unsaved && !guest && params.has('kit')) {
   for (const item of [Item.StonePick, Item.WoodAxe, Item.IronSpade, Block.Torch, Block.Planks, Item.WoodPick, Item.IronPick, Item.StoneAxe, Item.WoodSpade])
     pack.add(item, isBlockItem(item) ? 16 : 1);
-  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6], [Item.Seeds, 16], [Item.Wheat, 6]] as const) pack.add(item, n);
+  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6], [Item.Seeds, 16], [Item.Wheat, 6], [Item.Moss, 3], [Block.Bed, 1]] as const) pack.add(item, n);
   // A little hungry, to try eating at once.
   health.hunger = 12;
 }
@@ -563,7 +575,10 @@ function openToFriends(room: Room): HostSession {
       },
       // A guest's state, cleaned as a saved one is, kept in this world's record by name.
       keep: (name, s) => {
-        (record.guests ??= {})[name] = { inventory: SurvivalInventory.from(s.inventory).toJSON(), health: Health.from(s.health).toJSON() };
+        const kept: SurvivalRecord = { inventory: SurvivalInventory.from(s.inventory).toJSON(), health: Health.from(s.health).toJSON() };
+        const guestBed = bedFrom(s.bed);
+        if (guestBed) kept.bed = guestBed;
+        (record.guests ??= {})[name] = kept;
       },
     }),
     settings.name,
@@ -850,6 +865,74 @@ const cropWorld = {
   loaded: (x: number, z: number) => world.hasColumn(toChunk(x), toChunk(z)),
 };
 
+/**
+ * A right click on a bed: in survival it becomes where this player wakes; at night, with nothing
+ * hostile near, they lie down in it. A guest can't sleep in a friend's world yet.
+ */
+function useBed(x: number, y: number, z: number): void {
+  const foot = bedFoot(world, x, y, z);
+  if (!foot) return;
+  if (survival && (!bed || bed.some((v, i) => v !== foot[i]))) {
+    bed = foot;
+    say("You'll wake here.");
+    void saveRecord();
+    sendKept();
+  }
+  const p = player.body;
+  let nearest = Infinity;
+  for (const m of mobs?.mobs ?? []) if (KINDS[m.kind].hostile) nearest = Math.min(nearest, Math.hypot(m.body.x - p.x, m.body.y - p.y, m.body.z - p.z));
+  const check = canSleep(daylightNow, nearest);
+  if (check === 'day') return say('You can only sleep at night.');
+  if (check === 'near') return say("You can't sleep with something near.");
+  if (guest) return say("Sleeping in a friend's world can't be done yet.");
+  // Lie down on the foot, still.
+  asleep = { foot, for: 0 };
+  player.moveTo(foot[0] + 0.5, foot[1] + TUNING.sleep.onBed, foot[2] + 0.5);
+  sleepEl.classList.add('on');
+}
+
+/** Out of bed, without the night going (moving, being hit, dying). */
+function getUp(): void {
+  if (!asleep) return;
+  asleep = null;
+  sleepEl.classList.remove('on');
+}
+
+/**
+ * Once a frame: asleep, held still on the bed, the eye low, until a movement key gets them up or the
+ * dimming is done and it's morning (saved), when they get up beside the bed. Started again with a
+ * bed, put beside it once its land is there.
+ */
+function sleeping(dt: number): void {
+  if (wakeAtBed && world.hasColumn(toChunk(wakeAtBed[0]), toChunk(wakeAtBed[2]))) {
+    const spot = wakeAt(world, wakeAtBed);
+    if (spot) player.moveTo(spot[0], spot[1], spot[2]);
+    else {
+      say('Your bed was missing.');
+      bed = null;
+      player.moveTo(spawnFeet.x, spawnFeet.y, spawnFeet.z);
+      void saveRecord();
+    }
+    wakeAtBed = null;
+  }
+  if (!asleep) return;
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].some((k) => input.isHeld(k)) || !bedOf(world.getBlock(...asleep.foot))) {
+    getUp();
+    return;
+  }
+  const { foot } = asleep;
+  player.moveTo(foot[0] + 0.5, foot[1] + TUNING.sleep.onBed, foot[2] + 0.5);
+  camera.position.y -= TUNING.player.eyeHeight - 0.25;
+  asleep.for += dt;
+  if (asleep.for < TUNING.sleep.dim) return;
+  // Morning.
+  if (!timeHeld) time = TUNING.sleep.morning;
+  const spot = wakeAt(world, foot);
+  getUp();
+  if (spot) player.moveTo(spot[0], spot[1], spot[2]);
+  void saveRecord();
+}
+
 function closeBackpack(): void {
   backpack.hide();
   input.lock();
@@ -985,6 +1068,9 @@ function setMode(toSurvival: boolean): void {
 // to start again after dying (back at the spawn, with everything still carried).
 const vitalsEl = el(document.body, 'div', 'vitals hidden');
 const hurtEl = el(document.body, 'div', 'hurt-flash');
+/** Darkens while asleep (over `TUNING.sleep.dim` s). */
+const sleepEl = el(document.body, 'div', 'sleep-dim');
+sleepEl.style.setProperty('--dim', `${TUNING.sleep.dim}s`);
 const deathRoot = el(document.body, 'div', 'menu-root death hidden');
 const deathPanel = el(deathRoot, 'div', 'menu');
 el(deathPanel, 'div', 'menu-title', 'You died');
@@ -1047,6 +1133,7 @@ function live(dt: number): void {
 }
 
 function die(): void {
+  getUp();
   dead = true;
   mining.target = null;
   if (backpack.open) backpack.hide();
@@ -1060,7 +1147,11 @@ function startAgain(): void {
   dead = false;
   deathRoot.classList.add('hidden');
   health.reset();
-  player.moveTo(spawnFeet.x, spawnFeet.y, spawnFeet.z);
+  // At the bed (on it until its land is there and the place beside it is known), or the spawn.
+  if (survival && bed) {
+    player.moveTo(bed[0] + 0.5, bed[1] + TUNING.sleep.onBed, bed[2] + 0.5);
+    wakeAtBed = bed;
+  } else player.moveTo(spawnFeet.x, spawnFeet.y, spawnFeet.z);
   renderVitals();
   input.lock();
   void saveRecord();
@@ -1172,11 +1263,12 @@ function hitMob(mob: Mob, fromX = player.body.x, fromZ = player.body.z, points =
   if (mobs.hit(mob, fromX, fromZ, points)) {
     const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow);
     particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, light);
-    // In survival an animal leaves raw meat, a gloamer an ember.
+    // In survival an animal leaves raw meat (a mossback moss too, for beds), a gloamer an ember.
     if (survival) {
-      const [least, most] = TUNING.survival.meat;
-      const stack = KINDS[mob.kind].hostile ? { item: Item.Ember, count: 1 } : { item: Item.RawMeat, count: least + Math.floor(Math.random() * (most - least + 1)) };
-      ground.drop(b.x, b.y + b.height / 2, b.z, stack, 0, TUNING.survival.ground.hop, 0);
+      const some = ([least, most]: [number, number]) => least + Math.floor(Math.random() * (most - least + 1));
+      const stacks = KINDS[mob.kind].hostile ? [{ item: Item.Ember, count: 1 }] : [{ item: Item.RawMeat, count: some(TUNING.survival.meat) }];
+      if (mob.kind === MobKind.Mossback) stacks.push({ item: Item.Moss, count: some(TUNING.survival.moss) });
+      for (const stack of stacks) ground.drop(b.x, b.y + b.height / 2, b.z, stack, (Math.random() - 0.5) * 1.5, TUNING.survival.ground.hop, (Math.random() - 0.5) * 1.5);
     }
   }
 }
@@ -1184,6 +1276,7 @@ function hitMob(mob: Mob, fromX = player.body.x, fromZ = player.body.z, points =
 /** A gloamer's hit on this player: the points, a push away from it, the flash and cry of being hurt. */
 function struck(damage: number, push: number, fromX: number, fromZ: number): void {
   if (!survival || dead) return;
+  getUp();
   health.hurt(damage, 'gloamer');
   const b = player.body;
   const dx = b.x - fromX;
@@ -1234,6 +1327,8 @@ function editing(dt: number): void {
     const holding = survival ? pack.slots[selected] : null;
     if (survival && !shift && holding && (holding.item === Item.Seeds || toolOf(holding.item)?.kind === 'spade') && farm(target, holding.item === Item.Seeds)) {
       // Tilled or sown (or, a guest, told it can't be yet).
+    } else if (!shift && bedOf(target.block)) {
+      useBed(target.x, target.y, target.z);
     } else if (survival && !shift && chestOf(target.block)) {
       // A chest opens on the inventory screen (a guest's chests are the host's: to come).
       if (guest) say("A friend's chests can't be opened yet.");
@@ -1453,6 +1548,7 @@ function frame(now: number): void {
   if (autofly?.active) autofly.update(now, dt, interval);
   else if (!paused()) {
     player.update(dt);
+    sleeping(dt);
     if (survival) live(dt);
     // Footsteps, landing, splashing and digging, from how the player moved this frame.
     const b = player.body;
@@ -1646,7 +1742,7 @@ let keptSent = '';
 /** A guest's survival state to the host, if it changed, for it to keep (and give back next time). */
 function sendKept(): void {
   if (!guest || !survival) return;
-  const state = { inventory: pack.toJSON(), health: health.toJSON() };
+  const state = bed ? { inventory: pack.toJSON(), health: health.toJSON(), bed } : { inventory: pack.toJSON(), health: health.toJSON() };
   const json = JSON.stringify(state);
   if (json === keptSent) return;
   keptSent = json;
@@ -1656,6 +1752,8 @@ function sendKept(): void {
 /** The record saved: where the player is, the time, and in it the survival inventory and health as they are. */
 function saveRecord(): Promise<void> {
   survivalRecord.health = health.toJSON();
+  if (bed) survivalRecord.bed = bed;
+  else delete survivalRecord.bed;
   record.furnaces = furnaces.toJSON();
   record.containers = chests.toJSON();
   record.crops = crops.toJSON();

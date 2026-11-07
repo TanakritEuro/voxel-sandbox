@@ -35,6 +35,7 @@ const RAW_IRON = palette(0xb8a898, 0x6b6560, 0xe3d6c8);
 const SEED = palette(0xa08a4a, 0x5e4f24, 0xd8c47a);
 const GRAIN = palette(0xd8b54a, 0x8a6a1e, 0xf6e08a);
 const CRUST = palette(0xc0803a, 0x7a4a1c, 0xe8b46a);
+const MOSS = palette(0x5f8f3a, 0x35552a, 0x9cc46a);
 
 // Masks, row 0 at the top: '.' empty, m/d/l the material's main, dark and light, h a handle.
 const PICK = [
@@ -182,6 +183,25 @@ const LOAF = [
   '................',
   '................',
 ];
+/** A soft tuft, ragged at the edges. */
+const TUFT = [
+  '................',
+  '................',
+  '................',
+  '......l..l......',
+  '....dlmllmld....',
+  '...dmmmlmmmmd...',
+  '..dmlmmmmmlmmd..',
+  '..mmmmmlmmmmmd..',
+  '.dmmlmmmmmmlmmd.',
+  '.dmmmmmmlmmmmmd.',
+  '..dmmlmmmmmmmd..',
+  '...ddmmmdmmdd...',
+  '.....dd..dd.....',
+  '................',
+  '................',
+  '................',
+];
 const LUMP = [
   '................',
   '................',
@@ -269,6 +289,7 @@ const ART: Record<number, [string[], Palette]> = {
   [Item.Seeds]: [SEEDS, SEED],
   [Item.Wheat]: [SHEAF, GRAIN],
   [Item.Bread]: [LOAF, CRUST],
+  [Item.Moss]: [TUFT, MOSS],
 };
 
 /** Item `item`'s picture: 16 × 16 RGBA, row 0 at the top, transparent where empty; null for a block (it has its own icon). */

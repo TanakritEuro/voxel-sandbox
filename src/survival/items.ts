@@ -31,6 +31,8 @@ export enum Item {
   Seeds,
   Wheat,
   Bread,
+  /** From mossbacks, for beds. */
+  Moss,
 }
 
 /** What a tool digs: a pick stone and ores, an axe wood, a spade earth. */
@@ -86,6 +88,7 @@ const ITEMS: readonly ItemInfo[] = [
   material('Seeds'),
   material('Wheat'),
   { name: 'Bread', stack: S.stack, food: S.food.bread },
+  material('Moss'),
 ];
 
 const PLACEABLE_SET = new Set<number>(PLACEABLE);
