@@ -26,9 +26,13 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 13 (homes: chests, doors, beds, farming) in progress, plan approved (`docs/milestone-13.md`).
-Milestones 1–12 built (`docs/milestone-1.md` to `docs/milestone-12.md`), waiting for playtests
-(Milestone 12, survival, part two: broken blocks drop onto the ground as small spinning items, falling,
+Milestones 1–13 built (`docs/milestone-1.md` to `docs/milestone-13.md`), waiting for playtests
+(Milestone 13, homes: chests of 27 slots; doors two blocks tall, a thin panel you bump into, opened by
+a click or a signal, keeping mobs out; beds half a block high that skip the night and are where you
+wake after dying, made with moss from mossbacks; farming: a spade tills grass or dirt, seeds from
+grass grow into wheat in the light over about 8 minutes, bread from 3 wheat; together, the host's
+chests and crops, and the night skipped when everyone is in bed;
+Milestone 12, survival, part two: broken blocks drop onto the ground as small spinning items, falling,
 floating, merging and picked up within reach, thrown with Q (Shift+Q the stack), gone after 5 minutes;
 furnaces smelting raw copper and iron, sand into glass and cooking meat with coal, wood or embers, their
 contents saved; hunger (a point a minute, faster working hard), food (meat, berries) eaten by holding
@@ -141,9 +145,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `box`: what a body bumps into when it isn't the whole block, a door's panel or a bed's half):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
   `useBlock`, `isThinLogic`), textures and sound per face, the default
-  hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches and
-  thin logic blocks)),
-  `torches.ts` (`torchesHeldBy`: the torches a block holds up), `parts.ts` (blocks in pairs: a door's
+  hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches,
+  thin logic blocks, wheat and a door's lower half)),
+  `torches.ts` (`torchesHeldBy`: the torches, thin logic blocks, wheat and doors a block holds up), `parts.ts` (blocks in pairs: a door's
   halves, a bed's; `pairPlacement`, `partnerOf`, `useAt`: a click's blocks, a door's two halves), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`

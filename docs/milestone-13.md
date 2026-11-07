@@ -171,7 +171,7 @@ matters). The budget holds: 60 fps at radius 8 beside a field of 500 growing whe
 4. **Farming:** farmland, seeds, wheat growing, harvest, bread. Built (2026-11-07).
 5. **Beds:** sleeping through the night, waking at the bed, moss. Built (2026-11-07).
 6. **Together:** containers, doors, crops and sleeping for guests. Built (2026-11-07).
-7. **Measurements,** notes and playtest questions.
+7. **Measurements,** notes and playtest questions. Done (2026-11-07).
 
 ## Decisions to agree
 - **Real thin collision:** a door's panel and a bed's height are what you bump into, not the whole
@@ -562,4 +562,78 @@ asleep.
 - **The host's tab in the background** draws a couple of frames a second, as in Milestone 12. Its
   crosshair lagged behind a turn, and one click opened the chest instead of the bed. Two machines
   don't have this.
+
+## Step 7: measurements, and the end of the milestone (2026-11-07)
+
+**Bench** (`npm run bench`, this machine, at the end):
+
+| | result |
+| --- | --- |
+| Greedy meshing, 724 chunks | 976 ms (998 in Milestone 12: the new shapes cost nothing where there are none) |
+| A player step | 3.79 µs (1.94 before collision boxes; 2.99 to 4.3 between runs since), 0.015 ms a 30 fps frame |
+| 1,000 wheat growing, a frame | 0.004 ms median, 0.007 p95, 1.24 worst |
+| 100 full chests in the record | 60 KB; 0.28 ms to save, 0.95 to load |
+| Logic, the 50-stage chaser (with doors in the tick) | 0.36 ms a tick median |
+| Ground items floating | 0.29 ms a frame median (0.18 before collision boxes, in step 1) |
+
+**In the browser** (the browser pane, radius 8):
+- **A 20 s sprint flight** (`?autofly=20`):
+  - 1,201 frames: p50 16.7 ms, p99 16.9, the longest 17.1; none over 20 ms;
+  - no holes;
+  - main thread p50 2.4 ms, at most 7.3.
+- **A field of about 500 wheat in view** (step 4): about 0.5 ms more main thread whether it grows or
+  not, nothing with it out of view, the GPU the same.
+- **Chests, doors and beds** cost nothing a frame. A chest costs only when it's saved; a door only
+  when its signal changes; a bed only while someone's asleep.
+- **Against the plan's target** (under 0.5 ms a frame on average for crops, chests and doors together):
+  - growing 1,000 wheat is 0.004 ms;
+  - drawing a 500-plant field in view is about 0.5 ms, at the target. That cost is drawing, and
+    I couldn't find where it goes (step 4).
+- **Not measured:** a laptop. These are this machine's numbers; the budget is a laptop's.
+
+**Changed from the plan, over the milestone:**
+- a bed is half a block high (planned 9/16): texture coordinates climb a side only in eighths;
+- the store is `Chests` (planned `Containers`), kept in the record's `containers`;
+- crops are stepped a slice a frame, not all once a second (the first way cost up to 6 ms at once);
+- doors aren't woken when their land loads: whatever can signal them is woken with its neighbours;
+- the furnace messages were renamed for any container, as planned.
+
+**Fixed over the milestone:**
+- step 2: other guests saw half a door open (only the block clicked was shared);
+- step 4: breaking the floor under a door or bed would take one half;
+- step 1: a bed's sides showed one row of their texture.
+
+## Playtest questions
+
+1. **Doors:**
+   - Do they open and shut as you'd expect?
+   - Is the hinge on your left, and the panel on your side when shut, the right way round?
+   - Can you walk through an open one without catching on its panel?
+   - Does a switch or button beside one feel right (it opens while the signal lasts, and a click
+     lasts until the signal changes)?
+2. **Keeping the gloamer out:** does a house with a shut door feel safe at night? Does a gloamer ever
+   get in, and how?
+3. **Chests:** is the chest part of the inventory screen easy to use? Is Shift-click moving the
+   stack between chest and inventory what you'd want? Are 27 slots enough?
+4. **Beds:**
+   - is half a block high right to look at and to step onto?
+   - is sleeping at night clear ("You can only sleep at night", "You can't sleep with something
+     near")?
+   - is waking beside the bed after dying the right amount of forgiveness?
+   - is moss from mossbacks easy enough to get for a bed?
+5. **Farming:**
+   - is tilling with the spade (no hoe) natural?
+   - are seeds from grass (one in eight) too rare or too common?
+   - is about 8 minutes from seed to ripe too slow or too fast?
+   - does wheat needing light 9 (torches at night) make sense?
+   - is bread (3 wheat, 5 points) worth growing, against meat and berries?
+6. **Looks:** the chest's latch, the door's window, the bed's pillow and blanket, the furrows of
+   farmland, and wheat going from green to gold: do they read well? Any that look off?
+7. **Together:**
+   - can a friend use your chests and furnaces?
+   - does farming in your world work for them?
+   - does sleeping together feel right? Everyone must be in bed, and the night goes as soon as the
+     last lies down.
+8. **The field's cost:** if you plant a big field, does the game slow down on the laptop when it's in
+   view?
 
