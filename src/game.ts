@@ -26,6 +26,7 @@ import { breakWith, heldTool, placeableIn } from './survival/play';
 import { type GroundItem, GroundItems, inReach } from './survival/ground';
 import type { Stack } from './survival/inventory';
 import { Furnace, Furnaces } from './survival/furnace';
+import { Chests } from './survival/chest';
 import { hostSurvival } from './net/hostSurvival';
 import { Health } from './survival/health';
 import { hash3 } from './math';
@@ -58,7 +59,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { Block, BLOCKS, furnace, furnaceOf, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
 import { CHUNK_SIZE, toChunk } from './world/coords';
@@ -201,6 +202,8 @@ let gathered = 0;
 const ground = new GroundItems();
 /** Furnaces' contents by place (`survival/furnace.ts`), saved with the record. */
 const furnaces = Furnaces.from(record.furnaces);
+/** Chests' contents by place (`survival/chest.ts`), saved with the record. */
+const chests = Chests.from(record.containers);
 let time = timeHeld ? Number(timeParam) : record.time;
 
 const world = new World(record.seed);
@@ -586,15 +589,16 @@ function say(text: string): void {
   setTimeout(() => line.remove(), 6000);
 }
 
-/** A guest hit mob `mobId`: made as this player's hit would be, if it was in reach of where they were last heard. */
-/** The furnace at (x, y, z) was broken: forgotten, and in survival what was in it dropped there. */
-function furnaceGone(x: number, y: number, z: number): void {
-  const kept = furnaces.remove(x, y, z);
-  if (!kept) return;
-  if (backpack.showing === kept) closeBackpack();
-  if (survival) for (const st of kept.contents()) ground.drop(x + 0.5, y + 0.5, z + 0.5, st, (Math.random() - 0.5) * 2, TUNING.survival.ground.hop, (Math.random() - 0.5) * 2);
+/** The furnace or chest at (x, y, z) was broken: forgotten, and in survival what was in it dropped there. */
+function containerGone(x: number, y: number, z: number): void {
+  const furnaceKept = furnaces.get(x, y, z);
+  const chestKept = chests.get(x, y, z);
+  if ((furnaceKept && backpack.showing === furnaceKept) || (chestKept && backpack.showingChest === chestKept)) closeBackpack();
+  const contents = [...(furnaces.remove(x, y, z)?.contents() ?? []), ...chests.remove(x, y, z)];
+  if (survival) for (const st of contents) ground.drop(x + 0.5, y + 0.5, z + 0.5, st, (Math.random() - 0.5) * 2, TUNING.survival.ground.hop, (Math.random() - 0.5) * 2);
 }
 
+/** A guest hit mob `mobId`: made as this player's hit would be, if it was in reach of where they were last heard. */
 function guestHit(id: number, mobId: number, points: number): void {
   const mob = mobs?.byId(mobId);
   const who = host?.states().get(id);
@@ -1090,7 +1094,7 @@ function guestEdit(x: number, y: number, z: number, block: Block): void {
   // A half broken: the other goes too (the guest asks for it as well; whichever comes second does nothing).
   const partner = block === Block.Air ? partnerOf(world, x, y, z) : null;
   if (partner) held.push(partner);
-  if (block === Block.Air && furnaceOf(world.getBlock(x, y, z))) furnaceGone(x, y, z);
+  if (block === Block.Air && (furnaceOf(world.getBlock(x, y, z)) || chestOf(world.getBlock(x, y, z)))) containerGone(x, y, z);
   edit(x, y, z, block, false);
   for (const [tx, ty, tz] of held) edit(tx, ty, tz, Block.Air);
 }
@@ -1163,7 +1167,7 @@ function editing(dt: number): void {
     particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
     if (survival) gather(broken.block, broken.x, broken.y, broken.z);
     // A furnace broken: what's in it drops too (in survival), and it's forgotten (a guest's is the host's to drop).
-    if (furnaceOf(broken.block) && !guest) furnaceGone(broken.x, broken.y, broken.z);
+    if ((furnaceOf(broken.block) || chestOf(broken.block)) && !guest) containerGone(broken.x, broken.y, broken.z);
     // Torches go with the block they stood on or hung from (in survival, into the inventory).
     for (const [x, y, z] of torchesHeldBy(world, broken.x, broken.y, broken.z)) {
       if (survival) gather(world.getBlock(x, y, z), x, y, z, false);
@@ -1176,7 +1180,15 @@ function editing(dt: number): void {
     const shift = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight');
     const used = shift ? null : useBlock(target.block);
     // A furnace clicked in survival opens (a guest's furnaces are the host's: to come).
-    if (survival && !shift && furnaceOf(target.block)) {
+    if (survival && !shift && chestOf(target.block)) {
+      // A chest opens on the inventory screen (a guest's chests are the host's: to come).
+      if (guest) say("A friend's chests can't be opened yet.");
+      else {
+        backpack.showChest(chests.at(target.x, target.y, target.z));
+        input.unlock();
+        sound.play({ name: 'place', material: 'wood', gain: 0.5 });
+      }
+    } else if (survival && !shift && furnaceOf(target.block)) {
       if (!guest) openBackpack(furnaces.at(target.x, target.y, target.z));
       else {
         // The host's furnace: opened there, its contents shown as they come.
@@ -1558,6 +1570,7 @@ function sendKept(): void {
 function saveRecord(): Promise<void> {
   survivalRecord.health = health.toJSON();
   record.furnaces = furnaces.toJSON();
+  record.containers = chests.toJSON();
   return saver.saveRecord(playerState(), time);
 }
 

@@ -45,6 +45,8 @@ export interface WorldRecord {
   survival?: SurvivalRecord;
   /** Furnaces' contents by place ("x,y,z"), cleaned by `Furnaces.from`; missing until a furnace has something in it. */
   furnaces?: Record<string, unknown>;
+  /** Chests' contents by place ("x,y,z"), cleaned by `Chests.from`; missing until a chest has something in it. */
+  containers?: Record<string, unknown>;
   /** Guests' survival states, by name, kept by the host for when they come back. */
   guests?: Record<string, SurvivalRecord>;
 }

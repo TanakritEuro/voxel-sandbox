@@ -27,8 +27,9 @@ import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { wakeColumn, WaterFlow } from '../src/world/water';
 import { LogicFlow } from '../src/world/logic';
 import { GroundItems } from '../src/survival/ground';
+import { CHEST_SLOTS, Chests } from '../src/survival/chest';
 import { FUEL, Furnaces, INPUT } from '../src/survival/furnace';
-import { Item } from '../src/survival/items';
+import { ALL_ITEMS, Item } from '../src/survival/items';
 import { furnace, furnaceOf } from '../src/world/blocks';
 import { World } from '../src/world/world';
 
@@ -731,4 +732,30 @@ it('gloamers at noon', () => {
   console.log(
     `\ngloamers at noon: ${m.mobs.length} in caves round a player (${hunting} hunting at most), 10 s: ${hits} hits on the player, ${m.searches - searches} path searches; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}, over 2 ms ${times.filter((t) => t > 2).length} frames\n`,
   );
+});
+
+it('chests', () => {
+  // A record's chests as saving writes them every 10 s: 100 chests, every slot full (27 stacks
+  // each, every kind of item round), made into JSON and read back.
+  const chests = new Chests();
+  for (let c = 0; c < 100; c++) {
+    const inv = chests.at(c, 64, 0);
+    for (let i = 0; i < CHEST_SLOTS; i++) inv.slots[i] = { item: ALL_ITEMS[(c * CHEST_SLOTS + i) % ALL_ITEMS.length], count: 1 };
+  }
+  const out: number[] = [];
+  const back: number[] = [];
+  let bytes = 0;
+  for (let run = 0; run <= RUNS; run++) {
+    const t0 = performance.now();
+    const json = JSON.stringify(chests.toJSON());
+    const t1 = performance.now();
+    Chests.from(JSON.parse(json));
+    const t2 = performance.now();
+    bytes = json.length;
+    if (run > 0) {
+      out.push(t1 - t0);
+      back.push(t2 - t1);
+    }
+  }
+  console.log(`\nchests: 100 full (2700 stacks), ${(bytes / 1024).toFixed(1)} KB of JSON; saving ${median(out).toFixed(3)} ms, loading ${median(back).toFixed(3)} ms\n`);
 });

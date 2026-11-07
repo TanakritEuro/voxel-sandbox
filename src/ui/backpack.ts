@@ -1,5 +1,6 @@
 // The survival inventory screen (E or Tab in a survival world): the 27 slots above the hotbar's 9,
-// and crafting beside them; or, opened from a furnace, the furnace in place of crafting. A click
+// and crafting beside them; or, opened from a furnace or a chest, that in place of crafting (a
+// chest's 27 slots work as the inventory's, and Shift and a click moves a stack between the two). A click
 // picks up a stack (it follows the pointer) and a click on a slot puts it down, merges or swaps; a
 // right click picks up half or puts down one; Shift and a click moves a stack between the hotbar and
 // the rest (with a furnace open: into the furnace, fuel to its fuel and the rest to be smelted, and
@@ -14,6 +15,7 @@
 import { TUNING } from '../config';
 import { canMake, make, RECIPES, type Recipe } from '../survival/crafting';
 import { FUEL, Furnace, FUELS, INPUT, OUTPUT, SMELTS } from '../survival/furnace';
+import { CHEST_SLOTS } from '../survival/chest';
 import { HOTBAR_SLOTS, type Inventory, SLOTS, type Stack } from '../survival/inventory';
 import { itemInfo } from '../survival/items';
 import { el } from './dom';
@@ -43,6 +45,10 @@ export class Backpack {
   private readonly flame: HTMLDivElement;
   private readonly arrow: HTMLDivElement;
   private readonly cursor: HTMLDivElement;
+  private readonly chestPart: HTMLDivElement;
+  private readonly chestEls: HTMLButtonElement[] = [];
+  /** The chest open, if the screen was opened from one. */
+  private chest: Inventory | null = null;
   private held: Stack | null = null;
   private isOpen = false;
   /** The furnace open, if the screen was opened from one. */
@@ -85,6 +91,11 @@ export class Backpack {
     this.arrow = el(el(works, 'div', 'furnace-arrow'), 'div');
     this.furnaceEls[OUTPUT] = this.slotButton(works, (e) => this.clickFurnace(OUTPUT, e.button === 2, e.shiftKey));
     el(this.furnacePart, 'p', 'menu-help', 'Top: what to smelt or cook (raw copper, raw iron, sand, raw meat). Bottom: fuel (coal, embers, wood, planks, sticks). Shift click puts things in and takes them out.');
+    this.chestPart = el(columns, 'div', 'backpack-right hidden');
+    el(this.chestPart, 'div', 'menu-heading', 'Chest');
+    const chestGrid = el(this.chestPart, 'div', 'backpack-grid');
+    for (let i = 0; i < CHEST_SLOTS; i++) this.chestEls[i] = this.slotButton(chestGrid, (e) => this.clickChest(i, e.button === 2, e.shiftKey));
+    el(this.chestPart, 'p', 'menu-help', 'Shift click moves a stack between the chest and your inventory.');
     this.cursor = el(this.root, 'div', 'backpack-cursor slot');
     this.root.addEventListener('mousemove', (e) => this.follow(e));
     this.root.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -99,14 +110,34 @@ export class Backpack {
     return this.isOpen ? this.furnace : null;
   }
 
+  /** The chest this screen shows, if it was opened from one. */
+  get showingChest(): Inventory | null {
+    return this.isOpen ? this.chest : null;
+  }
+
   /** Open it with crafting beside the inventory, or with `furnace` (someone else's, with `ask`). */
   show(furnace: Furnace | null = null, ask: FurnaceAsk | null = null): void {
     this.isOpen = true;
     this.furnace = furnace;
+    this.chest = null;
     this.ask = ask;
     this.furnaceShown = '';
     this.crafting.classList.toggle('hidden', furnace !== null);
     this.furnacePart.classList.toggle('hidden', furnace === null);
+    this.chestPart.classList.add('hidden');
+    this.root.classList.remove('hidden');
+    this.refresh();
+  }
+
+  /** Open it with a chest's slots beside the inventory. */
+  showChest(chest: Inventory): void {
+    this.isOpen = true;
+    this.furnace = null;
+    this.chest = chest;
+    this.ask = null;
+    this.crafting.classList.add('hidden');
+    this.furnacePart.classList.add('hidden');
+    this.chestPart.classList.remove('hidden');
     this.root.classList.remove('hidden');
     this.refresh();
   }
@@ -115,6 +146,7 @@ export class Backpack {
   hide(): void {
     this.isOpen = false;
     this.furnace = null;
+    this.chest = null;
     this.root.classList.add('hidden');
     if (this.held) {
       const left = this.inventory.add(this.held.item, this.held.count, this.held.wear);
@@ -130,6 +162,7 @@ export class Backpack {
     this.drawSlot(this.cursor, this.held);
     this.cursor.classList.toggle('hidden', !this.held);
     RECIPES.forEach((r, i) => this.recipeEls[i].classList.toggle('can', canMake(this.inventory, r)));
+    this.chest?.slots.forEach((s, i) => this.drawSlot(this.chestEls[i], s));
     this.tick();
   }
 
@@ -161,9 +194,22 @@ export class Backpack {
     const inv = this.inventory;
     if (!this.held) {
       if (shift && !right) {
-        if (!this.furnace || !this.intoFurnace(slot)) inv.shiftMove(slot);
+        if (this.chest) moveAll(inv, slot, this.chest);
+        else if (!this.furnace || !this.intoFurnace(slot)) inv.shiftMove(slot);
       } else this.held = inv.pick(slot, right);
     } else this.held = inv.put(slot, this.held, right);
+    this.refresh();
+    this.events.changed();
+  }
+
+  /** A click on the chest's slot `slot`: as on the inventory's, Shift moving the stack into the inventory. */
+  private clickChest(slot: number, right: boolean, shift: boolean): void {
+    const chest = this.chest;
+    if (!chest) return;
+    if (!this.held) {
+      if (shift && !right) moveAll(chest, slot, this.inventory);
+      else this.held = chest.pick(slot, right);
+    } else this.held = chest.put(slot, this.held, right);
     this.refresh();
     this.events.changed();
   }
@@ -264,4 +310,12 @@ export class Backpack {
     this.cursor.style.left = `${e.clientX - 22}px`;
     this.cursor.style.top = `${e.clientY - 22}px`;
   }
+}
+
+/** The stack in `from`'s slot `slot` moved into `to`, as much of it as fits; the rest stays. */
+export function moveAll(from: Inventory, slot: number, to: Inventory): void {
+  const s = from.slots[slot];
+  if (!s) return;
+  const left = to.add(s.item, s.count, s.wear);
+  from.slots[slot] = left ? { ...s, count: left } : null;
 }

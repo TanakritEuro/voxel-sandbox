@@ -167,7 +167,7 @@ matters). The budget holds: 60 fps at radius 8 beside a field of 500 growing whe
 1. **Shapes:** the new blocks and textures, collision boxes, the mesher's panel, slab and cross,
    blocks in pairs. Built (2026-11-07).
 2. **Doors:** opening by hand and by signal, mobs kept out. Built (2026-11-07).
-3. **Chests:** contents, the screen, saving, drops.
+3. **Chests:** contents, the screen, saving, drops. Built (2026-11-07).
 4. **Farming:** farmland, seeds, wheat growing, harvest, bread.
 5. **Beds:** sleeping through the night, waking at the bed, moss.
 6. **Together:** containers, doors, crops and sleeping for guests.
@@ -329,5 +329,50 @@ half a block high. A test checks the eighths.
   through it;
 - walked through it (z 8.5 to 0.7);
 - a second door with a switch beside it opened with the switch on and shut with it off.
+- No console errors.
+
+## Step 3: chests — built (2026-11-07)
+
+**What's there:**
+- **`Chests`** (`survival/chest.ts`; the plan called it `Containers`): 27 slots for each chest, by place.
+  - Saved in the world record (`containers`); empty chests aren't kept.
+  - Cleaned on load as an inventory is: a bad place is dropped, and so is a stack over its size or
+    something that isn't an item.
+- **A right click opens a chest** (survival) on the inventory screen, a Chest part in place of
+  crafting.
+  - Click, right click and Shift-click work as on the inventory's slots.
+  - Shift and a click moves a stack between the chest and the inventory, as much as fits
+    (`moveAll`).
+- **Breaking a chest** drops what's in it, and closes it if it was open. A guest's break is made on
+  the host, and the contents drop there.
+  - Furnaces and chests now share this (`containerGone`).
+- **Made from 8 planks;** the axe digs it faster.
+- **Not yet:**
+  - **A guest's click on a chest** says "A friend's chests can't be opened yet." (step 6).
+  - **In creative** a chest is only a block: there's no inventory to fill it from, so a click builds
+    against it.
+- Also: a comment for `guestHit` had been left above the furnace's function in Milestone 12;
+  it's back with its function.
+
+**Tests** (5 new, 451 in all, `tests/chest.test.ts`):
+- 27 slots kept by place; a broken one forgotten, giving what was in it (stacks and a worn tool).
+- Saved without empty chests and loaded back; junk cleaned.
+- Through the world record in a store and back.
+- Shift moves between a chest and the inventory, as much as fits, and back; an empty slot does
+  nothing.
+- Made from 8 planks, not 7.
+
+**Bench** (`chests`, new): 100 full chests (2,700 stacks) are 60 KB of JSON in the record.
+- Saving (every 10 s, and on leaving): 0.55 ms.
+- Loading: 1.3 ms.
+- Nothing a frame.
+
+**Tried in the browser** (`?seed=7&survival&kit&nolock`):
+- a chest made from planks on the inventory screen and moved to the hotbar;
+- placed, and opened with a right click: the Chest part below the inventory (the screen wraps at
+  this window's width);
+- coal, raw iron and berries Shift-clicked in;
+- closed and opened again, all still there;
+- broken with the stone axe: the chest and all three picked up again walking over.
 - No console errors.
 

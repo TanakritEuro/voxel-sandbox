@@ -176,7 +176,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
   held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`breakWith`: what a broken block gives and the
   tool worn; `placeableIn`, `heldTool`), `furnace.ts` (`Furnace`: input, fuel and output, burning and
-  smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `ground.ts` (`GroundItems`: items lying on the ground, boxes
+  smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `chest.ts` (`Chests`: 27
+  slots each by place, saved in the world record's `containers`), `ground.ts` (`GroundItems`: items lying on the ground, boxes
   under the block physics at 60 Hz, asleep at rest, floating, merging, picked up within reach of a
   player's box, aging out, a cap), `health.ts` (`Health`: falls from where the feet last stood,
   air and drowning, cactus, hunger (faster working hard; starving down to 1; `eat`), healing only well
@@ -248,7 +249,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
-  inventory and health), `furnaces` and `guests` (guests' survival states by name)), `saver.ts` (`WorldSaver`: which chunks a world
+  inventory and health), `furnaces`, `containers` (chests) and `guests` (guests' survival states by name)), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -298,7 +299,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   water washing a logic block away wakes it), HUD, frame loop, pause, autosave.
 - `src/ui/` — `worldList.ts` (play, new, rename, delete, settings, join a friend, why a game
   ended), `pauseMenu.ts` (play, settings, save and quit or leave, keys, a part for playing together), `inventory.ts` (the block picker), `backpack.ts` (survival's inventory screen: slots, a stack
-  following the pointer, crafting, or a furnace opened from the world), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
+  following the pointer, crafting, or a furnace or chest opened from the world), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css`.
 - `src/stats.ts` — `?stats` overlay (F3), with GPU time per frame (`render/gpuTimer.ts`). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `src/flood.ts` — `?flood`, the sea let into a
