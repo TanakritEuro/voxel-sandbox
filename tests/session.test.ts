@@ -6,7 +6,7 @@ import { GuestSession, HostSession } from '../src/net/session';
 import { WorldSaver } from '../src/save/saver';
 import { MemoryStore, newWorldRecord, type WorldMode } from '../src/save/store';
 import { handleJob } from '../src/workers/jobs';
-import { Block, gateOf, useBlock } from '../src/world/blocks';
+import { Block, gateOf } from '../src/world/blocks';
 import { LogicFlow } from '../src/world/logic';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
 import { World } from '../src/world/world';
@@ -16,7 +16,8 @@ import { Furnace, Furnaces } from '../src/survival/furnace';
 import { GroundItems } from '../src/survival/ground';
 import { Item } from '../src/survival/items';
 import type { Stack } from '../src/survival/inventory';
-import { furnace } from '../src/world/blocks';
+import { door, doorOf, furnace } from '../src/world/blocks';
+import { useAt } from '../src/world/parts';
 
 const SEED = 20261022;
 /** The columns everyone loads: blocks -32..63 each way. */
@@ -118,9 +119,9 @@ async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, n
     world.setBlock(x, y, z, b);
     session.edit(x, y, z, b);
   };
-  /** The guest's own click on a switch, button or delay, as the game makes it: shown at once, then the host asked to use it. */
+  /** The guest's own click on a switch, button, delay or door, as the game makes it: shown at once (a door's two halves), then the host asked to use it. */
   const guestUse = (x: number, y: number, z: number) => {
-    world.setBlock(x, y, z, useBlock(world.getBlock(x, y, z))!);
+    for (const [px, py, pz, pb] of useAt(world, x, y, z)!) world.setBlock(px, py, pz, pb);
     session.use(x, y, z);
   };
   return { session, world, welcome, load, guestEdit, guestUse };
@@ -348,6 +349,36 @@ describe('logic over the network', () => {
     await run(3);
     expect(host.world.getBlock(6, Y, 0)).toBe(Block.SignalLamp);
     for (const w of [a.world, b.world]) expect(difference(host.world, w)).toBe(null);
+  });
+
+  it("opens and shuts both halves of the host's door for a guest's click, the same everywhere", async () => {
+    const env = setup();
+    const { host, a, b, run } = await circuit(env);
+    host.hostEdit(2, Y - 1, 3, Block.Stone);
+    host.hostEdit(2, Y, 3, door(2, false, false));
+    host.hostEdit(2, Y + 1, 3, door(2, false, true));
+    await run(3);
+    a.guestUse(2, Y + 1, 3);
+    expect(doorOf(a.world.getBlock(2, Y, 3))!.open).toBe(true); // at once on A's screen, both halves
+    await env.pump(0.3);
+    await run(3);
+    for (const w of [host.world, a.world, b.world]) {
+      expect(w.getBlock(2, Y, 3)).toBe(door(2, true, false));
+      expect(w.getBlock(2, Y + 1, 3)).toBe(door(2, true, true));
+    }
+    // Shut by B, from the lower half.
+    b.guestUse(2, Y, 3);
+    await run(3);
+    for (const w of [host.world, a.world, b.world]) expect(doorOf(w.getBlock(2, Y + 1, 3))!.open).toBe(false);
+    for (const w of [a.world, b.world]) expect(difference(host.world, w)).toBe(null);
+    // Refused (out of reach, say): both halves put back on A's screen.
+    host.allow.ok = false;
+    a.guestUse(2, Y, 3);
+    expect(doorOf(a.world.getBlock(2, Y + 1, 3))!.open).toBe(true);
+    await env.pump(0.3);
+    expect(a.world.getBlock(2, Y, 3)).toBe(door(2, false, false));
+    expect(a.world.getBlock(2, Y + 1, 3)).toBe(door(2, false, true));
+    expect(a.session.unanswered).toBe(0);
   });
 
   it('uses the block as the host has it: two guests flipping a switch at once end with it as it was, the same everywhere', async () => {

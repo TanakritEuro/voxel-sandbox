@@ -11,7 +11,8 @@ import { TUNING } from '../config';
 import { encodeRle } from '../save/rle';
 import type { WorldSaver } from '../save/saver';
 import type { SavedChunk } from '../workers/protocol';
-import { bed, Block, BLOCKS, chest, delay, door, FACINGS, furnace, inverter, isTorch, useBlock } from '../world/blocks';
+import { bed, Block, BLOCKS, chest, delay, door, FACINGS, furnace, inverter, isTorch } from '../world/blocks';
+import { useAt } from '../world/parts';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
 import { createBody, overlapsBlock } from '../world/physics';
 import type { World } from '../world/world';
@@ -103,12 +104,12 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
       return true;
     },
     use: (player, x, y, z) => {
-      if (!world.hasColumn(toChunk(x), toChunk(z))) return false;
-      const was = world.getBlock(x, y, z);
-      const used = useBlock(was);
-      if (used === null || !game.allowed(player, x, y, z, was)) return false;
-      if (used !== was) game.edit(x, y, z, used);
-      return true;
+      if (!world.hasColumn(toChunk(x), toChunk(z))) return null;
+      // A door's halves together (each checked as it will be: an open door's panel moves).
+      const parts = useAt(world, x, y, z);
+      if (!parts || !parts.every(([px, py, pz, pb]) => game.allowed(player, px, py, pz, pb))) return null;
+      for (const [px, py, pz, pb] of parts) if (world.getBlock(px, py, pz) !== pb) game.edit(px, py, pz, pb);
+      return parts.map(([px, py, pz]): [number, number, number] => [px, py, pz]);
     },
     blockAt: (x, y, z) => world.getBlock(x, y, z),
     hitMob: (player, id, points) => game.hitMob(player, id, points),

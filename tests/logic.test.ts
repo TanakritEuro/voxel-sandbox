@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TUNING } from '../src/config';
-import { Block, delay, gateOf, inverter, wirePower } from '../src/world/blocks';
+import { Block, delay, door, gateOf, inverter, wirePower } from '../src/world/blocks';
 import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
 import { LogicFlow, type LogicWorld, wakeLogicColumn } from '../src/world/logic';
 import { World } from '../src/world/world';
@@ -224,6 +224,30 @@ describe('logic in a loaded world', () => {
     return w;
   };
   const tick = (world: World, flow: LogicFlow) => world.setBlocks(flow.tick(world));
+
+  it("knows a door's signal again after loading: one opened by a switch shuts when the switch goes off", () => {
+    const world = make();
+    const flow = new LogicFlow();
+    const blocks: [number, number, number, Block][] = [
+      [3, 60, 3, door(0, false, false)],
+      [3, 61, 3, door(0, false, true)],
+      [4, 60, 3, Block.SwitchOn],
+    ];
+    world.setBlocks(blocks);
+    for (const [x, y, z] of blocks) flow.wake(x, y, z);
+    for (let t = 0; t < 3; t++) tick(world, flow);
+    expect(world.getBlock(3, 61, 3)).toBe(door(0, true, true));
+    // Loaded into a new world with a new flow: the door is woken with its column, so its signal is known.
+    const loaded = make(world);
+    const again = new LogicFlow();
+    for (let cz = -1; cz <= 0; cz++) for (let cx = -1; cx <= 0; cx++) wakeLogicColumn(again, loaded, cx, cz, true);
+    for (let t = 0; t < 3; t++) tick(loaded, again);
+    loaded.setBlocks([[4, 60, 3, Block.Switch]]);
+    again.wake(4, 60, 3);
+    for (let t = 0; t < 3; t++) tick(loaded, again);
+    expect(loaded.getBlock(3, 60, 3)).toBe(door(0, false, false));
+    expect(loaded.getBlock(3, 61, 3)).toBe(door(0, false, true));
+  });
 
   it('carries on after being saved and loaded: a clock across a chunk border still blinks, its lamp with it', () => {
     const world = make();

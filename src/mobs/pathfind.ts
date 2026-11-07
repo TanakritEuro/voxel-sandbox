@@ -16,7 +16,7 @@
 // reused from search to search (a stamp says which search wrote them), so a search allocates
 // next to nothing.
 
-import { BLOCKS } from '../world/blocks';
+import { BLOCKS, doorOf } from '../world/blocks';
 import { WORLD_HEIGHT } from '../world/coords';
 import type { BlockSource } from '../world/physics';
 
@@ -60,7 +60,9 @@ const DZ = [0, 0, 1, -1, 1, -1, 1, -1];
 const PASSABLE = new Uint8Array(256);
 const LIQUID = new Uint8Array(256);
 BLOCKS.forEach((info, b) => {
-  PASSABLE[b] = info.passable ? 1 : 0;
+  // An open door is a way through (its panel is against a side); a closed one is a wall, and mobs
+  // can't open doors.
+  PASSABLE[b] = info.passable || doorOf(b)?.open ? 1 : 0;
   LIQUID[b] = info.liquid ? 1 : 0;
 });
 

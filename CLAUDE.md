@@ -144,7 +144,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches and
   thin logic blocks)),
   `torches.ts` (`torchesHeldBy`: the torches a block holds up), `parts.ts` (blocks in pairs: a door's
-  halves, a bed's; `pairPlacement`, `partnerOf`), `textures.ts`
+  halves, a bed's; `pairPlacement`, `partnerOf`, `useAt`: a click's blocks, a door's two halves), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
@@ -163,7 +163,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `wake.ts` (what moves on its own
   woken when a column loads: in it if saved, on its neighbours' faces), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
   at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
-  buttons let go; changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with a box hit only where its box is), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
+  buttons let go, doors opened while signalled (each door's last signal kept, so a click lasts until it changes); changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with a box hit only where its box is), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
   blocks' boxes (looked for inside the blocks the body is in only with one about, `nearBox`), walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
@@ -191,7 +191,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   the prey and fading by day, their hits kept for the game (`takeAttacks`, `takeFaded`); the sounds they make; round every player when playing together, the cap
   by players; not saved), `hit.ts` (the mob under the
   crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
-  cutting, swimming at the surface, node and range limits; typed arrays reused between
+  cutting, swimming at the surface, through open doors and not closed ones, node and range limits; typed arrays reused between
   searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
   `World.getBlock`), `models.ts` (each kind's boxes, pivots, textures and how each part moves; pure
   data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean

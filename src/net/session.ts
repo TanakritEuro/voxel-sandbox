@@ -21,6 +21,8 @@ import type { MobSound } from '../mobs/mobs';
 import type { Mob } from '../mobs/brain';
 import type { SavedChunk } from '../workers/protocol';
 import { toChunk } from '../world/coords';
+import type { Block } from '../world/blocks';
+import { partnerOf } from '../world/parts';
 import type { Link, Room } from './link';
 import { MobMirror } from './mobMirror';
 import { packMobs, packMobSounds, unpackMobs, unpackMobSounds } from './mobState';
@@ -43,8 +45,8 @@ export interface HostWorld {
   columnChunks(cx: number, cz: number): Promise<SavedChunk[]>;
   /** Player `player` asks for a block: make the edit if it's allowed, and say whether it was. */
   edit(player: number, x: number, y: number, z: number, block: number): boolean;
-  /** Player `player` uses block (x, y, z) (`useBlock`): make it if it's allowed, and say whether it was. */
-  use(player: number, x: number, y: number, z: number): boolean;
+  /** Player `player` uses block (x, y, z) (`useAt`): make it if it's allowed; the places it set (a door's two halves), or null if it wasn't. */
+  use(player: number, x: number, y: number, z: number): [number, number, number][] | null;
   blockAt(x: number, y: number, z: number): number;
   /** Player `player` hit mob `id` for `points`: the game checks it's in reach and makes the hit. */
   hitMob(player: number, id: number, points: number): void;
@@ -285,12 +287,20 @@ export class HostSession {
         if (this.world.edit(id, m.x, m.y, m.z, m.block)) this.shareEdits([[m.x, m.y, m.z, m.block]], id, m.seq);
         else link.send({ type: 'refused', seq: m.seq, x: m.x, y: m.y, z: m.z, block: this.world.blockAt(m.x, m.y, m.z) });
         break;
-      case 'use':
+      case 'use': {
         // What the click made of the block as the host has it (a switch the host or someone else has
-        // just flipped flips back, say), for everyone.
-        if (this.world.use(id, m.x, m.y, m.z)) this.shareEdits([[m.x, m.y, m.z, this.world.blockAt(m.x, m.y, m.z)]], id, m.seq);
-        else link.send({ type: 'refused', seq: m.seq, x: m.x, y: m.y, z: m.z, block: this.world.blockAt(m.x, m.y, m.z) });
+        // just flipped flips back, say), for everyone: a door's two halves.
+        const set = this.world.use(id, m.x, m.y, m.z);
+        if (set) this.shareEdits(set.map(([x, y, z]) => [x, y, z, this.world.blockAt(x, y, z)]), id, m.seq);
+        else {
+          // Refused: the block put back as it is, and a door's other half too (the guest flipped both).
+          const blocks = { getBlock: (x: number, y: number, z: number) => this.world.blockAt(x, y, z) as Block };
+          const partner = partnerOf(blocks, m.x, m.y, m.z);
+          const places: [number, number, number][] = partner ? [[m.x, m.y, m.z], partner] : [[m.x, m.y, m.z]];
+          for (const [x, y, z] of places) link.send({ type: 'refused', seq: m.seq, x, y, z, block: this.world.blockAt(x, y, z) });
+        }
         break;
+      }
       case 'ping':
         link.send({ type: 'pong', t: m.t, at: this.now() });
         break;

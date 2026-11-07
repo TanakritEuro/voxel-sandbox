@@ -60,7 +60,7 @@ import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
 import { Block, BLOCKS, furnace, furnaceOf, hotbarFrom, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
-import { isPaired, pairPlacement, partnerOf } from './world/parts';
+import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock, touches } from './world/physics';
@@ -1171,7 +1171,7 @@ function editing(dt: number): void {
     }
   }
   if (input.take('Mouse2') && target) {
-    // A switch, button or delay clicked is used (flipped, pressed, set to the next delay), not
+    // A switch, button, delay or door clicked is used (flipped, pressed, set to the next delay, opened or shut), not
     // built against; with Shift held it's built against as usual.
     const shift = input.isHeld('ShiftLeft') || input.isHeld('ShiftRight');
     const used = shift ? null : useBlock(target.block);
@@ -1188,9 +1188,10 @@ function editing(dt: number): void {
       }
     }
     else if (used !== null) {
-      // A guest shows it at once and asks the host to use the block as the host has it.
+      // A guest shows it at once and asks the host to use the block as the host has it. A door's
+      // two halves open and shut together.
       if (used !== target.block) {
-        edit(target.x, target.y, target.z, used, !guest);
+        for (const [px, py, pz, pb] of useAt(world, target.x, target.y, target.z) ?? []) edit(px, py, pz, pb, !guest);
         guest?.use(target.x, target.y, target.z);
       }
       sound.play({ name: 'place', material: BLOCKS[target.block].sound, gain: 0.6 });

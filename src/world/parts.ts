@@ -2,7 +2,7 @@
 // one makes both, or neither when there isn't room; breaking either takes the other with it, as a
 // block takes the torches it holds up. Pure.
 
-import { Block, BLOCKS, bed, bedOf, door, doorOf, FACINGS, facingFromYaw } from './blocks';
+import { Block, BLOCKS, bed, bedOf, door, doorOf, FACINGS, facingFromYaw, useBlock } from './blocks';
 
 interface Blocks {
   getBlock(x: number, y: number, z: number): Block;
@@ -79,4 +79,19 @@ export function pairPlacement(world: Blocks, item: Block, x: number, y: number, 
     ];
   }
   return null;
+}
+
+/**
+ * What a right click on the block at (x, y, z) sets (`useBlock`): a door's two halves opened or
+ * shut together, or the one block for anything else to use; null if it isn't something to use.
+ */
+export function useAt(world: Blocks, x: number, y: number, z: number): Part[] | null {
+  const block = world.getBlock(x, y, z);
+  const used = useBlock(block);
+  if (used === null) return null;
+  const out: Part[] = [[x, y, z, used]];
+  const d = doorOf(block);
+  const partner = d ? partnerOf(world, x, y, z) : null;
+  if (d && partner) out.push([partner[0], partner[1], partner[2], door(d.facing, !d.open, !d.upper)]);
+  return out;
 }

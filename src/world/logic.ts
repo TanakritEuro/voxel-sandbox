@@ -15,13 +15,16 @@
 //    length. Gates never change in the tick their input does: that is what makes loops clocks
 //    rather than hangs.
 // 5. A button seen pressed is let go `TUNING.logic.buttonTicks` later.
+// 6. Doors round anything touched or changed open while a signal reaches either half (as a lamp's
+//    would) and shut when it goes. A door is set only when its signal changes (each door's last is
+//    kept), so a hand's click lasts until then. One seen for the first time opens if it has a signal.
 //
 // A tick's changes go into an overlay that its own reads see, and are returned for the caller to
 // make (as the water's are). At most `budget` woken blocks a tick, oldest first; the rest wait.
 // Unloaded land is nothing.
 
 import { TUNING } from '../config';
-import { Block, delay, FACINGS, gateOf, inverter, wire, wirePower } from './blocks';
+import { Block, delay, door, doorOf, FACINGS, gateOf, inverter, wire, wirePower } from './blocks';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, WORLD_HEIGHT } from './coords';
 import type { BlockSource } from './physics';
 import { wakeColumnBlocks } from './wake';
@@ -60,10 +63,16 @@ for (let b = Block.Wire; b <= Block.Delay + 31; b++) LOGIC[b] = 1;
 /** Is `b` a logic block (any of them, in any state)? */
 export const isLogic = (b: Block): boolean => LOGIC[b] === 1;
 
+/** Doors' halves, by id. */
+const DOOR = new Uint8Array(256);
+for (let b = Block.Door; b < Block.Door + 16; b++) DOOR[b] = 1;
+const ABOVE = stepOf(0, 1, 0);
+
 /**
  * Column (cx, cz) has just loaded: wake its logic blocks if it was read from the save (a circuit
  * carries on: a delay's pulse on its way or a button's second isn't saved, so they settle), and
- * those at the faces of the columns beside it. Returns how many.
+ * those at the faces of the columns beside it. Returns how many. A door needs no waking of its own:
+ * whatever can give it a signal is a logic block beside it, woken with its neighbours.
  */
 export function wakeLogicColumn(logic: LogicFlow, world: World, cx: number, cz: number, saved: boolean): number {
   return wakeColumnBlocks(world, cx, cz, saved, LOGIC, (x, y, z) => logic.wake(x, y, z));
@@ -76,6 +85,8 @@ export class LogicFlow {
   private readonly queued = new Map<number, { tick: number; on: boolean }[]>();
   /** Buttons to let go, by place: the tick. */
   private readonly releases = new Map<number, number>();
+  /** Each door's signal when last looked at, by the place of its lower half. */
+  private readonly doors = new Map<number, boolean>();
   // Per tick: blocks read, columns loaded, and what the tick has set so far.
   private readonly blocks = new Map<number, Block>();
   private readonly columns = new Map<number, boolean>();
@@ -148,11 +159,15 @@ export class LogicFlow {
         if (isLamp(b)) {
           const lit = this.lampLit(p);
           if (lit !== (b === Block.SignalLampOn)) this.set(p, lit ? Block.SignalLampOn : Block.SignalLamp);
+        } else if (DOOR[b]) {
+          this.door(p, b);
         } else if (b === Block.ButtonOn) {
           if (!this.releases.has(p)) this.releases.set(p, n + TUNING.logic.buttonTicks);
         } else {
           const g = gateOf(b);
           if (g) this.gate(p, g, n);
+          // A door that's gone is forgotten (a new one there starts afresh).
+          else if (this.doors.size) this.doors.delete(p);
         }
       }
     }
@@ -229,6 +244,25 @@ export class LogicFlow {
       if (g?.on && k + s + FACING_STEP[g.facing] === k) return true;
     }
     return false;
+  }
+
+  /**
+   * The door with a half at `k` (`b`): open while a signal reaches either half, shut when it goes;
+   * set only when its signal has changed since last looked at (the first time, only to open it).
+   */
+  private door(k: number, b: Block): void {
+    const d = doorOf(b)!;
+    const lower = d.upper ? k + BELOW : k;
+    const upper = lower + ABOVE;
+    const lowerDoor = doorOf(this.block(lower));
+    const upperDoor = doorOf(this.block(upper));
+    const signal = (lowerDoor !== null && this.lampLit(lower)) || (upperDoor !== null && this.lampLit(upper));
+    const last = this.doors.get(lower);
+    if (last === signal) return;
+    this.doors.set(lower, signal);
+    if (last === undefined && !signal) return;
+    if (lowerDoor && lowerDoor.open !== signal) this.set(lower, door(lowerDoor.facing, signal, false));
+    if (upperDoor && upperDoor.open !== signal) this.set(upper, door(upperDoor.facing, signal, true));
   }
 
   /** The gate at `k`: what its input says it should become, queued if that's a change. */

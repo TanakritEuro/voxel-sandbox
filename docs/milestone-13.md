@@ -166,7 +166,7 @@ matters). The budget holds: 60 fps at radius 8 beside a field of 500 growing whe
 ## Steps (each built, tested, measured, committed and pushed)
 1. **Shapes:** the new blocks and textures, collision boxes, the mesher's panel, slab and cross,
    blocks in pairs. Built (2026-11-07).
-2. **Doors:** opening by hand and by signal, mobs kept out.
+2. **Doors:** opening by hand and by signal, mobs kept out. Built (2026-11-07).
 3. **Chests:** contents, the screen, saving, drops.
 4. **Farming:** farmland, seeds, wheat growing, harvest, bread.
 5. **Beds:** sleeping through the night, waking at the bed, moss.
@@ -276,5 +276,58 @@ half a block high. A test checks the eighths.
 - walking into the door stopped at its face (z 6.3, against the block's side, as planned for the
   near side);
 - breaking its lower half took the upper too.
+- No console errors.
+
+## Step 2: doors — built (2026-11-07)
+
+**What's there:**
+- **A click opens and shuts a door,** both halves.
+  - `useBlock` flips a half; `useAt` (`world/parts.ts`) gives both, used by the game and the host.
+  - Shift and a click builds against it, as with the other blocks you use.
+- **A signal opens it:** `LogicFlow` looks at doors as it does lamps (step 6 of its tick).
+  - It opens while a powered wire, a source that's on, or a gate facing it is beside either half,
+    and shuts when the signal goes.
+  - Each door's last signal is kept, so a door is set only when its signal changes, and a click
+    lasts until then. A door seen for the first time opens if it has a signal.
+  - A door that's gone is forgotten, so a new one in its place starts afresh.
+  - **Changed from what I first wrote:** I woke doors when their column loads. A test showed it
+    isn't needed. Loading wakes every logic block and its six neighbours, and anything that can
+    signal a door is a logic block beside it. Taken out.
+- **Mobs:** a closed door is a wall to their paths, an open one a way through. Mobs can't open
+  doors.
+- **Made from 6 planks.**
+- **Together:**
+  - a guest's click is a use made by the host, both halves;
+  - `HostWorld.use` now returns the places it set, and the session shares all of them (it shared
+    only the block clicked, so the other guests saw half a door open: found by the test);
+  - a refused click puts back both halves on the guest's screen.
+
+**Tests** (9 new, 446 in all: `tests/doors.test.ts`, one in `tests/logic.test.ts`, one in
+`tests/session.test.ts`):
+- **By hand:** both halves from a click on either; a lone half alone; nothing to use, null.
+- **Recipe:** made from 6 planks, not 5.
+- **Signals:**
+  - a switch beside the lower half opens it and shuts it;
+  - a charged block beside the upper half, and powered wire to the lower, open it;
+  - shut by hand while powered, it stays shut, and opens with the next signal;
+  - opened by hand with no signal, it stays open;
+  - a new door where a powered one was broken opens too.
+- **Loading:** a door opened by a switch, saved and loaded, shuts when the switch goes off.
+- **Mobs:** a path goes through an open door in a wall, and there's none through a closed one.
+- **Together:**
+  - a guest's click on the upper half opens both on its screen at once, and on the host and the
+    other guest after;
+  - the other guest shuts it from the lower half;
+  - refused, both halves are put back.
+
+**Bench** (`logic`): doors add a check to the tick's look round what changed. Within noise:
+- the 32 × 32 grid: p95 2.12 ms before, 2.10 after;
+- the 50-stage chaser: median 0.54 before, 0.49 after.
+
+**Tried in the browser** (`?seed=7&nolock`, creative):
+- a door placed and clicked swung its panel to the left side, and the crosshair reached the grass
+  through it;
+- walked through it (z 8.5 to 0.7);
+- a second door with a switch beside it opened with the switch on and shut with it off.
 - No console errors.
 

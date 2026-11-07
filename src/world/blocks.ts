@@ -521,7 +521,8 @@ export function logicPlacement(block: Block, ny: number, yaw: number): Block | n
 
 /**
  * What a right click on `block` makes of it: a switch flipped, a button pressed (a pressed one
- * stays as it is), a delay's setting the next one round; null if it isn't something to use.
+ * stays as it is), a delay's setting the next one round, a door's half opened or shut; null if it
+ * isn't something to use.
  */
 export function useBlock(block: Block): Block | null {
   if (block === Block.Switch) return Block.SwitchOn;
@@ -529,6 +530,9 @@ export function useBlock(block: Block): Block | null {
   if (block === Block.Button || block === Block.ButtonOn) return Block.ButtonOn;
   const gate = gateOf(block);
   if (gate?.kind === 'delay') return delay(gate.facing, (gate.setting % 4) + 1, gate.on);
+  // A door's half opened or closed (its other half with it: `useAt` in world/parts.ts).
+  const d = doorOf(block);
+  if (d) return door(d.facing, !d.open, d.upper);
   return null;
 }
 
