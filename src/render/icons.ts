@@ -1,9 +1,10 @@
 // Block icons for the hotbar and the picker: a small isometric cube drawn from the block's own
 // textures (top, and its side twice, the left a little darker and the right darker still, as
 // the chunks are shaded), so grass looks like grass and not dirt. Blocks with an icon of their
-// own (the torch) use it flat. Drawn on canvases once at startup, as data URLs.
+// own (the torch) use it flat; a slab or stairs draw each of their boxes, the part of each texture
+// where it is, back to front. Drawn on canvases once at startup, as data URLs.
 
-import { Block, BLOCKS } from '../world/blocks';
+import { Block, BLOCKS, type BlockInfo, type Box } from '../world/blocks';
 import { makeTextures, TEXTURE_SIZE, type TextureName, textureLayer } from '../world/textures';
 
 /** Icon size in pixels (drawn crisp; CSS scales it). */
@@ -46,6 +47,10 @@ export function blockIcons(pixels: Uint8Array = makeTextures()): string[] {
     canvas.width = canvas.height = SIZE;
     const ctx = canvas.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
+    if (info.boxes) {
+      drawBoxes(ctx, info, layer);
+      return canvas.toDataURL();
+    }
     for (const { map, shade, face } of FACES) {
       ctx.setTransform(...map);
       ctx.drawImage(layer(face === 'top' ? info.textures.top : info.front && shade > 0.3 ? info.front.texture : info.textures.side), 0, 0);
@@ -59,4 +64,35 @@ export function blockIcons(pixels: Uint8Array = makeTextures()): string[] {
     }
     return canvas.toDataURL();
   });
+}
+
+/**
+ * A block made of boxes drawn as the cube is, each box's three faces we see (its top, its -x side
+ * and its +z side) showing the part of the texture where it is, the boxes further back and lower
+ * first. A point (x, y, z) of the block is at (4 + 20x + 20z, 34 - 10x + 10z - 20y) on the icon.
+ */
+function drawBoxes(ctx: CanvasRenderingContext2D, info: BlockInfo, layer: (name: TextureName) => HTMLCanvasElement): void {
+  const order = [...info.boxes!].sort((a: Box, b: Box) => a[1] - b[1] || a[5] - a[0] - (b[5] - b[0]));
+  for (const [x0, y0, z0, x1, y1, z1] of order) {
+    // Each face: the map from texels (u across, v down) to the icon, and the texels it shows.
+    const faces: [number[], number, number, number, number, number, 'top' | 'side'][] = [
+      [[20 / T, -10 / T, 20 / T, 10 / T, 4, 34 - 20 * y1], 0, x0, z0, x1, z1, 'top'],
+      [[20 / T, 10 / T, 0, 20 / T, 4 + 20 * x0, 14 - 10 * x0], 0.2, z0, 1 - y1, z1, 1 - y0, 'side'],
+      [[20 / T, -10 / T, 0, 20 / T, 4 + 20 * z1, 14 + 10 * z1], 0.35, x0, 1 - y1, x1, 1 - y0, 'side'],
+    ];
+    for (const [map, shade, u0, v0, u1, v1, face] of faces) {
+      const [a, b, c, d, e, f] = map;
+      ctx.setTransform(a, b, c, d, e, f);
+      const sx = u0 * T;
+      const sy = v0 * T;
+      const sw = (u1 - u0) * T;
+      const sh = (v1 - v0) * T;
+      ctx.drawImage(layer(face === 'top' ? info.textures.top : info.textures.side), sx, sy, sw, sh, sx, sy, sw, sh);
+      if (shade) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${shade})`;
+        ctx.fillRect(sx, sy, sw, sh);
+      }
+    }
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 }

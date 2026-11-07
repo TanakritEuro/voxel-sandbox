@@ -64,6 +64,7 @@ import { MobRenderer } from './render/mobRenderer';
 import { bedOf, Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, wheat, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
+import { isShape, shapePlacement } from './world/shapes';
 import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock, touches } from './world/physics';
@@ -1439,6 +1440,19 @@ function place(target: RayHit): void {
     const parts = pairPlacement(world, selectedBlock, x, y, z, input.yaw);
     if (!parts || parts.some(([px, py, pz, pb]) => overlapsBlock(player.body, px, py, pz, pb))) return;
     for (const [px, py, pz, pb] of parts) edit(px, py, pz, pb);
+    sound.play({ name: 'place', material: BLOCKS[selectedBlock].sound, gain: 1 });
+    swing();
+    if (survival) {
+      pack.takeOne(selected);
+      renderHotbar();
+    }
+    return;
+  }
+  if (isShape(selectedBlock)) {
+    // A slab in the half clicked (or made whole), stairs the way the player looks.
+    const placed = shapePlacement(world, selectedBlock, target, input.yaw);
+    if (!placed || overlapsBlock(player.body, placed[0], placed[1], placed[2], placed[3])) return;
+    edit(placed[0], placed[1], placed[2], placed[3]);
     sound.play({ name: 'place', material: BLOCKS[selectedBlock].sound, gain: 1 });
     swing();
     if (survival) {

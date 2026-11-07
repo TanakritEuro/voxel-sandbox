@@ -4,7 +4,7 @@
 // sticks come from a roll the caller makes (seeded, so a test can say what drops). Pure.
 
 import { TUNING } from '../config';
-import { bedOf, Block, BLOCKS, chestOf, doorOf, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, wheatStage, wirePower } from '../world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, doorOf, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, SHAPE_MATERIALS, slab, slabOf, stairs, stairsOf, wheatStage, wirePower } from '../world/blocks';
 import type { Cost } from './inventory';
 import { Item, type Tool, type ToolKind } from './items';
 
@@ -17,6 +17,13 @@ for (const b of [Block.Wood, Block.SpruceWood, Block.Planks]) RIGHT_TOOL.set(b, 
 for (let b = Block.Chest; b < Block.Farmland; b++) RIGHT_TOOL.set(b as Block, 'axe');
 for (const b of [Block.Dirt, Block.Grass, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass, Block.Farmland]) RIGHT_TOOL.set(b, 'spade');
 
+// Slabs and stairs dig as their material does.
+for (let b = Block.Slab; b < Block.Stairs + 24; b++) {
+  const m = SHAPE_MATERIALS[(slabOf(b as Block) ?? stairsOf(b as Block))!.material].block;
+  const tool = RIGHT_TOOL.get(m);
+  if (tool) RIGHT_TOOL.set(b as Block, tool);
+}
+
 /** The pick tier a block needs to give anything (1 wood, 2 stone, 3 iron). */
 const PICK_TIER = new Map<Block, number>([
   [Block.Stone, 1],
@@ -27,6 +34,10 @@ const PICK_TIER = new Map<Block, number>([
   [Block.CrystalOre, 3],
   ...[0, 1, 2, 3].flatMap((f) => [false, true].map((lit) => [furnace(f, lit), 1] as [Block, number])),
 ]);
+for (let b = Block.Slab; b < Block.Stairs + 24; b++) {
+  const tier = PICK_TIER.get(SHAPE_MATERIALS[(slabOf(b as Block) ?? stairsOf(b as Block))!.material].block);
+  if (tier) PICK_TIER.set(b as Block, tier);
+}
 
 /** What a block gives, when it isn't itself. */
 const GIVES = new Map<Block, number>([
@@ -95,5 +106,10 @@ export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cos
   if (chestOf(block)) return [[Block.Chest, 1]];
   if (doorOf(block)) return [[Block.Door, 1]];
   if (bedOf(block)) return [[Block.Bed, 1]];
+  // A slab or stairs, as the picker has them (a slab made whole is its block, and gives that).
+  const sl = slabOf(block);
+  if (sl) return [[slab(sl.material, false), 1]];
+  const st = stairsOf(block);
+  if (st) return [[stairs(st.material, 0, false), 1]];
   return PLACEABLE_SET.has(block) ? [[block, 1]] : [];
 }

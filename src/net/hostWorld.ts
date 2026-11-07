@@ -62,6 +62,8 @@ export function editAllowed(who: PlayerState | undefined, everyone: Iterable<Pla
 const PLACED_GATES = new Set<number>(
   FACINGS.flatMap((_, f) => [inverter(f, false), delay(f, 1, false), furnace(f, false), chest(f), door(f, false, false), door(f, false, true), bed(f, false), bed(f, true)]),
 );
+// Slabs in either half, stairs any way and upside down.
+for (let b = Block.Slab; b < Block.Stairs + 24; b++) PLACED_GATES.add(b);
 
 /**
  * A block a player can set: air (breaking), one from the picker, a torch (on a floor or a wall), a

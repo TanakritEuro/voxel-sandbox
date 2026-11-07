@@ -33,7 +33,8 @@ where there are no shapes.
   - 4 stairs from 6;
   - 3 fences from 4 planks and 2 sticks;
   - 16 panes from 6 glass.
-- **Drops:** each gives itself (a double slab gives two). The right tool is the block's own.
+- **Drops:** each gives itself. The right tool is the block's own. (A slab made whole is its material's
+  block, and gives that, not two slabs.)
 - **Together:** placing any state is allowed for guests (as with doors and chests); a slab made
   whole is an edit to the whole block.
 
@@ -125,7 +126,7 @@ where there are no shapes.
 ## Steps (each built, tested, measured, committed and pushed)
 1. **Several boxes a block:** `boxes` in place of `box`, collision, raycast with the hit point, and
    `piece` drawing them; slabs and stairs as blocks. Built (2026-11-07).
-2. **Placing slabs and stairs,** slabs made whole, the picker, recipes and drops.
+2. **Placing slabs and stairs,** slabs made whole, the picker, recipes and drops. Built (2026-11-07).
 3. **Step-up** for players and mobs.
 4. **Fences and panes:** boxes from neighbours, in collision, raycast and the mesher; 1.5 high fences.
 5. **Measurements,** notes and playtest questions.
@@ -198,5 +199,47 @@ rounds each; the machine was slower than at the end of Milestone 13):
 - the textures cropped to each part and continuous across the parts (the sandstone's stripes line up
   from the step to the back).
 - The hotbar's icons are still whole cubes: step 2.
+- No console errors.
+
+## Step 2: placing slabs and stairs — built (2026-11-07)
+
+**What's there** (`world/shapes.ts`, `shapePlacement`, pure):
+- **A slab** goes low on a top face, high on a ceiling, and on a side in the half clicked (the hit
+  point's height from step 1).
+- **Made whole:**
+  - a slab clicked onto the open half of its own material's slab (a lower one's top, an upper one's
+    underside) makes the whole block there;
+  - so does one put where its kind is in the other half (the ray went through the empty half);
+  - a different material goes beside it as a slab of its own.
+- **Stairs:** the back the way the player looks; upside down on a ceiling or the upper half of a side.
+- **Icons** of the shapes: each box drawn as the cube is, the part of each texture where it is, the
+  boxes further back and lower first.
+- **Survival:**
+  - 6 slabs from 3 of the block, 4 stairs from 6;
+  - each gives itself as the picker has it;
+  - dug with its material's tool, and stone and sandstone need a pick as their blocks do;
+  - a slab made whole is the block, and gives the block. The plan said a double slab gives two;
+    there's no double slab.
+- **Together:** a guest may set any slab or stairs state; a slab made whole is an edit to the block.
+
+**Tests** (6 new, 488 in all, in `tests/shapes.test.ts`):
+- **Slabs:**
+  - low on a top, high on a ceiling, upper and lower on a side by the click's height;
+  - made whole from a lower one's top and an upper one's underside;
+  - a different material goes above;
+  - made whole from the side into the empty half;
+  - nothing into the half it's in already.
+- **Stairs** facing the way the player looks (two ways), upside down from a ceiling and the upper half
+  of a side, nothing into a block.
+- **Survival:** drops and tools, stone stairs by hand give nothing, the recipes.
+- **Together:** every state settable by a guest.
+
+**Tried in the browser** (`?seed=7&nolock`, creative):
+- the icons show a slab and a flight of stairs in the hotbar;
+- a stone slab on the grass;
+- a click on its near side's lower half put a second slab beside it (a log of the click showed the
+  hit there, at height 0.2 up the side). That's as it should be, though it surprised me at first;
+- a click on a slab's top made whole stone;
+- plank stairs placed on the slab had their back away from the player and their step towards them.
 - No console errors.
 

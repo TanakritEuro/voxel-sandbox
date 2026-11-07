@@ -150,7 +150,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches,
   thin logic blocks, wheat and a door's lower half)),
   `torches.ts` (`torchesHeldBy`: the torches, thin logic blocks, wheat and doors a block holds up), `parts.ts` (blocks in pairs: a door's
-  halves, a bed's; `pairPlacement`, `partnerOf`, `useAt`: a click's blocks, a door's two halves), `textures.ts`
+  halves, a bed's; `pairPlacement`, `partnerOf`, `useAt`: a click's blocks, a door's two halves), `shapes.ts`
+  (`shapePlacement`: a slab in the half clicked or made whole, stairs the way the player looks), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
   (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
@@ -226,7 +227,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
   only the face directions that can point at the camera (`faceRanges`). `blockMaterial.ts` — the texture
   array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
-  textures. `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
+  textures (a slab's or stairs' boxes each drawn, cropped). `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
   icons. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
   `clouds.ts` — the blocky cloud layer and its tiling pattern. `fog.ts` — fog colour and

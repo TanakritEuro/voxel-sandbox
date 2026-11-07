@@ -7,6 +7,10 @@ import { createBody, moveBody, overlapsBlock } from '../src/world/physics';
 import { raycast } from '../src/world/raycast';
 import { Chunk, World } from '../src/world/world';
 import { Grid } from './grid';
+import { shapePlacement } from '../src/world/shapes';
+import { dropsOf, pickTier, rightTool } from '../src/survival/drops';
+import { RECIPES } from '../src/survival/crafting';
+import { settable } from '../src/net/hostWorld';
 
 /** A world with empty (all-air) chunks at the given chunk coordinates. */
 function emptyWorld(...coords: [number, number, number][]): World {
@@ -174,5 +178,71 @@ describe('meshing several boxes', () => {
       return m.uvl[v * 4] + (m.uvl[v * 4 + 3] >> 3) / 8;
     });
     expect(us.map((u) => u).sort()).toEqual([0.5, 0.5, 1, 1]);
+  });
+});
+
+describe('placing slabs and stairs', () => {
+  /** A floor of stone under y 1, and a click on its top at (0, 0, 0). */
+  const floor = () => new Grid().floor(-5, 5, -5, 5);
+  const top = { x: 0, y: 0, z: 0, nx: 0, ny: 1, nz: 0, py: 1 };
+  const LOOK_X = -Math.PI / 2; // looking along +x
+  /** One stone block at (0, 0, 0), for clicks on its sides. */
+  const lone = () => new Grid().set(0, 0, 0, Block.Stone);
+
+  it('puts a slab low on a top, high on a ceiling, and on a side in the half clicked', () => {
+    const g = floor();
+    expect(shapePlacement(g, slab(0, false), top, 0)).toEqual([0, 1, 0, slab(0, false)]);
+    expect(shapePlacement(g, slab(0, false), { x: 0, y: 3, z: 0, nx: 0, ny: -1, nz: 0, py: 3 }, 0)).toEqual([0, 2, 0, slab(0, true)]);
+    expect(shapePlacement(lone(), slab(2, false), { x: 0, y: 0, z: 0, nx: 1, ny: 0, nz: 0, py: 0.7 }, 0)).toEqual([1, 0, 0, slab(2, true)]);
+    expect(shapePlacement(lone(), slab(2, false), { x: 0, y: 0, z: 0, nx: 1, ny: 0, nz: 0, py: 0.3 }, 0)).toEqual([1, 0, 0, slab(2, false)]);
+  });
+
+  it("makes the whole block from a slab clicked onto its own kind's open half, or put where one is in the other half", () => {
+    const g = floor().set(0, 1, 0, slab(1, false)).set(3, 2, 0, slab(1, true));
+    // On the lower plank slab's top: planks, there.
+    expect(shapePlacement(g, slab(1, false), { x: 0, y: 1, z: 0, nx: 0, ny: 1, nz: 0, py: 1.5 }, 0)).toEqual([0, 1, 0, Block.Planks]);
+    // Under the upper one: planks.
+    expect(shapePlacement(g, slab(1, false), { x: 3, y: 2, z: 0, nx: 0, ny: -1, nz: 0, py: 2.5 }, 0)).toEqual([3, 2, 0, Block.Planks]);
+    // A stone slab on the plank slab: a slab above it, not a block.
+    expect(shapePlacement(g, slab(0, false), { x: 0, y: 1, z: 0, nx: 0, ny: 1, nz: 0, py: 1.5 }, 0)).toEqual([0, 2, 0, slab(0, false)]);
+    // From the side, into the plank slab's empty upper half (the ray went through it): planks.
+    expect(shapePlacement(g, slab(1, false), { x: -1, y: 1, z: 0, nx: 1, ny: 0, nz: 0, py: 1.8 }, 0)).toEqual([0, 1, 0, Block.Planks]);
+    // Into its lower half, where it is already: nothing.
+    expect(shapePlacement(g, slab(1, false), { x: -1, y: 1, z: 0, nx: 1, ny: 0, nz: 0, py: 1.2 }, 0)).toBe(null);
+  });
+
+  it('turns stairs the way the player looks, upside down on a ceiling or the upper half of a side', () => {
+    const g = floor();
+    expect(shapePlacement(g, stairs(0, 0, false), top, LOOK_X)).toEqual([0, 1, 0, stairs(0, 0, false)]);
+    expect(shapePlacement(g, stairs(0, 0, false), top, 0)).toEqual([0, 1, 0, stairs(0, 3, false)]);
+    expect(shapePlacement(g, stairs(2, 0, false), { x: 0, y: 3, z: 0, nx: 0, ny: -1, nz: 0, py: 3 }, LOOK_X)).toEqual([0, 2, 0, stairs(2, 0, true)]);
+    expect(shapePlacement(lone(), stairs(2, 0, false), { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 1, py: 0.9 }, LOOK_X)).toEqual([0, 0, 1, stairs(2, 0, true)]);
+    // Into something: nothing.
+    expect(shapePlacement(g.set(0, 1, 0, Block.Stone), stairs(0, 0, false), top, 0)).toBe(null);
+  });
+});
+
+describe('slabs and stairs in survival and together', () => {
+  it('give themselves (as the picker has them), dug with their material\'s tool and pick', () => {
+    expect(dropsOf(slab(0, true), { kind: 'pick', tier: 1, speed: 2, wear: 60 }, 0)).toEqual([[slab(0, false), 1]]);
+    expect(dropsOf(stairs(1, 3, true), undefined, 0)).toEqual([[stairs(1, 0, false), 1]]);
+    // Stone stairs by hand: nothing, as stone gives nothing by hand.
+    expect(dropsOf(stairs(0, 2, false), undefined, 0)).toEqual([]);
+    expect(rightTool(slab(1, false))).toBe('axe');
+    expect(rightTool(stairs(2, 1, true))).toBe('pick');
+    expect(pickTier(slab(0, true))).toBe(1);
+  });
+
+  it('are made 6 slabs from 3 blocks and 4 stairs from 6', () => {
+    const slabs = RECIPES.find((r) => r.makes === slab(2, false))!;
+    expect(slabs.count).toBe(6);
+    expect(slabs.cost).toEqual([[Block.Sandstone, 3]]);
+    const steps = RECIPES.find((r) => r.makes === stairs(0, 0, false))!;
+    expect(steps.count).toBe(4);
+    expect(steps.cost).toEqual([[Block.Stone, 6]]);
+  });
+
+  it('may be set by a guest in any half, facing or way up', () => {
+    for (let b = Block.Slab; b < Block.Stairs + 24; b++) expect(settable(b)).toBe(true);
   });
 });
