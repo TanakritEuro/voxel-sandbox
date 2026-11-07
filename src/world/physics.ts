@@ -89,6 +89,36 @@ export function moveBody(body: Body, dx: number, dy: number, dz: number, world: 
 }
 
 /**
+ * `moveBody`, stepping up: a move on the ground that something stops sideways is tried again
+ * `TUNING.player.stepUp` higher (as far up as there's room) and brought back down onto what's there,
+ * and that is kept if it gets further across. So a slab, a stair or a bed is walked up; a whole
+ * block isn't (nothing is gained half a block up). The y of the hits is whether it ended on
+ * something.
+ */
+export function moveStepping(body: Body, dx: number, dy: number, dz: number, world: BlockSource): Hits {
+  const x0 = body.x;
+  const y0 = body.y;
+  const z0 = body.z;
+  const hits = moveBody(body, dx, dy, dz, world);
+  if (!hits.x && !hits.z) return hits;
+  const plain = [body.x, body.y, body.z];
+  const gotPlain = Math.hypot(body.x - x0, body.z - z0);
+  body.x = x0;
+  body.y = y0;
+  body.z = z0;
+  moveBody(body, 0, TUNING.player.stepUp, 0, world);
+  const rose = body.y - y0;
+  const across = moveBody(body, dx, 0, dz, world);
+  const gotStep = Math.hypot(body.x - x0, body.z - z0);
+  const down = moveBody(body, 0, -rose + Math.min(dy, 0), 0, world);
+  if (rose > EPS && gotStep > gotPlain + EPS && down.y) return { x: across.x, y: true, z: across.z };
+  body.x = plain[0];
+  body.y = plain[1];
+  body.z = plain[2];
+  return hits;
+}
+
+/**
  * Is a block of boxes (a door, a bed, a slab, stairs) anywhere the body's box could be during a move
  * of (dx, dy, dz): in the box stretched by the move on each axis?
  */
@@ -402,7 +432,8 @@ export function stepPlayer(body: Body, input: MoveInput, world: BlockSource, dt 
     dx = sx;
     dz = sz;
   }
-  const hits = moveBody(body, dx, dy, dz, world);
+  // On the ground, walking or running (not crouching, not swimming), half a block is stepped up.
+  const hits = body.onGround && !input.crouch && !swimming ? moveStepping(body, dx, dy, dz, world) : moveBody(body, dx, dy, dz, world);
   body.vx = hits.x || edgeX ? 0 : vx;
   body.vy = hits.y ? 0 : vy;
   body.vz = hits.z || edgeZ ? 0 : vz;
@@ -456,7 +487,9 @@ export function stepMob(body: Body, move: MobMove, world: BlockSource, dt = TUNI
     vy0 = move.jump && body.onGround ? Math.sqrt(2 * P.gravity * move.jumpHeight) : body.vy;
     vy = Math.max(vy0 - P.gravity * dt, -P.terminalVelocity);
   }
-  const hits = moveBody(body, ((body.vx + vx) / 2) * dt, ((vy0 + vy) / 2) * dt, ((body.vz + vz) / 2) * dt, world);
+  // On the ground, half a block is stepped up, as the player does.
+  const mover = body.onGround && !body.inWater ? moveStepping : moveBody;
+  const hits = mover(body, ((body.vx + vx) / 2) * dt, ((vy0 + vy) / 2) * dt, ((body.vz + vz) / 2) * dt, world);
   body.vx = hits.x ? 0 : vx;
   body.vy = hits.y ? 0 : vy;
   body.vz = hits.z ? 0 : vz;

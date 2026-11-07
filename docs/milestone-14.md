@@ -127,7 +127,7 @@ where there are no shapes.
 1. **Several boxes a block:** `boxes` in place of `box`, collision, raycast with the hit point, and
    `piece` drawing them; slabs and stairs as blocks. Built (2026-11-07).
 2. **Placing slabs and stairs,** slabs made whole, the picker, recipes and drops. Built (2026-11-07).
-3. **Step-up** for players and mobs.
+3. **Step-up** for players and mobs. Built (2026-11-07).
 4. **Fences and panes:** boxes from neighbours, in collision, raycast and the mesher; 1.5 high fences.
 5. **Measurements,** notes and playtest questions.
 
@@ -242,4 +242,50 @@ rounds each; the machine was slower than at the end of Milestone 13):
 - a click on a slab's top made whole stone;
 - plank stairs placed on the slab had their back away from the player and their step towards them.
 - No console errors.
+
+## Step 3: stepping up — built (2026-11-07)
+
+**What's there:**
+- **`moveStepping`** (`world/physics.ts`), `moveBody` with a step:
+  - a move that something stops sideways is tried again `TUNING.player.stepUp` (half a block) higher,
+    as far up as there's room for the head, then brought back down onto what's there;
+  - it's kept if it gets further across and lands on something.
+  - So a slab, a stair, a bed or two slabs in a row are walked up; a whole block isn't (nothing is
+    gained half a block up). Under a low ceiling nothing is stepped up either.
+- **The player** steps up on the ground, walking or sprinting, not crouching (so crouching at an edge
+  is unchanged) and not swimming.
+- **Mobs** step up on the ground out of water. Their paths still take slabs and stairs as whole
+  blocks to climb by jumping, which their bodies now walk up instead.
+- **The camera** doesn't jolt up a stair: the eye lags behind a step up and eases to the feet
+  (`TUNING.player.stepEase`, 18 a second).
+
+**Tests** (6 new, 494 in all, `tests/stepup.test.ts`, through `stepPlayer` and `stepMob`):
+- **The player walks up:**
+  - onto a row of slabs and along them, on the ground at 1.5;
+  - a flight of four stairs (each on the stone under it, a landing at the top), to 5;
+  - onto a bed.
+- **Not:**
+  - up a whole block (stopped at its face);
+  - crouching;
+  - under a ceiling 2 above the floor (room to stand, not to step up);
+  - in the air, falling past a slab's edge.
+- **A mob** walks up onto a row of slabs.
+
+**Bench** (`player physics` and `mobs`, against the last commit, two rounds each):
+
+| | µs a player step | mobs: ms a frame median |
+| --- | --- | --- |
+| Before | 3.86 / 3.86 | 0.071 / 0.079 |
+| After | 4.14 / 4.03 | 0.076 / 0.077 |
+
+- The same walk (468 blocks covered) and the same mob paths (1,320 blocks walked).
+- The player's step costs about 5% more: walking into the generated land's walls now also tries
+  half a block up. It never succeeds there, as the terrain has no slabs.
+
+**Tried in the browser** (`?seed=7&nolock`, creative, walking):
+- a stone slab with plank stairs on it, placed on the grass;
+- walking straight at them: up from 68.6 to 69.6 without jumping, two half-block steps, then off the
+  far side and down;
+- no console errors.
+- **For the playtest:** how it feels, especially the eye easing up.
 

@@ -135,7 +135,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, light, day length, sleep, sky, mobs, water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
+  reach, stepping up, light, day length, sleep, sky, mobs, water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
   wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
   eating, meat from animals, smelting time, items on the ground, farming), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
@@ -172,6 +172,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
   buttons let go, doors opened while signalled (each door's last signal kept, so a click lasts until it changes); changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with boxes hit only where they are, the nearest; the hit point), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
   blocks' boxes, every box of a block (looked for inside the blocks the body is in only with one about, `nearBox`), walking, jumping,
+  stepping up half a block on the ground (`moveStepping`, players and mobs),
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
   `underLiquid` for the eye; `overlapsBlock` for placing (a block's box if given); `stepMob` for mobs; `touches`: a kind of block against the box, for cactus), `mining.ts` (break
@@ -298,7 +299,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/input.ts` — keys and mouse buttons held (only with the mouse captured), presses kept
   until taken, mouse look and pointer lock (`unlock`; a free mode for `?nolock`) (raw input where the browser has it, else `SpikeFilter`
   drops Chrome's occasional huge moves).
-- `src/player.ts` — the player: physics at a fixed step, interpolated camera, fly toggle,
+- `src/player.ts` — the player: physics at a fixed step, interpolated camera (the eye easing up a step), fly toggle,
   waiting for the ground to load; `autopilot` for `?autofly`.
 - `src/main.ts` — entry point: the world list, or the game for `?world=<id>` (or an unsaved
   world, or `?join=<code>` a friend's). `src/game.ts` — the game: opening the world (or joining

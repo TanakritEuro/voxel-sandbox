@@ -71,6 +71,9 @@ export const TUNING = {
     crouchEyeHeight: 1.32,
     /** How quickly the eye moves to its new height on crouching (per second; higher is snappier). */
     eyeEase: 14,
+    /** Walking up a rise this high (blocks: a slab, a stair, a bed) needs no jump; the eye follows at `stepEase`. */
+    stepUp: 0.5,
+    stepEase: 18,
     swim: {
       /** Blocks / s across the water, and up while Space is held. */
       speed: 2.2,

@@ -32,6 +32,8 @@ export class Player {
   physicsSteps = 0;
   /** Eye above the feet now: eases between standing and crouching heights. */
   private eye = TUNING.player.eyeHeight;
+  /** How far the eye still lags behind a step up (negative, easing to 0), so a stair isn't a jolt. */
+  private stepLag = 0;
   /** Where the body was before the last step; the camera is drawn between this and the body. */
   private readonly previous = { x: 0, y: 0, z: 0 };
   private readonly clock = new FixedStep(TUNING.player.step);
@@ -87,13 +89,19 @@ export class Player {
       this.keepPosition();
       move.flying = this.flying;
       move.crouch = this.crouching();
+      const wasOnGround = this.body.onGround;
+      const before = this.body.y;
       stepPlayer(this.body, move, this.world);
+      // Stepped up (on the ground before and after, higher by more than a fall could rise): the eye eases up.
+      const rose = this.body.y - before;
+      if (wasOnGround && this.body.onGround && rose > 0.05) this.stepLag = Math.max(-TUNING.player.stepUp, this.stepLag - rose);
       move.jump = input.isHeld('Space');
       // Coming down onto the ground ends a flight, as it would anywhere.
       if (this.flying && this.body.onGround) this.flying = false;
     }
     this.physicsMs = performance.now() - start;
     this.physicsSteps = steps;
+    this.stepLag *= Math.exp(-TUNING.player.stepEase * dt);
     this.placeCamera(this.clock.alpha);
   }
 
@@ -151,7 +159,7 @@ export class Player {
   private placeCamera(t: number): void {
     const p = this.previous;
     const b = this.body;
-    const c = this.camera.position.set(lerp(p.x, b.x, t), lerp(p.y, b.y, t) + this.eye, lerp(p.z, b.z, t));
+    const c = this.camera.position.set(lerp(p.x, b.x, t), lerp(p.y, b.y, t) + this.eye + this.stepLag, lerp(p.z, b.z, t));
     this.camera.rotation.set(this.input.pitch, this.input.yaw, 0, 'YXZ');
     this.eyeInWater = underLiquid(this.world, c.x, c.y, c.z);
   }
