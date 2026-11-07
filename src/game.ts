@@ -1709,8 +1709,9 @@ function frame(now: number): void {
   playTogether(now);
   outline.visible = target !== null;
   if (target) {
-    // Round a door's or bed's box; round the block for the rest.
-    const box = BLOCKS[target.block].box ?? WHOLE_BLOCK;
+    // Round a door's, bed's, slab's or stairs' boxes; round the block for the rest.
+    const boxes = BLOCKS[target.block].boxes;
+    const box = boxes ? [0, 1, 2].map((a) => Math.min(...boxes.map((b) => b[a]))).concat([3, 4, 5].map((a) => Math.max(...boxes.map((b) => b[a])))) : WHOLE_BLOCK;
     outline.position.set(target.x + (box[0] + box[3]) / 2, target.y + (box[1] + box[4]) / 2, target.z + (box[2] + box[5]) / 2);
     outline.scale.set(box[3] - box[0], box[4] - box[1], box[5] - box[2]);
   }

@@ -73,9 +73,16 @@ export enum Block {
   Farmland = 134,
   /** Wheat by stage, 0 (just sown) to 7 (ripe) (135–142): `wheat`, `wheatStage`. */
   Wheat = 135,
+  /** Shapes (Milestone 14). Slabs by material (`SHAPE_MATERIALS`), lower and upper (143–148): `slab`, `slabOf`. */
+  Slab = 143,
+  /** Stairs by material, facing (the way the player looked placing them: the tall back) and upside down (149–172): `stairs`, `stairsOf`. */
+  Stairs = 149,
 }
 
 type RGB = [number, number, number];
+
+/** A box within a block: (x0, y0, z0, x1, y1, z1), 0–1. */
+export type Box = readonly [number, number, number, number, number, number];
 
 /** What a block sounds like underfoot, dug, broken and placed (`audio/sound.ts` has a recipe for each). */
 export type BlockSound = 'stone' | 'dirt' | 'grass' | 'sand' | 'gravel' | 'snow' | 'wood' | 'leaves' | 'glass' | 'water';
@@ -95,10 +102,11 @@ export interface BlockInfo {
    */
   shape: 'cube' | 'torch' | 'wire' | 'switch' | 'button' | 'plate' | 'panel' | 'slab' | 'cross';
   /**
-   * What a body bumps into when it isn't the whole block (a door's panel, a bed): from (x0, y0, z0)
-   * to (x1, y1, z1) within the block, 0–1. Only for blocks that aren't passable.
+   * What a body bumps into when it isn't the whole block (a door's panel, a bed, a slab, stairs'
+   * two parts), each box from (x0, y0, z0) to (x1, y1, z1) within the block, 0–1. Only for blocks
+   * that aren't passable.
    */
-  box?: readonly [number, number, number, number, number, number];
+  boxes?: readonly Box[];
   /** A wall torch's wall: the horizontal step from it to the block it hangs on. */
   wall?: { x: number; z: number };
   /** Offered by the block picker (wall torches aren't: they are the torch, placed on a wall). */
@@ -193,13 +201,47 @@ export function doorSide(facing: number, open: boolean): number {
 }
 
 /** A panel's box against side `side` (an index into `FACINGS`) of its block, the whole height. */
-function panelBox(side: number): readonly [number, number, number, number, number, number] {
+function panelBox(side: number): Box {
   const [sx, sz] = FACINGS[side];
   const x0 = sx > 0 ? 1 - PANEL : 0;
   const x1 = sx < 0 ? PANEL : 1;
   const z0 = sz > 0 ? 1 - PANEL : 0;
   const z1 = sz < 0 ? PANEL : 1;
   return [x0, 0, z0, x1, 1, z1];
+}
+
+/** What slabs and stairs are made of: each its whole block, name and hardness. */
+export const SHAPE_MATERIALS = [
+  { block: Block.Stone, name: 'Stone', hardness: 2.5, textures: faces('stone'), colour: 0x8a8d91 },
+  { block: Block.Planks, name: 'Plank', hardness: 1.5, textures: faces('planks'), colour: 0xb88c55 },
+  { block: Block.Sandstone, name: 'Sandstone', hardness: 1.2, textures: faces('sandstone_top', 'sandstone_side'), colour: 0xd3bf86 },
+] as const;
+
+/** A slab or stairs of material `m`: not opaque (light goes through, faces against it drawn), drawn as its boxes. */
+function materialBlock(m: (typeof SHAPE_MATERIALS)[number], kind: 'slab' | 'stairs'): Omit<BlockInfo, 'sound'> {
+  return {
+    ...solid(`${m.name} ${kind}`, m.hardness, m.textures, m.colour),
+    opaque: false,
+    shape: 'slab',
+  };
+}
+
+/** Stairs' two boxes: the slab, and the quarter on the side `facing` points to (above it, or under it upside down). */
+function stairBoxes(facing: number, down: boolean): readonly Box[] {
+  const [fx, fz] = FACINGS[facing];
+  const x0 = fx > 0 ? 0.5 : 0;
+  const x1 = fx < 0 ? 0.5 : 1;
+  const z0 = fz > 0 ? 0.5 : 0;
+  const z1 = fz < 0 ? 0.5 : 1;
+  return down
+    ? [
+        [0, 0.5, 0, 1, 1, 1],
+        [x0, 0, z0, x1, 0.5, z1],
+      ]
+    : [
+        [0, 0, 0, 1, 0.5, 1],
+        [x0, 0.5, z0, x1, 1, z1],
+      ];
 }
 
 /** Water: a source (the sea, lakes, water placed), and what flowing and falling water copy. */
@@ -311,7 +353,7 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
         ...solid('Door', 3, faces(upper ? 'door_upper' : 'door_lower'), 0xa67c4a),
         opaque: false,
         shape: 'panel' as const,
-        box: panelBox(doorSide(facing, open)),
+        boxes: [panelBox(doorSide(facing, open))],
         pickable: facing === 0 && !open && !upper,
         icon: 'door_item' as const,
       })),
@@ -323,7 +365,7 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
       ...solid('Bed', 0.4, faces(head ? 'bed_head' : 'bed_foot', 'bed_side', 'planks'), 0xb04a3a),
       opaque: false,
       shape: 'slab' as const,
-      box: [0, 0, 0, 1, BED_HEIGHT, 1] as const,
+      boxes: [[0, 0, 0, 1, BED_HEIGHT, 1]] as const,
       pickable: facing === 0 && !head,
       icon: 'bed_item' as const,
     })),
@@ -338,6 +380,25 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
     cutout: true,
     pickable: false,
   })),
+  // Slabs: half a block of the material, low or high.
+  ...SHAPE_MATERIALS.flatMap((m) =>
+    [false, true].map((upper) => ({
+      ...materialBlock(m, 'slab'),
+      boxes: [upper ? [0, 0.5, 0, 1, 1, 1] : [0, 0, 0, 1, 0.5, 1]] as readonly Box[],
+      pickable: !upper,
+    })),
+  ),
+  // Stairs: a slab, and a quarter block on it at the back (the way the player looked); upside down,
+  // the slab at the top and the quarter under it.
+  ...SHAPE_MATERIALS.flatMap((m) =>
+    FACINGS.flatMap((_, facing) =>
+      [false, true].map((down) => ({
+        ...materialBlock(m, 'stairs'),
+        boxes: stairBoxes(facing, down),
+        pickable: facing === 0 && !down,
+      })),
+    ),
+  ),
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
@@ -495,6 +556,24 @@ export const bed = (facing: number, head: boolean): Block => (Block.Bed + facing
 export function bedOf(block: Block): { facing: number; head: boolean } | null {
   const i = block - Block.Bed;
   return i >= 0 && i < 8 ? { facing: i >> 1, head: (i & 1) === 1 } : null;
+}
+
+/** A slab of material `material` (an index into `SHAPE_MATERIALS`), in the upper half or the lower. */
+export const slab = (material: number, upper: boolean): Block => (Block.Slab + material * 2 + (upper ? 1 : 0)) as Block;
+
+/** A slab's material and half; null for any other block. */
+export function slabOf(block: Block): { material: number; upper: boolean } | null {
+  const i = block - Block.Slab;
+  return i >= 0 && i < 6 ? { material: i >> 1, upper: (i & 1) === 1 } : null;
+}
+
+/** Stairs of material `material`, their back the way `facing` points, upside down or not. */
+export const stairs = (material: number, facing: number, down: boolean): Block => (Block.Stairs + (material * 4 + facing) * 2 + (down ? 1 : 0)) as Block;
+
+/** Stairs' material, facing and whether they're upside down; null for any other block. */
+export function stairsOf(block: Block): { material: number; facing: number; down: boolean } | null {
+  const i = block - Block.Stairs;
+  return i >= 0 && i < 24 ? { material: i >> 3, facing: (i >> 1) & 3, down: (i & 1) === 1 } : null;
 }
 
 /** Wheat at `stage` (0 sown, 7 ripe). */

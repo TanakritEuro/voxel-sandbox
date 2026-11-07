@@ -10,8 +10,9 @@ describe('the block picker and the hotbar', () => {
     // All but air, the four wall torches (placed as the torch), the eight kinds of moving water, and
     // logic blocks' states (15 powered wires, a switch, button and lamp on, 7 more inverters, 31 more delays),
     // 7 furnace states, and of the homes' blocks 3 more chest facings, 15 door states, 7 bed states,
-    // farmland and the 8 stages of wheat (made by tilling and sowing).
-    expect(PLACEABLE.length).toBe(BLOCKS.length - 13 - 15 - 3 - 7 - 31 - 7 - 3 - 15 - 7 - 1 - 8);
+    // farmland and the 8 stages of wheat (made by tilling and sowing), and of the shapes 3 upper slabs
+    // and 21 more stairs (facings, upside down).
+    expect(PLACEABLE.length).toBe(BLOCKS.length - 13 - 15 - 3 - 7 - 31 - 7 - 3 - 15 - 7 - 1 - 8 - 3 - 21);
     for (const b of [Block.Chest, Block.Door, Block.Bed]) expect(PLACEABLE).toContain(b);
     expect(PLACEABLE).not.toContain(Block.WaterFlow7);
     expect(PLACEABLE).toContain(Block.Water);

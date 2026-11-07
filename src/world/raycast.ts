@@ -1,7 +1,7 @@
 // Voxel raycast by grid traversal (Amanatides & Woo, 1987): step from cell to cell along the
 // ray, always crossing the nearest cell boundary next, so no block is ever skipped.
 
-import { BLOCKS, type Block } from './blocks';
+import { BLOCKS, type Block, type Box } from './blocks';
 import type { World } from './world';
 
 export interface RayHit {
@@ -15,6 +15,10 @@ export interface RayHit {
   ny: number;
   nz: number;
   distance: number;
+  /** Where the ray met it (on its face, or a box's): for placing in the upper or lower half of a side. */
+  px: number;
+  py: number;
+  pz: number;
 }
 
 /** First targetable block (solid, or a torch) along the ray from `origin` in unit direction `dir`, within `maxDistance`. */
@@ -48,12 +52,18 @@ export function raycast(
     const block = world.getBlock(x, y, z);
     const info = BLOCKS[block];
     if (info.targetable) {
-      if (!info.box) return { x, y, z, block, nx, ny, nz, distance: t };
-      // A door or bed: only where its box is; through the rest of the block.
-      const hit = intoBox(origin, dir, x, y, z, info.box);
-      if (hit && hit[0] <= maxDistance) {
-        const n = hit[1];
-        return n < 0 ? { x, y, z, block, nx, ny, nz, distance: t } : { x, y, z, block, nx: n === 0 ? -Math.sign(dir.x) : 0, ny: n === 1 ? -Math.sign(dir.y) : 0, nz: n === 2 ? -Math.sign(dir.z) : 0, distance: hit[0] };
+      if (!info.boxes) return at(origin, dir, x, y, z, block, nx, ny, nz, t);
+      // A door, bed, slab or stairs: only where its boxes are (the nearest); through the rest of the block.
+      let best: [number, number] | null = null;
+      for (const box of info.boxes) {
+        const hit = intoBox(origin, dir, x, y, z, box);
+        if (hit && (!best || hit[0] < best[0])) best = hit;
+      }
+      if (best && best[0] <= maxDistance) {
+        const n = best[1];
+        return n < 0
+          ? at(origin, dir, x, y, z, block, nx, ny, nz, t)
+          : at(origin, dir, x, y, z, block, n === 0 ? -Math.sign(dir.x) : 0, n === 1 ? -Math.sign(dir.y) : 0, n === 2 ? -Math.sign(dir.z) : 0, best[0]);
       }
     }
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {
@@ -79,6 +89,11 @@ export function raycast(
   return null;
 }
 
+/** A hit on block (x, y, z) at `distance` along the ray, the face by its normal. */
+function at(origin: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, x: number, y: number, z: number, block: Block, nx: number, ny: number, nz: number, distance: number): RayHit {
+  return { x, y, z, block, nx, ny, nz, distance, px: origin.x + dir.x * distance, py: origin.y + dir.y * distance, pz: origin.z + dir.z * distance };
+}
+
 /**
  * Where the ray meets the box (within block (x, y, z)): its distance, and the axis of the face it
  * goes in by (-1 if it starts inside). Null if it misses.
@@ -89,7 +104,7 @@ function intoBox(
   x: number,
   y: number,
   z: number,
-  box: readonly [number, number, number, number, number, number],
+  box: Box,
 ): [number, number] | null {
   const o = [origin.x, origin.y, origin.z];
   const v = [dir.x, dir.y, dir.z];

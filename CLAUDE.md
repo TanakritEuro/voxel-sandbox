@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 14 (shapes: slabs, stairs, fences, panes, stepping up) in progress, plan approved (`docs/milestone-14.md`).
 Milestones 1–13 built (`docs/milestone-1.md` to `docs/milestone-13.md`), waiting for playtests
 (Milestone 13, homes: chests of 27 slots; doors two blocks tall, a thin panel you bump into, opened by
 a click or a signal, keeping mobs out; beds half a block high that skip the night and are where you
@@ -141,8 +142,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/world/` — `blocks.ts` (block ids, properties (`liquidHeight`: water's depth in a block; flowing
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
   `furnaceOf`; a block's `front` texture on the side it faces), chests 106–109, doors 110–125, beds
-  126–133, farmland 134, wheat 135–142 (`chest`, `door`, `doorSide`, `bed`, `wheat` and their `…Of`;
-  `box`: what a body bumps into when it isn't the whole block, a door's panel or a bed's half):
+  126–133, farmland 134, wheat 135–142, slabs 143–148 and stairs 149–172 in `SHAPE_MATERIALS` (`chest`, `door`,
+  `doorSide`, `bed`, `wheat`, `slab`, `stairs` and their `…Of`; `boxes`: what a body bumps into when it
+  isn't the whole block, a door's panel, a bed's half, a slab, stairs' two):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
   `useBlock`, `isThinLogic`), textures and sound per face, the default
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches,
@@ -167,8 +169,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `wake.ts` (what moves on its own
   woken when a column loads: in it if saved, on its neighbours' faces), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
   at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
-  buttons let go, doors opened while signalled (each door's last signal kept, so a click lasts until it changes); changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with a box hit only where its box is), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
-  blocks' boxes (looked for inside the blocks the body is in only with one about, `nearBox`), walking, jumping,
+  buttons let go, doors opened while signalled (each door's last signal kept, so a click lasts until it changes); changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with boxes hit only where they are, the nearest; the hit point), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
+  blocks' boxes, every box of a block (looked for inside the blocks the body is in only with one about, `nearBox`), walking, jumping,
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
   `underLiquid` for the eye; `overlapsBlock` for placing (a block's box if given); `stepMob` for mobs; `touches`: a kind of block against the box, for cactus), `mining.ts` (break
@@ -205,12 +207,13 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
   and ears; pure).
 - `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
-  typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer, eighths added to v),
+  typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer, eighths added to v in the low 3 bits and to u above),
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
   `faceStarts`: quads by face direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then torches),
   `mesher.ts` (greedy mesher with AO, smooth light per corner, texture coordinates, torches as small boxes,
-  thin logic blocks as boxes (a gate's top turned to its facing), doors' panels and beds as their
-  boxes (`piece`: texture cropped to where each face is, in eighths up a side), wheat as two crossed
+  thin logic blocks as boxes (a gate's top turned to its facing), doors' panels, beds, slabs and stairs
+  as their boxes (`piece`: faces on another of the block's boxes left out, texture cropped to where each
+  face is, in eighths both ways), wheat as two crossed
   sheets in the cutout pass (`cross`),
   flowing water block by block at its depth, sides between waters only above the shallower; opaque, cutout (leaves) and transparent passes;
   `flatFaces` for far chunks), `lod.ts` (far chunks: the padded input coarsened in place into

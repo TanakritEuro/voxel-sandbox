@@ -47,7 +47,7 @@ describe('the homes blocks', () => {
     expect(doorOf(Block.Bed)).toBe(null);
     expect(bedOf(Block.Farmland)).toBe(null);
     expect(wheatStage(Block.Farmland)).toBe(-1);
-    expect(BLOCKS.length).toBe(Block.Wheat + 8);
+    expect(Block.Slab).toBe(Block.Wheat + 8);
   });
 
   it("puts a closed door's panel on the side nearest the player, and swings it open to their left", () => {
@@ -57,8 +57,8 @@ describe('the homes blocks', () => {
     // Looking along +z: closed against -z; open against +x (the left, looking along +z).
     expect(FACINGS[doorSide(2, false)]).toEqual([0, -1]);
     expect(FACINGS[doorSide(2, true)]).toEqual([1, 0]);
-    expect(BLOCKS[door(0, false, false)].box).toEqual([0, 0, 0, PANEL, 1, 1]);
-    expect(BLOCKS[bed(1, true)].box).toEqual([0, 0, 0, 1, BED_HEIGHT, 1]);
+    expect(BLOCKS[door(0, false, false)].boxes).toEqual([[0, 0, 0, PANEL, 1, 1]]);
+    expect(BLOCKS[bed(1, true)].boxes).toEqual([[0, 0, 0, 1, BED_HEIGHT, 1]]);
   });
 
   it('places a chest with its front to the player', () => {

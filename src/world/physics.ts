@@ -82,13 +82,14 @@ export interface Hits {
 
 /** Move the body by (dx, dy, dz) through the blocks: y first, then x, then z. */
 export function moveBody(body: Body, dx: number, dy: number, dz: number, world: BlockSource): Hits {
-  // Only with a door or bed about does a sweep look inside the blocks the body is already in.
+  // Only with a block of boxes about (a door, a bed, a slab, stairs) does a sweep look inside the
+  // blocks the body is already in.
   const boxed = nearBox(body, dx, dy, dz, world);
   return { y: sweep(body, 1, dy, world, boxed), x: sweep(body, 0, dx, world, boxed), z: sweep(body, 2, dz, world, boxed) };
 }
 
 /**
- * Is a block with a box of its own (a door, a bed) anywhere the body's box could be during a move
+ * Is a block of boxes (a door, a bed, a slab, stairs) anywhere the body's box could be during a move
  * of (dx, dy, dz): in the box stretched by the move on each axis?
  */
 function nearBox(body: Body, dx: number, dy: number, dz: number, world: BlockSource): boolean {
@@ -107,14 +108,21 @@ const solid = (world: BlockSource, x: number, y: number, z: number): boolean => 
 
 /**
  * What a body bumps into in each block: SOLID_BOX[b] 0 for passable blocks, 1 for a whole cube, 2
- * for a box of its own (`BlockInfo.box`, in BOX_OF[b * 6 ..]: a door's panel, a bed).
+ * for boxes of its own (`BlockInfo.boxes`: a door's panel, a bed, a slab, stairs' two), which are
+ * BOXES[k .. k + 5] for k from BOX_START[b] * 6 up to BOX_START[b + 1] * 6.
  */
 const SOLID_BOX = new Uint8Array(256);
-const BOX_OF = new Float64Array(256 * 6);
-BLOCKS.forEach((info, b) => {
-  SOLID_BOX[b] = info.passable ? 0 : info.box ? 2 : 1;
-  BOX_OF.set(info.box ?? [0, 0, 0, 1, 1, 1], b * 6);
-});
+const BOX_START = new Uint16Array(257);
+const BOXES = new Float64Array(BLOCKS.reduce((n, info) => n + (info.boxes?.length ?? 1), 0) * 6);
+{
+  let n = 0;
+  BLOCKS.forEach((info, b) => {
+    SOLID_BOX[b] = info.passable ? 0 : info.boxes ? 2 : 1;
+    BOX_START[b] = n;
+    for (const box of info.boxes ?? [[0, 0, 0, 1, 1, 1] as const]) BOXES.set(box, n++ * 6);
+  });
+  for (let b = BLOCKS.length; b <= 256; b++) BOX_START[b] = n;
+}
 
 /**
  * Move along one axis as far as `d`, stopping against the first solid thing ahead: a whole block's
@@ -153,19 +161,22 @@ function sweep(body: Body, axis: 0 | 1 | 2, d: number, world: BlockSource, boxed
         const block = world.getBlock(cell[0], cell[1], cell[2]);
         const kind = SOLID_BOX[block];
         if (kind === 0) continue;
-        let lo = c;
-        let hi = c + 1;
-        if (kind === 2) {
-          const k = block * 6;
-          // Clear of the body on the other two axes: no bump.
-          if (u + BOX_OF[k + a1] >= max[a1] - EPS || u + BOX_OF[k + 3 + a1] <= min[a1] + EPS) continue;
-          if (v + BOX_OF[k + a2] >= max[a2] - EPS || v + BOX_OF[k + 3 + a2] <= min[a2] + EPS) continue;
-          lo = c + BOX_OF[k + axis];
-          hi = c + BOX_OF[k + 3 + axis];
+        if (kind === 1) {
+          if (d > 0) {
+            if (c >= face - EPS && c <= face + d - EPS && !(c >= best)) best = c;
+          } else if (c + 1 <= face + EPS && c + 1 >= face + d + EPS && !(c + 1 <= best)) best = c + 1;
+          continue;
         }
-        if (d > 0) {
-          if (lo >= face - EPS && lo <= face + d - EPS && !(lo >= best)) best = lo;
-        } else if (hi <= face + EPS && hi >= face + d + EPS && !(hi <= best)) best = hi;
+        for (let k = BOX_START[block] * 6, end = BOX_START[block + 1] * 6; k < end; k += 6) {
+          // Clear of the body on the other two axes: no bump.
+          if (u + BOXES[k + a1] >= max[a1] - EPS || u + BOXES[k + 3 + a1] <= min[a1] + EPS) continue;
+          if (v + BOXES[k + a2] >= max[a2] - EPS || v + BOXES[k + 3 + a2] <= min[a2] + EPS) continue;
+          const lo = c + BOXES[k + axis];
+          const hi = c + BOXES[k + 3 + axis];
+          if (d > 0) {
+            if (lo >= face - EPS && lo <= face + d - EPS && !(lo >= best)) best = lo;
+          } else if (hi <= face + EPS && hi >= face + d + EPS && !(hi <= best)) best = hi;
+        }
       }
     }
     return best;
@@ -302,17 +313,22 @@ export function touches(body: Body, world: BlockSource, block: Block, margin = 0
 
 /** Would a block at (x, y, z) overlap the body's box? Touching isn't overlapping. For placing blocks. */
 export function overlapsBlock(body: Body, x: number, y: number, z: number, block?: Block): boolean {
-  // A block with a box of its own (a door, a bed) only where its box is.
-  const k = block !== undefined && SOLID_BOX[block] === 2 ? block * 6 : -1;
-  const [x0, y0, z0, x1, y1, z1] = k < 0 ? [0, 0, 0, 1, 1, 1] : [BOX_OF[k], BOX_OF[k + 1], BOX_OF[k + 2], BOX_OF[k + 3], BOX_OF[k + 4], BOX_OF[k + 5]];
-  return (
+  // A block of boxes (a door, a bed, a slab, stairs) only where its boxes are.
+  const start = block !== undefined && SOLID_BOX[block] === 2 ? BOX_START[block] : -1;
+  const end = start < 0 ? -1 : BOX_START[block! + 1];
+  const overlaps = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) =>
     x + x0 < body.x + body.halfWidth - EPS &&
     x + x1 > body.x - body.halfWidth + EPS &&
     y + y0 < body.y + body.height - EPS &&
     y + y1 > body.y + EPS &&
     z + z0 < body.z + body.halfWidth - EPS &&
-    z + z1 > body.z - body.halfWidth + EPS
-  );
+    z + z1 > body.z - body.halfWidth + EPS;
+  if (start < 0) return overlaps(0, 0, 0, 1, 1, 1);
+  for (let i = start; i < end; i++) {
+    const k = i * 6;
+    if (overlaps(BOXES[k], BOXES[k + 1], BOXES[k + 2], BOXES[k + 3], BOXES[k + 4], BOXES[k + 5])) return true;
+  }
+  return false;
 }
 
 /** Advance the body by one physics step. */

@@ -15,7 +15,8 @@ export interface MeshData {
   /**
    * Texture coordinates per vertex, 4 bytes: u and v in blocks (0..32, the corner's place on
    * the face within the chunk: the shader repeats the texture every block), the texture
-   * array layer, and eighths of a block added to v (water sides end at a depth in eighths).
+   * array layer, and eighths of a block added: to v in the low 3 bits (water sides end at a depth
+   * in eighths), to u in the 3 above (a stair's half-width faces).
    */
   uvl: Uint8Array;
   /** Uint16 when the mesh has at most 65 536 vertices (almost always). */

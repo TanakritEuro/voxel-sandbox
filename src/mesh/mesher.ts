@@ -78,8 +78,12 @@ const LIQUID = new Uint8Array(256);
 const DEPTH = new Float64Array(256);
 /** Texture array layer by block and direction: LAYER[block * 6 + dir]. */
 const LAYER = new Uint8Array(256 * 6);
-/** A door's or bed's box within its block (`BlockInfo.box`): BOX[b * 6 .. b * 6 + 5]. */
-const BOX = new Float64Array(256 * 6);
+/**
+ * A door's, bed's, slab's or stairs' boxes within its block (`BlockInfo.boxes`): BOXES[k .. k + 5]
+ * for k from BOX_START[b] * 6 up to BOX_START[b + 1] * 6.
+ */
+const BOX_START = new Uint16Array(257);
+const BOXES = new Float64Array(BLOCKS.reduce((n, info) => n + (info.boxes?.length ?? 0), 0) * 6);
 BLOCKS.forEach((info, b) => {
   OPAQUE[b] = info.opaque ? 1 : 0;
   TRANSPARENT[b] = info.transparent ? 1 : 0;
@@ -92,7 +96,8 @@ BLOCKS.forEach((info, b) => {
   // A bed's top turned the way its head points.
   const bedHalf = bedOf(b);
   if (bedHalf) [FACE_X[b], FACE_Z[b]] = FACINGS[bedHalf.facing];
-  if (info.box) BOX.set(info.box, b * 6);
+  BOX_START[b + 1] = BOX_START[b] + (info.boxes?.length ?? 0);
+  info.boxes?.forEach((box, j) => BOXES.set(box, (BOX_START[b] + j) * 6));
   if (info.wall) {
     WALL_X[b] = info.wall.x;
     WALL_Z[b] = info.wall.z;
@@ -505,61 +510,83 @@ function box(base: number[], lo: number[], hi: number[], topLayer: number, sideL
 }
 
 /**
- * A door's panel or a bed at padded index i: its box (`BlockInfo.box`), every face but those lying
- * on the block's side against an opaque neighbour, in the opaque pass. Each face shows the part of
- * its texture where it is in the block (a bed's sides the bottom half, a panel's edges a strip), and
- * a bed's top is turned the way its head points. Lit flat by its own block's light. Returns the
- * quads made.
+ * A door's panel, a bed, a slab or stairs at padded index i: its boxes (`BlockInfo.boxes`), every
+ * face but those lying on the block's side against an opaque neighbour and those covered by another
+ * of its boxes, in the opaque pass. Each face shows the part of its texture where it is in the block
+ * (a bed's sides the bottom half, a stair's back the top half and the back half), in eighths; a bed's
+ * top is turned the way its head points. Lit flat by its own block's light. Returns the quads made.
  */
 function piece(padded: Uint8Array, light: Uint8Array, i: number, origin: number[]): number {
   const b = padded[i];
   const base = [origin[0] + (i % P) - 1, origin[1] + Math.floor(i / (P * P)) - 1, origin[2] + (Math.floor(i / P) % P) - 1];
-  const lo = [BOX[b * 6], BOX[b * 6 + 1], BOX[b * 6 + 2]];
-  const hi = [BOX[b * 6 + 3], BOX[b * 6 + 4], BOX[b * 6 + 5]];
   const l = light[i];
   const sun = (l >> 4) * 17;
   const glow = Math.max((l & 15) * 17, GLOW[b]);
   const turned = FACE_X[b] !== 0 || FACE_Z[b] !== 0;
+  const first = BOX_START[b];
+  const last = BOX_START[b + 1];
+  const lo = [0, 0, 0];
+  const hi = [0, 0, 0];
   let quads = 0;
-  for (let dir = 0; dir < 6; dir++) {
-    const d = dir >> 1;
-    const s = dir & 1 ? -1 : 1;
-    // On the block's side, against something opaque: hidden.
-    const onSide = s > 0 ? hi[d] === 1 : lo[d] === 0;
-    if (onSide && OPAQUE[padded[i + TOWARDS[dir]]]) continue;
-    const ua = s > 0 ? (d + 1) % 3 : (d + 2) % 3;
-    const va = s > 0 ? (d + 2) % 3 : (d + 1) % 3;
-    const tu = d === 0 ? 2 : 0;
-    const tv = d === 1 ? 2 : 1;
-    const layer = LAYER[b * 6 + dir];
-    const shade = SHADED[dir * 4 + 3];
-    opaque.reserve(1);
-    for (let k = 0; k < 4; k++) {
-      const cu = k === 1 || k === 2;
-      const cv = k >= 2;
-      const p = pos;
-      p[d] = base[d] + (s > 0 ? hi[d] : lo[d]);
-      p[ua] = base[ua] + (cu ? hi[ua] : lo[ua]);
-      p[va] = base[va] + (cv ? hi[va] : lo[va]);
-      let tx = p[tu] - base[tu];
-      let ty = p[tv] - base[tv];
-      if (turned && dir === 2) {
-        // As a gate's top: up (row 0) along the facing, right a quarter turn from it.
-        const cx = tx - 0.5;
-        const cz = ty - 0.5;
-        const fx = FACE_X[b];
-        const fz = FACE_Z[b];
-        tx = 0.5 + cx * fz - cz * fx;
-        ty = 0.5 + cx * fx + cz * fz;
+  for (let box = first; box < last; box++) {
+    const k = box * 6;
+    lo[0] = BOXES[k];
+    lo[1] = BOXES[k + 1];
+    lo[2] = BOXES[k + 2];
+    hi[0] = BOXES[k + 3];
+    hi[1] = BOXES[k + 4];
+    hi[2] = BOXES[k + 5];
+    for (let dir = 0; dir < 6; dir++) {
+      const d = dir >> 1;
+      const s = dir & 1 ? -1 : 1;
+      const ua = s > 0 ? (d + 1) % 3 : (d + 2) % 3;
+      const va = s > 0 ? (d + 2) % 3 : (d + 1) % 3;
+      // On the block's side, against something opaque: hidden.
+      const plane = s > 0 ? hi[d] : lo[d];
+      if ((s > 0 ? plane === 1 : plane === 0) && OPAQUE[padded[i + TOWARDS[dir]]]) continue;
+      // Against another of its boxes that covers it (a stair's quarter on its slab): hidden.
+      let covered = false;
+      for (let other = first; other < last && !covered; other++) {
+        if (other === box) continue;
+        const o = other * 6;
+        if ((s > 0 ? BOXES[o + d] : BOXES[o + 3 + d]) !== plane) continue;
+        covered = BOXES[o + ua] <= lo[ua] && BOXES[o + 3 + ua] >= hi[ua] && BOXES[o + va] <= lo[va] && BOXES[o + 3 + va] >= hi[va];
       }
-      // Texture coordinates are whole blocks, v with eighths added: on a side, up to the box's
-      // height in eighths (a bed's 1/2 shows the texture's bottom half); elsewhere the nearest
-      // whole block (a panel's 3/16 edges show one row or column of it).
-      const ey = d !== 1 ? Math.round((ty - Math.floor(ty)) * 8) : 0;
-      opaque.vertex(p[0], p[1], p[2], shade, sun, glow, Math.round(tx), d !== 1 ? Math.floor(ty) : Math.round(ty), layer, ey);
+      if (covered) continue;
+      const tu = d === 0 ? 2 : 0;
+      const tv = d === 1 ? 2 : 1;
+      const layer = LAYER[b * 6 + dir];
+      const shade = SHADED[dir * 4 + 3];
+      opaque.reserve(1);
+      for (let c = 0; c < 4; c++) {
+        const cu = c === 1 || c === 2;
+        const cv = c >= 2;
+        const p = pos;
+        p[d] = base[d] + plane;
+        p[ua] = base[ua] + (cu ? hi[ua] : lo[ua]);
+        p[va] = base[va] + (cv ? hi[va] : lo[va]);
+        let tx = p[tu] - base[tu];
+        let ty = p[tv] - base[tv];
+        if (turned && dir === 2) {
+          // As a gate's top: up (row 0) along the facing, right a quarter turn from it.
+          const cx = tx - 0.5;
+          const cz = ty - 0.5;
+          const fx = FACE_X[b];
+          const fz = FACE_Z[b];
+          tx = 0.5 + cx * fz - cz * fx;
+          ty = 0.5 + cx * fx + cz * fz;
+        }
+        // Texture coordinates are whole blocks with eighths added (u's above v's in one byte): a
+        // face shows the part of the texture where it is. A panel's 3/16 edges round to 2/16.
+        const fu = Math.floor(tx + 1e-6);
+        const fv = Math.floor(ty + 1e-6);
+        const eu = Math.round((tx - fu) * 8);
+        const ev = Math.round((ty - fv) * 8);
+        opaque.vertex(p[0], p[1], p[2], shade, sun, glow, fu + (eu >> 3), fv + (ev >> 3), layer, (ev & 7) | ((eu & 7) << 3));
+      }
+      opaque.quad();
+      quads++;
     }
-    opaque.quad();
-    quads++;
   }
   return quads;
 }
