@@ -61,7 +61,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { bedOf, Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, wheat, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, slab, stairs, wheat, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
 import { blockBoxes, isShape, shapePlacement } from './world/shapes';
@@ -272,6 +272,31 @@ function scatter(n: number, x: number, z: number): void {
 
 /** `?farm`: a field of wheat round the player once the ground is there (for measuring). */
 let farmParam = params.has('farm');
+
+/** `?shapes`: rows of fences, panes, stairs and slabs round the player once the ground is there (for measuring). */
+let shapesParam = params.has('shapes');
+
+/**
+ * 23 x 23 blocks round (x, z), but the 3 x 3 the player stands on: on the ground's top, rows along x
+ * by z: fences, panes, stairs (each row a facing) and slabs in turn, two high where it's a fence or
+ * pane. Made at once, as a tick's changes are.
+ */
+function buildShapes(x: number, z: number): void {
+  const changes: [number, number, number, Block][] = [];
+  for (let dz = -11; dz <= 11; dz++)
+    for (let dx = -11; dx <= 11; dx++) {
+      if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1) continue;
+      const gx = Math.floor(x) + dx;
+      const gz = Math.floor(z) + dz;
+      let y = 200;
+      while (y > 1 && BLOCKS[world.getBlock(gx, y, gz)].passable) y--;
+      const row = (dz + 11) % 4;
+      const block = row === 0 ? Block.Fence : row === 1 ? Block.Pane : row === 2 ? stairs((dx + 11) % 3, (dz + 11) % 4, false) : slab((dx + 11) % 3, false);
+      changes.push([gx, y + 1, gz, block]);
+      if (row < 2) changes.push([gx, y + 2, gz, block]);
+    }
+  applyChanges(changes);
+}
 
 /**
  * Up to 528 wheat at random stages (not ripe) on farmland, 23 × 23 blocks round (x, z) but the 3 × 3
@@ -1657,6 +1682,10 @@ function frame(now: number): void {
   if (farmParam && !player.waiting && !guest) {
     plantField(player.body.x, player.body.z);
     farmParam = false;
+  }
+  if (shapesParam && !player.waiting && !guest) {
+    buildShapes(player.body.x, player.body.z);
+    shapesParam = false;
   }
   if (ground.items.length && worldRuns())
     ground.update(dt, world, (x, z) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z))), survival && !dead && !player.waiting ? [player.body] : [], pickUp);

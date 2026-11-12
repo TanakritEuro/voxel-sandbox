@@ -31,7 +31,9 @@ import { CHEST_SLOTS, Chests } from '../src/survival/chest';
 import { Crops } from '../src/survival/farming';
 import { FUEL, Furnaces, INPUT } from '../src/survival/furnace';
 import { ALL_ITEMS, Item } from '../src/survival/items';
-import { furnace, furnaceOf, wheat, wheatStage } from '../src/world/blocks';
+import { furnace, furnaceOf, slab, stairs, wheat, wheatStage } from '../src/world/blocks';
+import { CHUNK_VOLUME } from '../src/world/coords';
+import { Chunk } from '../src/world/world';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -788,4 +790,71 @@ it('crops', () => {
   }
   for (let x = 0; x < 40; x++) for (let z = 0; z < 25; z++) if (wheatStage(world.getBlock(x, 120, z)) === 7) ripe++;
   console.log(`\ncrops: 1000 wheat, 10 minutes at 60 frames a second: ${ripe} ripe; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}; at most ${most} stages in one frame\n`);
+});
+
+it('shapes', () => {
+  // The mesher on a chunk crowded with the new shapes, against the same chunk of stone: 8 layers of
+  // 32 x 32, each block a slab, stairs (each facing, upright or upside down), a fence or a pane in
+  // turn, on stone. And the player walking up a 30-step flight of stairs and back down, against the
+  // usual walk's time a step.
+  const world = new World(SEED);
+  const make = (fill: (x: number, y: number, z: number) => Block) => {
+    const blocks = new Uint8Array(CHUNK_VOLUME);
+    const c = new Chunk(0, 2, 0, blocks);
+    world.chunks.set(c.key, c);
+    for (let y = 0; y < 32; y++) for (let z = 0; z < 32; z++) for (let x = 0; x < 32; x++) world.setBlock(x, 64 + y, z, y < 4 ? Block.Stone : y < 12 ? fill(x, y, z) : Block.Air);
+  };
+  const time = () => {
+    const runs: number[] = [];
+    let quads = 0;
+    // The padded copy made once: the mesher alone, as a worker runs it.
+    const padded = paddedBlocks(world, 0, 2, 0);
+    const light = paddedLight(world, 0, 2, 0);
+    for (let run = 0; run <= RUNS; run++) {
+      const t0 = performance.now();
+      const m = meshChunk(padded, 0, 2, 0, light);
+      if (run > 0) runs.push(performance.now() - t0);
+      quads = m.quads;
+    }
+    return { ms: median(runs), quads };
+  };
+  make(() => Block.Stone);
+  const stone = time();
+  make((x, y, z) => {
+    const n = (x + z * 3 + y * 7) % 6;
+    return n === 0 ? slab(x % 3, y % 2 === 1) : n === 1 ? stairs(z % 3, x % 4, y % 2 === 1) : n === 2 ? Block.Fence : n === 3 ? Block.Pane : n === 4 ? stairs(1, (x + z) % 4, false) : Block.Air;
+  });
+  const shapes = time();
+  console.log(`\nshapes: a chunk of stone ${stone.ms.toFixed(2)} ms (${stone.quads} quads); crowded with slabs, stairs, fences and panes ${shapes.ms.toFixed(2)} ms (${shapes.quads} quads)\n`);
+
+  // A flight of 30 stairs facing +x on stone, walked up and back down, between walls.
+  const flight = new World(SEED);
+  for (let cx = -1; cx <= 1; cx++) for (let cy = 1; cy <= 4; cy++) for (let cz = -1; cz <= 1; cz++) {
+    const c = new Chunk(cx, cy, cz, new Uint8Array(CHUNK_VOLUME));
+    flight.chunks.set(c.key, c);
+  }
+  const edits: [number, number, number, Block][] = [];
+  for (let x = -5; x < 40; x++) for (let z = -1; z <= 1; z++) edits.push([x, 63, z, Block.Stone]);
+  for (let x = -5; x < 40; x++) for (const z of [-1, 1]) for (let y = 64; y < 100; y++) edits.push([x, y, z, Block.Stone]);
+  for (let s2 = 0; s2 < 30; s2++) {
+    for (let y = 64; y < 64 + s2; y++) edits.push([s2, y, 0, Block.Stone]);
+    edits.push([s2, 64 + s2, 0, stairs(0, 0, false)]);
+  }
+  for (let x = 30; x < 40; x++) for (let y = 64; y < 94; y++) edits.push([x, y, 0, Block.Stone]);
+  flight.setBlocks(edits);
+  const steps = Math.round(20 / TUNING.player.step);
+  const runs: number[] = [];
+  let top = 0;
+  for (let run = 0; run <= RUNS; run++) {
+    const body = createBody(-3.5, 64, 0.5);
+    const t0 = performance.now();
+    for (let i = 0; i < steps; i++) {
+      const up = i < steps / 2;
+      stepPlayer(body, { ...NO_INPUT, forward: 1, yaw: up ? -Math.PI / 2 : Math.PI / 2 }, flight);
+      top = Math.max(top, body.y);
+    }
+    if (run > 0) runs.push(performance.now() - t0);
+  }
+  const total = median(runs);
+  console.log(`stairs walk: ${steps} steps (10 s up a 30-step flight, 10 s back), highest ${top.toFixed(1)}; ${total.toFixed(1)} ms, ${((total / steps) * 1000).toFixed(2)} us a step\n`);
 });

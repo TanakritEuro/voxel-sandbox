@@ -26,9 +26,11 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 14 (shapes: slabs, stairs, fences, panes, stepping up) in progress, plan approved (`docs/milestone-14.md`).
-Milestones 1–13 built (`docs/milestone-1.md` to `docs/milestone-13.md`), waiting for playtests
-(Milestone 13, homes: chests of 27 slots; doors two blocks tall, a thin panel you bump into, opened by
+Milestones 1–14 built (`docs/milestone-1.md` to `docs/milestone-14.md`), waiting for playtests
+(Milestone 14, shapes: slabs in stone, planks and sandstone in either half (two make the block),
+stairs facing away from you or upside down, fences that join and can't be jumped, glass panes, walking
+up half a block without jumping, all bumped into and drawn as their real boxes;
+Milestone 13, homes: chests of 27 slots; doors two blocks tall, a thin panel you bump into, opened by
 a click or a signal, keeping mobs out; beds half a block high that skip the night and are where you
 wake after dying, made with moss from mossbacks; farming: a spade tills grass or dirt, seeds from
 grass grow into wheat in the light over about 8 minutes, bread from 3 wheat; together, the host's
@@ -327,7 +329,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   play an unsaved world; `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
-  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

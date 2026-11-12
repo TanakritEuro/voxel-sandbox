@@ -129,7 +129,7 @@ where there are no shapes.
 2. **Placing slabs and stairs,** slabs made whole, the picker, recipes and drops. Built (2026-11-07).
 3. **Step-up** for players and mobs. Built (2026-11-07).
 4. **Fences and panes:** boxes from neighbours, in collision, raycast and the mesher; 1.5 high fences. Built (2026-11-07).
-5. **Measurements,** notes and playtest questions.
+5. **Measurements,** notes and playtest questions. Done (2026-11-12).
 
 ## Decisions to agree
 - **Three materials** (stone, planks, sandstone) for slabs and stairs; more are easy to add after.
@@ -353,4 +353,72 @@ rounds each; the machine was slower than at the end of Milestone 13):
 - the outline round the fence's parts;
 - the icons of both in the hotbar.
 - No console errors.
+
+## Step 5: measurements, and the end of the milestone (2026-11-12)
+
+The machine was noisy today: the same bench run twice in a row gave a player step 5.3 and 7.1 µs.
+So the comparisons below are A/B runs, alternating old and new, and the medians are what count.
+
+**Bench** (`npm run bench`; `shapes` new):
+
+| | result |
+| --- | --- |
+| Meshing a chunk crowded with shapes (8 layers of 32 × 32, each block a slab, stairs, fence or pane in turn: 74,774 quads) | 13.5–14.5 ms, the mesher alone (a chunk of stone: 0.87 ms in the full run, 4.9 alone) |
+| A walk up a 30-step flight and back down | 5.9–6.3 µs a step, stepping up all the way |
+| A player step on the usual walk, against the end of Milestone 13 (3 rounds alternating) | 6.01 / 7.86 / 5.61 µs before; 6.54 / 6.36 / 7.30 after: about 9% more by the medians |
+| Greedy meshing of the usual chunks (none of the new blocks) | within noise of before, at every step |
+
+- The crowded chunk is a worst case (every block a shape), meshed in a worker: about 3 frames of a
+  worker's time, not the main thread's.
+- The player step's 9% matches the steps' own measurements: about 5% for stepping up (step 3),
+  and about 1 µs for looking a block lower for fences (step 4).
+
+**In the browser** (the browser pane, radius 8):
+- **`?shapes`** (new: rows of fences and panes two high, stairs and slabs, 23 × 23 round the player),
+  against the same place without (`?seed=7&nolock&stats&time=0.5&mobs=0`):
+
+  | | main thread, ms (avg, each second) | GPU, ms | draw calls |
+  | --- | --- | --- | --- |
+  | Without | 2.7–2.9 | 5.9–6.0 | 49 |
+  | With the field in view | 2.5–3.1 | 7.4 | 51 |
+
+  - The main thread is the same; the GPU takes 1.4 ms more, mostly the glass panes drawn blended
+    over everything behind them.
+  - One frame of 27 ms just after Play, when the field was made (528 blocks at once, as a tick's
+    changes).
+- **A 20 s sprint flight** (`?autofly=20`):
+  - 1,201 frames: p50 16.7 ms, p99 16.9, the longest 17.0; none over 20 ms;
+  - no holes;
+  - main thread p50 3.4 ms, at most 11.6. At the end of Milestone 13: p50 2.4, at most 7.3. Today's
+    baseline standing still was higher too (2.7–2.9 against 2.5), so part of that is the machine.
+- No console errors.
+- **Not measured:** a laptop. These are this machine's numbers; the budget is a laptop's.
+
+**Changed from the plan, over the milestone:**
+- **Texture coordinates** gained eighths in u (they had them only in v), so half-width faces crop their
+  textures (step 1).
+- **Drops:** a slab made whole is its block and gives that (the plan said a double slab gives two;
+  there's none). A pane gives nothing, as glass doesn't (the plan said each gives itself).
+- **Plank slabs and stairs** sound of wood (fixed in step 4; stone's since step 1).
+- **The collision sweep** looks a block lower when there's a box about, for a fence's top half (step 4).
+
+## Playtest questions
+
+1. **Stepping up:**
+   - does walking up a slab, a stair or a bed without jumping feel natural?
+   - does the eye easing up feel smooth, or floaty, or too slow?
+   - is it ever surprising, stepping up when you didn't mean to?
+2. **Stairs:** are they placed the way you expect (the back away from you, upside down from a ceiling
+   or the top half of a side)? Do you miss corner stairs?
+3. **Slabs:** is the half they go in where you'd expect when clicking a side? Is a slab on a slab
+   making the whole block what you'd want?
+4. **Fences:** do they join where you expect (fences and solid blocks, not slabs or glass)? Does 1.5
+   high feel right: you can't jump them, and neither can mobs? Is it annoying with no fence gate?
+5. **Glass panes:** do they look right, joined and alone (a cross)? Should a lone pane be a flat sheet
+   instead?
+6. **Looks:** the shapes' textures cropped to each part, and their icons in the hotbar and picker.
+7. **Building:** with slabs, stairs, fences and panes, what's missing next (corner stairs, fence gates,
+   walls, more materials)?
+8. **Survival:** are the recipes about right (6 slabs from 3, 4 stairs from 6, 3 fences from 4 planks and
+   2 sticks, 16 panes from 6 glass)?
 
