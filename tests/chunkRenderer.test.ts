@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FACE_STARTS, GROUPS, PARTS } from '../src/mesh/builder';
+import { ALL_GROUPS, BORDER_GROUP, FACE_STARTS, GROUPS, PARTS } from '../src/mesh/builder';
 import { describe, expect, it } from 'vitest';
 import { meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
@@ -118,8 +118,16 @@ describe('chunk renderer pages', () => {
     const all = quadsDrawn();
     expect(all).toBe(f[end] - undersides + below[end] - inPart(below, 4));
     expect(drawList(opaque, camera).every(([, n]) => n > 0)).toBe(true);
-    r.setVisible('below', false);
+    r.show('below', 0);
     expect(quadsDrawn()).toBe(f[end] - undersides);
+    // Only some groups: group 0's quads facing up and sideways, and the walls on the chunk's -x face.
+    r.show('here', 1 | (1 << (BORDER_GROUP + 0)));
+    let some = 0;
+    for (const g of [0, BORDER_GROUP]) for (let k = 0; k < PARTS; k++) if (k !== 4) some += f[g * PARTS + k + 1] - f[g * PARTS + k];
+    expect(some).toBeGreaterThan(0);
+    expect(some).toBeLessThan(f[end] - undersides);
+    expect(quadsDrawn()).toBe(some);
+    r.show('here', ALL_GROUPS);
 
     // Water in two chunks, both in view: the farther one first.
     r.set('near water', 0, 2, 0, ground);

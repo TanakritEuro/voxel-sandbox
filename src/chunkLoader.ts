@@ -25,6 +25,7 @@ import { type ChunkMesh, meshChunk } from './mesh/mesher';
 import { paddedBlocks, paddedLight, PADDED_VOLUME } from './mesh/padding';
 import type { JobResult, JobRunner, SavedChunk } from './workers/protocol';
 import { CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './world/coords';
+import { ALL_GROUPS, BORDER_GROUP } from './mesh/builder';
 import { NO_REGION, type Reach, regionMap, type Regions, walkRegions } from './world/visibility';
 import type { Chunk, World } from './world/world';
 
@@ -32,8 +33,11 @@ import type { Chunk, World } from './world/world';
 export interface ChunkSink {
   set(key: string, cx: number, cy: number, cz: number, mesh: ChunkMesh): void;
   remove(key: string): void;
-  /** Show or hide a chunk's mesh (hidden: can't be seen from where the player is). */
-  setVisible(key: string, visible: boolean): void;
+  /**
+   * Which groups of a chunk's mesh to draw (`mesh/builder.ts`: the regions the walk reached and the
+   * faces seen from across), or 0 to hide it (none of it can be seen from where the player is).
+   */
+  show(key: string, groups: number): void;
 }
 
 /** Where edited chunks are kept (`save/saver.ts`). */
@@ -391,8 +395,8 @@ export class ChunkLoader {
     const wanted = col ? stamp(chunk.version, col.lod, col.seams) : made;
     if (made !== wanted && this.meshed.get(key) === wanted) return;
     this.renderer.set(key, cx, cy, cz, result.mesh);
-    this.renderer.setVisible(key, this.canSee(cx, cy, cz));
     this.meshed.set(key, made);
+    this.renderer.show(key, this.groupsOf(chunk));
   }
 
   /**
@@ -425,9 +429,31 @@ export class ChunkLoader {
     this.reach = walkRegions([cx, cy, cz], from < 0 ? -1 : 1 << from, TUNING.view.radius, MIN_CHUNK_Y, MAX_CHUNK_Y, (x, y, z) => this.world.getChunk(x, y, z)?.regions);
     this.walkMs = performance.now() - t0;
     this.longestWalk = Math.max(this.longestWalk, this.walkMs);
-    for (const chunk of this.world.chunks.values()) if (this.meshed.has(chunk.key)) this.renderer.setVisible(chunk.key, this.reach.has(chunk.cx, chunk.cy, chunk.cz));
+    for (const chunk of this.world.chunks.values()) if (this.meshed.has(chunk.key)) this.renderer.show(chunk.key, this.groupsOf(chunk));
     // What can be seen has changed: every column may have chunks to mesh, or none.
     for (const col of this.order) col.settled = false;
+  }
+
+  /**
+   * The groups of a chunk's mesh to draw (`ChunkSink.show`): what the last walk reached of it. All of
+   * it when any is reached but the groups can't be trusted: a far mesh (one group), a mesh made
+   * before its regions last changed, or regions changed since the walk (which then walks again soon).
+   */
+  private groupsOf(chunk: Chunk): number {
+    const reach = this.reach;
+    if (!reach) return 0;
+    const i = reach.index(chunk.cx, chunk.cy, chunk.cz);
+    if (i < 0) return 0;
+    const regions = reach.regions[i];
+    const groups = regions | (reach.faces[i] << BORDER_GROUP);
+    if (!groups) return 0;
+    const shown = this.meshed.get(chunk.key);
+    if (shown === undefined || (shown & 3) !== 0 || versionOf(shown) < chunk.regionsVersion) return ALL_GROUPS;
+    if (regions && reach.used[i] !== chunk.regions) {
+      this.walkSoon = true;
+      return ALL_GROUPS;
+    }
+    return groups;
   }
 
   /** Column (cx, cz) may have work again. */

@@ -11,6 +11,8 @@ const MAX_REGIONS = 12;
 
 /** Groups a chunk mesh's quads are sorted by: its regions, then a border group per face of the chunk (-x, +x, -y, +y, -z, +z). */
 export const GROUPS = MAX_REGIONS + 6;
+/** Every group of a mesh (bit g for group g). */
+export const ALL_GROUPS = (1 << GROUPS) - 1;
 /** The first border group: face f's is BORDER_GROUP + f (`visibility.ts` order). */
 export const BORDER_GROUP = MAX_REGIONS;
 /** Parts within a group: the 6 face directions in `FACE_ORDER`, then quads that face every way. */

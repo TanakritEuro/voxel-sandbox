@@ -9,7 +9,7 @@
 // pages share one index buffer and nothing but vertices is ever uploaded.
 
 import * as THREE from 'three';
-import { FACE_STARTS, GROUPS, type MeshData, PARTS } from '../mesh/builder';
+import { ALL_GROUPS, FACE_STARTS, GROUPS, type MeshData, PARTS } from '../mesh/builder';
 import { PageAllocator } from './pageAllocator';
 
 /** BatchedMesh's own fields this class takes over (they aren't in its typings). */
@@ -29,14 +29,11 @@ export interface PageEntry {
   readonly centre: THREE.Vector3;
   /** `MeshData.faceStarts`: where each group's face directions' quads start, from `start`. */
   readonly faces: Uint32Array;
-  /** Reached by the visibility walk (`ChunkRenderer.setVisible`). */
+  /** Reached by the visibility walk (`ChunkRenderer.show`). */
   visible: boolean;
   /** The groups of it to draw (bit g for group g). */
   groups: number;
 }
-
-/** Every group of a mesh. */
-export const ALL_GROUPS = (1 << GROUPS) - 1;
 /** Every part (direction) of a group: for the blended pass, seen from both sides. */
 export const ALL_PARTS = (1 << PARTS) - 1;
 

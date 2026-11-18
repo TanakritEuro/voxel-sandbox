@@ -258,7 +258,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   blocky figure per player in their colour, legs and arms swinging, head looking, name above.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
   (near first, in front before behind) up to the pool's capacity, meshes only chunks the
-  visibility walk reaches and hides the rest, drops stale or out-of-range results, remeshes
+  visibility walk reaches and hides the rest, draws of each the groups it reached (`groupsOf`: all of a far mesh, of one
+  made before its regions last changed, or while the walk's regions are out of date), drops stale or out-of-range results, remeshes
   edits on the main thread; reads a column's saved chunks before generating it. Columns with
   nothing left to do are skipped until a walk, an edit or a result changes that, and turning
   only re-sorts them (no walk), so view distance 16 loads and turns cheaply. Each column has a

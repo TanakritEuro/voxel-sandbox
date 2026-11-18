@@ -277,6 +277,8 @@ export class Reach {
   readonly faces: Uint8Array;
   /** Chunks with anything reached (regions or faces). */
   chunks = 0;
+  /** The regions the walk took each chunk to have (undefined where it didn't look), to tell when they've changed since. */
+  used: (Regions | undefined)[] = [];
   /** Regions reached, all chunks. */
   regionCount = 0;
 
@@ -422,6 +424,7 @@ export function walkRegions(
   for (let i = 0; i < size; i++) if (reached[i] | seenFaces[i]) chunks++;
   reach.chunks = chunks;
   reach.regionCount = tail;
+  reach.used = regs;
   return reach;
 }
 

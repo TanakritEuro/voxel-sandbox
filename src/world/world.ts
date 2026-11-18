@@ -20,6 +20,11 @@ export class Chunk {
   modified = false;
   /** Its open regions (`visibility.ts`); null until worked out. */
   private regionData: Regions | null = null;
+  /**
+   * The version at which a block last changed between see-through and not, which may number its
+   * regions differently: meshes made before it don't match the regions (`chunkLoader.ts`).
+   */
+  regionsVersion = 0;
   /** Sun << 4 | block light per block (`light.ts`); `FULL_SUN` or `DARK` (shared, read-only) until it differs. */
   light: Uint8Array = DARK;
 
@@ -201,7 +206,10 @@ export class World {
     chunk.modified = true;
     chunk.empty = false;
     // Opened or closed: the regions are worked out again when next asked.
-    if (seeThrough(was) !== seeThrough(block)) chunk.regions = null;
+    if (seeThrough(was) !== seeThrough(block)) {
+      chunk.regions = null;
+      chunk.regionsVersion = chunk.version;
+    }
 
     // Per axis, the chunk offsets whose border reaches this block: 0, and -1 or +1 at an edge.
     const sides = (l: number) => (l === 0 ? [0, -1] : l === CHUNK_MASK ? [0, 1] : [0]);

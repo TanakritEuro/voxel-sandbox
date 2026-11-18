@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChunkLoader, type ChunkSink, columnPriority, lodLevel } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
 import { type Lod, prepareLod, SEAM_NEG_X, SEAM_NEG_Z, SEAM_POS_X, SEAM_POS_Z } from '../src/mesh/lod';
+import { ALL_GROUPS, FACE_STARTS, GROUPS, PARTS } from '../src/mesh/builder';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { WorldSaver } from '../src/save/saver';
@@ -10,6 +11,7 @@ import { handleJob } from '../src/workers/jobs';
 import type { Job, JobResult, JobRunner } from '../src/workers/protocol';
 import { Block } from '../src/world/blocks';
 import { CHUNK_SIZE, chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
+import { seeThrough } from '../src/world/visibility';
 import { World } from '../src/world/world';
 
 /** Runs jobs at once on this thread but hands results back only when told, like workers finishing later. */
@@ -51,11 +53,17 @@ class FakeSink implements ChunkSink {
     this.hidden.delete(key);
   }
   readonly hidden = new Set<string>();
-  /** setVisible calls: a walk makes one per meshed chunk. */
+  /** The groups each chunk is drawn with (`ChunkSink.show`). */
+  readonly groups = new Map<string, number>();
+  /** show calls: a walk makes one per meshed chunk. */
   shows = 0;
-  setVisible(key: string, visible: boolean): void {
+  /** Every show, in order. */
+  readonly history: [string, number][] = [];
+  show(key: string, groups: number): void {
     this.shows++;
-    if (visible) this.hidden.delete(key);
+    this.groups.set(key, groups);
+    this.history.push([key, groups]);
+    if (groups) this.hidden.delete(key);
     else this.hidden.add(key);
   }
 }
@@ -456,3 +464,72 @@ describe('land round other players', () => {
     expect([...s.world.chunks.values()].every((c) => Math.abs(c.cx) <= TUNING.view.radius + TUNING.view.unloadMargin)).toBe(true);
   });
 });
+
+describe('drawing by region', () => {
+  /** Quads of a mesh in the groups of `mask`, every pass. */
+  const quadsIn = (m: ChunkMesh, mask: number) => {
+    let n = 0;
+    for (const d of [m.opaque, m.cutout, m.transparent])
+      for (let g = 0; g < GROUPS; g++) if (mask & (1 << g)) n += d.faceStarts[(g + 1) * PARTS] - d.faceStarts[g * PARTS];
+    return n;
+  };
+
+  it('draws the groups the walk reached: none of chunks it never reached, part of many', () => {
+    const s = setup();
+    settle(s, 16, 16);
+    let partial = 0;
+    let drawn = 0;
+    let all = 0;
+    for (const [key, mesh] of s.sink.meshes) {
+      const [cx, cy, cz] = key.split(',').map(Number);
+      const groups = s.sink.groups.get(key) ?? ALL_GROUPS;
+      expect(groups !== 0, key).toBe(s.loader.canSee(cx, cy, cz));
+      if (groups !== 0 && groups !== ALL_GROUPS) partial++;
+      drawn += quadsIn(mesh, groups);
+      all += mesh.opaque.faceStarts[FACE_STARTS - 1] + mesh.cutout.faceStarts[FACE_STARTS - 1] + mesh.transparent.faceStarts[FACE_STARTS - 1];
+    }
+    expect(partial).toBeGreaterThan(10);
+    expect(drawn).toBeLessThan(all);
+  });
+
+  it('draws a chunk whole between an edit changing its regions and the walk after, then by region again', () => {
+    const s = setup();
+    settle(s, 16, 16);
+    // A chunk drawn in part, and a solid block in it to dig out, remeshed in the workers (as flowing water is).
+    const [key] = [...s.sink.groups].find(([k, g]) => g !== 0 && g !== ALL_GROUPS && s.sink.meshes.has(k))!;
+    const [cx, cy, cz] = key.split(',').map(Number);
+    const chunk = s.world.getChunk(cx, cy, cz)!;
+    const i = chunk.blocks.findIndex((b) => !seeThrough(b));
+    expect(i).toBeGreaterThanOrEqual(0);
+    s.world.setBlock(cx * CHUNK_SIZE + (i & 31), cy * CHUNK_SIZE + (i >> 10), cz * CHUNK_SIZE + ((i >> 5) & 31), Block.Air);
+    s.loader.remeshSoon(cx, cz);
+    s.sink.history.length = 0;
+    settle(s, 16, 16);
+    const mine = s.sink.history.filter(([k]) => k === key).map(([, g]) => g);
+    // Its new mesh arrives drawn whole (the walk's regions are the old ones), then the walk after narrows it.
+    expect(mine[0]).toBe(ALL_GROUPS);
+    expect(mine[mine.length - 1]).not.toBe(ALL_GROUPS);
+    expect(mine[mine.length - 1]).not.toBe(0);
+  });
+
+  it('draws far meshes whole', () => {
+    const lod = { ...TUNING.view.lod };
+    TUNING.view.lod.near = 1;
+    TUNING.view.lod.far = 2;
+    try {
+      const s = setup();
+      settle(s, 16, 16);
+      let far = 0;
+      for (const [key, groups] of s.sink.groups) {
+        const [cx, , cz] = key.split(',').map(Number);
+        if (groups === 0 || cx * cx + cz * cz < 1) continue;
+        expect(groups, key).toBe(ALL_GROUPS);
+        far++;
+      }
+      expect(far).toBeGreaterThan(0);
+    } finally {
+      Object.assign(TUNING.view.lod, lod);
+    }
+  });
+});
+

@@ -88,8 +88,12 @@ export class ChunkRenderer {
     this.meshes.delete(key);
   }
 
-  setVisible(key: string, visible: boolean): void {
-    for (const e of this.meshes.get(key) ?? []) e.visible = visible;
+  /** Draw these groups of a chunk's mesh (bit g for group g: `mesh/builder.ts`); none hides it. */
+  show(key: string, groups: number): void {
+    for (const e of this.meshes.get(key) ?? []) {
+      e.visible = groups !== 0;
+      e.groups = groups;
+    }
   }
 
   get count(): number {

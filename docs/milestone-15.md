@@ -135,7 +135,7 @@ from flashing holes.
 2. **Meshing by region.** Groups in the mesher, pockets left out, ranges by group; far meshes one group.
    Mesher tests and bench. Done (2026-11-18).
 3. **Drawing by region.** Masks from the walk to the renderer, the draw list by group, old meshes whole.
-   Looked at in the browser: flying, caves, digging, a pocket, flowing water, a guest.
+   Looked at in the browser: flying, caves, digging, a pocket, flowing water, a guest. Done (2026-11-18).
 4. **Measurements,** notes and CLAUDE.md (the known limit gone, or what's left of it).
 
 ## Decisions to agree
@@ -288,4 +288,53 @@ and nearly all of them in caves, so I'd go on.
   CPU. Swapping files back to measure the old code made the dev server reload the page, which then
   crashed (the old builder lacks what the new page imports), freeing the CPU. That made the old code
   look twice as fast. Measure with the dev server stopped.
+
+## Step 3: drawing by region (2026-11-18)
+
+**What's in:**
+- **The loader** gives each meshed chunk the groups to draw after every walk and every new mesh
+  (`ChunkSink.show`, in place of `setVisible`). The groups are its regions the walk reached, plus a
+  border group for each face whose neighbour's reached region looks onto it. It draws the whole mesh
+  instead when:
+  - it's a far mesh, which has one group;
+  - the mesh was made before its regions last changed (`Chunk.regionsVersion`: the version at which
+    a block last changed between see-through and not);
+  - its regions changed since the walk (`Reach.used` keeps the regions the walk saw). It then walks
+    again soon.
+- **The renderer and pages** draw an entry's groups (`show`, `drawRanges`). Water and glass get the
+  groups too, in every direction.
+- **Tests (3 new, 1 updated):**
+  - after loading, chunks are drawn exactly when the walk reached them, more than 10 of them only
+    in part, and fewer quads drawn than meshed;
+  - after a solid block is dug out and the chunk remeshed in the workers, its new mesh is drawn
+    whole, then narrowed again by the walk that follows;
+  - far meshes are drawn whole;
+  - the renderer draws just the groups shown.
+
+**Measured in the browser** (radius 8, standing still, `?nolock&stats&time=0.5&mobs=0`; before is
+step 2, which drew every group, measured right after on the same views):
+
+| view | triangles drawn | GPU, ms | main thread, ms | draw calls |
+| --- | --- | --- | --- | --- |
+| the spawn point | 145k → **99k (-32 %)** | 2.5–2.6 → 2.7–2.8 | 2.3 → 2.0 | 30 → 30 |
+| a cave mouth (`?at=-48,71`) | 195k → **144k (-26 %)** | 2.8–2.9 → 2.6–2.7 | 2.3–2.4 → 2.3–2.4 | 45 → 40 |
+| a mountain top (`?at=-128,116`) | 438k → **377k (-14 %)** | 3.4 → 3.2–3.4 | 2.7 → 2.6–2.8 | 54 → 56 |
+
+- **Triangles fall as the bench said** (spawn -30 %, cave mouth -20 %, mountain -12 % headless).
+- **This GPU barely notices.** At 2.5–3.5 ms a frame it isn't held up by triangles. The laptop's
+  integrated GPU is where the vertex work should count; not measured.
+- **Inside a cave**, the bench's case with the largest gain (1961k → 130k), can't be stood in from a
+  URL. The headless numbers stand for it.
+- **A 20 s sprint flight** (`?autofly=20`), twice:
+  - frames p99 8.5 ms, the longest 24.9 and 16.9: one frame over 20 ms in the first run, none in the
+    second;
+  - main thread p50 3.0–3.2, p99 8.2–8.5, max 12.9 and 11.8 ms;
+  - no holes;
+  - at the end, 205k triangles drawn against 270k in step 2, GPU 3.0 against 3.5 ms.
+- **`?flood`:** a 32 × 32 room carved under the sea, then its ceiling opened at once (7,204 blocks)
+  and flooded. 10 s with 0 frames over 20 ms, no errors.
+- **Digging down 33 blocks** from the spawn (holding the button by script), from the grass into the
+  chunk below: the shaft's walls drawn on both sides of the chunk border, nothing missing.
+- **Not looked at:** a pocket dug into (the mesher tests cover it), and a guest. A guest's chunks come
+  through the same generate jobs and its edits through the same loader.
 
