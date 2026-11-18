@@ -33,6 +33,13 @@ export interface PageEntry {
   visible: boolean;
   /** The groups of it to draw (bit g for group g). */
   groups: number;
+  /**
+   * Its draw ranges (`drawRanges`) for the groups and parts they were last worked out for (`rangesFor`:
+   * parts | groups << PARTS), kept: they change only when the camera crosses one of the chunk's
+   * planes or the walk changes what to draw.
+   */
+  rangesFor: number;
+  ranges: Int32Array;
 }
 /** Every part (direction) of a group: for the blended pass, seen from both sides. */
 export const ALL_PARTS = (1 << PARTS) - 1;
@@ -145,6 +152,7 @@ const HALF = 16;
 const CHUNK_RADIUS = HALF * Math.sqrt(3);
 const sphere = new THREE.Sphere(new THREE.Vector3(), CHUNK_RADIUS);
 const ranges = new Int32Array(2 * MAX_RANGES);
+const NO_RANGES = new Int32Array(0);
 
 export class ChunkPage extends THREE.BatchedMesh {
   readonly space: PageAllocator;
@@ -200,7 +208,7 @@ export class ChunkPage extends THREE.BatchedMesh {
     write(this.positions, data.positions, v * 3);
     write(this.colors, data.colors, v * 4);
     write(this.uvl, data.uvl, v * 4);
-    const entry: PageEntry = { page: this, start, quads, centre, faces: data.faceStarts, visible: true, groups: ALL_GROUPS };
+    const entry: PageEntry = { page: this, start, quads, centre, faces: data.faceStarts, visible: true, groups: ALL_GROUPS, rangesFor: -1, ranges: NO_RANGES };
     this.entries.add(entry);
     return entry;
   }
@@ -237,7 +245,14 @@ export class ChunkPage extends THREE.BatchedMesh {
       // The blended pass is seen from both sides (the water's surface from below): every direction.
       const c = e.centre;
       const parts = this.blended ? ALL_PARTS : facing(c.x - HALF, c.y - HALF, c.z - HALF, 2 * HALF, eye.x, eye.y, eye.z);
-      const found = drawRanges(e.faces, e.groups, parts, ranges);
+      const key = parts | (e.groups << PARTS);
+      if (e.rangesFor !== key) {
+        const n = drawRanges(e.faces, e.groups, parts, ranges);
+        e.ranges = ranges.slice(0, 2 * n);
+        e.rangesFor = key;
+      }
+      const found = e.ranges.length / 2;
+      const own = e.ranges;
       if (n + found > starts.length) {
         const size = Math.max(n + found, starts.length * 2);
         starts = grown(starts, size);
@@ -246,8 +261,8 @@ export class ChunkPage extends THREE.BatchedMesh {
         b._multiDrawCounts = counts;
       }
       for (let r = 0; r < found; r++) {
-        starts[n] = (e.start + ranges[2 * r]) * 6 * bytes; // bytes into the index buffer
-        counts[n++] = (ranges[2 * r + 1] - ranges[2 * r]) * 6;
+        starts[n] = (e.start + own[2 * r]) * 6 * bytes; // bytes into the index buffer
+        counts[n++] = (own[2 * r + 1] - own[2 * r]) * 6;
       }
     }
     b._multiDrawCount = n;

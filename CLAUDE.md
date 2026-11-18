@@ -26,9 +26,12 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 15 (cave culling: visibility by open region, not by chunk) in progress, plan approved (`docs/milestone-15.md`).
-Milestones 1–14 built (`docs/milestone-1.md` to `docs/milestone-14.md`), waiting for playtests
-(Milestone 14, shapes: slabs in stone, planks and sandstone in either half (two make the block),
+Milestones 1–15 built (`docs/milestone-1.md` to `docs/milestone-15.md`), waiting for playtests
+(Milestone 15, cave culling: visibility by open region instead of by chunk, a chunk's open regions linked
+to its neighbours' across its faces, the walk from the eye's region, every quad meshed into the group of the
+region it's seen from and only the reached groups drawn, pockets sealed in a chunk not meshed: triangles drawn
+halved at the spawn point, -16 % to -37 % elsewhere on the surface, -93 % inside a cave (headless);
+Milestone 14, shapes: slabs in stone, planks and sandstone in either half (two make the block),
 stairs facing away from you or upside down, fences that join and can't be jumped, glass panes, walking
 up half a block without jumping, all bumped into and drawn as their real boxes;
 Milestone 13, homes: chests of 27 slots; doors two blocks tall, a thin panel you bump into, opened by
@@ -87,7 +90,9 @@ outline, hold the left button to break (time by block `hardness`, with cracks), 
 place, 1–9 or the wheel for the hotbar.
 `?seed=123` picks the world.
 
-Known limits, each fixed by a milestone below: visibility culling is per chunk and coarse, so many cave walls are still meshed and drawn.
+Known limits: most tunnels open onto the sky somewhere within the view, so from the surface the walk still reaches
+them, and every wall of a reached region is drawn, behind rock or not (the walk doesn't look at the view direction,
+and nothing tests for occlusion); far chunks are drawn whole.
 
 ## Architecture
 
@@ -237,7 +242,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `chunkPage.ts` — a page: a `BatchedMesh` used for its multi-draw path, with its own space
   (`pageAllocator.ts`, in quads, first fit), one shared index buffer, and a draw list built each
   frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
-  only the face directions that can point at the camera (`facing`), of the groups to draw (`drawRanges`). `blockMaterial.ts` — the texture
+  only the face directions that can point at the camera (`facing`), of the groups to draw (`drawRanges`), kept per entry until those change. `blockMaterial.ts` — the texture
   array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
   textures (a slab's or stairs' boxes each drawn, cropped). `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
   icons. `sky.ts` — time of day to daylight, sunlight colour, sky

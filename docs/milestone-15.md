@@ -1,6 +1,6 @@
 # Milestone 15: cave culling
 
-**Status:** plan approved (2026-11-18); step 1 in progress.
+**Status:** built (2026-11-18), waiting for playtests.
 
 ## Goal
 
@@ -136,7 +136,7 @@ from flashing holes.
    Mesher tests and bench. Done (2026-11-18).
 3. **Drawing by region.** Masks from the walk to the renderer, the draw list by group, old meshes whole.
    Looked at in the browser: flying, caves, digging, a pocket, flowing water, a guest. Done (2026-11-18).
-4. **Measurements,** notes and CLAUDE.md (the known limit gone, or what's left of it).
+4. **Measurements,** notes and CLAUDE.md (the known limit gone, or what's left of it). Done (2026-11-18).
 
 ## Decisions to agree
 
@@ -337,4 +337,94 @@ step 2, which drew every group, measured right after on the same views):
   chunk below: the shaft's walls drawn on both sides of the chunk border, nothing missing.
 - **Not looked at:** a pocket dug into (the mesher tests cover it), and a guest. A guest's chunks come
   through the same generate jobs and its edits through the same loader.
+
+## Step 4: measurements, and the end of the milestone (2026-11-18)
+
+**Also in this step:** each page entry keeps its draw ranges (`PageEntry.ranges`) until the camera
+crosses one of the chunk's planes or the walk changes its groups. This does less work each frame;
+the measurements didn't separate it from noise.
+
+**In the browser**, the end of Milestone 14 (its source checked out) against now, on the same views
+(`?seed=20261022&nolock&stats&time=0.5&mobs=0`, standing still, three or four readings a second
+apart):
+
+| view | triangles drawn | GPU, ms | main thread, ms | draw calls |
+| --- | --- | --- | --- | --- |
+| the spawn point | 201k → **99k (-51 %)** | 2.9–3.0 → 2.7–3.0 | 2.1–2.2 → 2.1–2.2 | 35 → 30 |
+| a cave mouth (`?at=-48,71`) | 227k → **144k (-37 %)** | 2.7 → 2.5–2.7 | 2.2–2.3 → 2.3–2.4 | 40 → 42 |
+| a mountain top (`?at=-128,116`) | 447k → **377k (-16 %)** | 3.3–3.5 → 3.3–3.5 | 2.6–2.7 → 2.7–2.9 | 56 → 56 |
+| the spawn point, radius 16 | 687k → **570k (-17 %)** | 4.6–4.9 → 3.9–4.2 | 3.0–3.3 → 3.3–3.6 | 105–107 → 101–102 |
+
+- **Triangles drawn fall by a sixth to a half.** Inside a cave, which a URL can't put you in, the
+  bench has 1961k → 130k (-93 %).
+- **GPU time follows only at radius 16** (about -0.5 ms). At radius 8 this GPU isn't held up by
+  triangles. A laptop's integrated GPU is where it should count; not measured.
+- **Main thread:** at radius 16 it reads 0.1–0.4 ms more than Milestone 14, about this machine's noise
+  between runs (a first reading of 3.5 against 3.0 shrank to 3.3–3.4 against 3.2–3.3 when both were
+  measured again).
+- **Memory at radius 16:** meshes 172 → 178.5 MB (the group table of every pass). The JS heap read
+  441 → 485 MB. The chunks' region data takes 6 KB each for those not all open or all solid; that's
+  4.2 MB within radius 8 in the bench.
+- **Sprint flights** (`?autofly=20`, radius 8, four after step 3, against Milestone 14's run in step 1):
+  - no holes in any;
+  - frames p99 8.5–8.6 ms. One frame over 20 ms in two of the runs (24.9 and 25.1 ms), none in the
+    other two; Milestone 14's run had none;
+  - main thread p50 2.8–3.2 (Milestone 14 2.9), p99 8.2–8.6 (7.3), max 11.8–15.5 ms (11.0).
+  - A walk takes about 3 ms in the browser at radius 8 (0.5–1 ms in the bench). Walks of 3–5 ms come
+    while the land is loading, and once one of 22 ms, outside the timed frames. During the flights
+    they stayed at 3.6 ms at most.
+  - The long frames weren't the main thread's (its longest was 15.5 ms). Whether a walk adds to them
+    isn't settled.
+
+**Bench** (`npm run bench`, the dev server stopped):
+- **The visibility table** (radius 8: chunks to mesh, and triangles drawn):
+
+  | from | before (the chunk walk) | after (regions, by region) |
+  | --- | --- | --- |
+  | the spawn point | 570, 2014k | 538, 1422k |
+  | a cave mouth | 585, 2285k | 638, 1834k |
+  | in a cave | 549, 1961k | 97, 130k |
+  | a mountain top | 679, 2962k | 711, 2612k |
+  | flying, 40 over the spawn | 588, 2053k | 545, 1432k |
+
+  The browser's drop from the spawn point is larger than the bench's: it counts only what's in the
+  frustum, and directions facing away. Pockets left out take 8k of the 1932k greedy triangles in the
+  bench area.
+- **Meshing:** about 18% more time in the workers (A/B, step 2): 1.15 → 1.33–1.44 ms a chunk. A chunk
+  crowded with shapes takes 11.5 ms against 8.2–9.5 run on its own; in the full run, 27 against 13.5–14.5,
+  the end of a long run being noisier.
+- **Regions:** 0.13 ms a chunk in the generating worker, against about 0.19 ms for Milestone 14's
+  connectivity (measured in step 1).
+- **The walk:** 0.6 ms at radius 8 and 1.2 at 16 once links are known. Working out every link at once
+  takes 4.3 ms and 11.8 ms; the game never does that, since links come as chunks arrive.
+- The rest of the bench (generation, light, physics, mobs, water, logic, survival) is unchanged by
+  this milestone.
+
+**Changed from the plan:**
+- **The region flood** looks up which faces of the chunk each block lies on in a table instead of
+  working out coordinates: a third faster.
+- **Links** are worked out four cells at a time and kept on the chunk's regions.
+- **The walk's regions are kept** with what it reached (`Reach.used`): a chunk whose regions changed
+  since is drawn whole, and the loader walks again soon. Together with `Chunk.regionsVersion` for
+  meshes older than the regions, this is the "old meshes drawn whole" of the plan.
+- **The loader walks again** when the eye goes into another region of the same chunk (a fall, a
+  respawn), from a region map of the eye's chunk.
+- **Page entries keep their draw ranges** (this step).
+- **Not looked at in the browser:** a guest, and a pocket dug into (the mesher tests cover it).
+
+## Playtest questions
+
+1. **Holes:**
+   - do you ever see a wall, a floor or the sky missing for a moment? Look out while digging into a
+     cave, breaking through into a cave from another, opening a sealed hollow, falling or respawning
+     into a cave, and as water floods in.
+   - The same as a guest in a friend's world.
+2. **Caves:**
+   - from inside a cave, does everything you should see show up, round corners and down shafts?
+   - when you come out of a cave mouth, does the land appear at once?
+3. **The laptop:** with `?stats`, at the spawn point and flying (`?autofly=20`), what are the GPU time,
+   the triangles drawn and the frames over 20 ms? This milestone was for laptop GPUs; this machine's
+   GPU barely notices.
+4. **Loading:** does a new world, or a big view distance, take longer to fill in than before? Each
+   chunk now meshes about a fifth slower in the workers.
 
