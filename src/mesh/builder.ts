@@ -1,6 +1,22 @@
 // Growable typed arrays for mesh output. One builder is reused for every chunk a mesher
 // makes (no per-vertex allocation, no `number[]` to copy at the end); `build()` copies
 // out exactly the used part, which is what gets transferred from a worker.
+//
+// Quads come out sorted by group (the open region of the chunk each is seen from, or the face of
+// the chunk its open side is across: `world/visibility.ts`), then by part (face direction), so
+// the renderer can draw just the groups the visibility walk reached, and of them just the
+// directions that can face the camera.
+
+const MAX_REGIONS = 12;
+
+/** Groups a chunk mesh's quads are sorted by: its regions, then a border group per face of the chunk (-x, +x, -y, +y, -z, +z). */
+export const GROUPS = MAX_REGIONS + 6;
+/** The first border group: face f's is BORDER_GROUP + f (`visibility.ts` order). */
+export const BORDER_GROUP = MAX_REGIONS;
+/** Parts within a group: the 6 face directions in `FACE_ORDER`, then quads that face every way. */
+export const PARTS = 7;
+/** Length of `MeshData.faceStarts`. */
+export const FACE_STARTS = GROUPS * PARTS + 1;
 
 /** One pass of a chunk mesh. Positions in world space (no transform). */
 export interface MeshData {
@@ -22,10 +38,12 @@ export interface MeshData {
   /** Uint16 when the mesh has at most 65 536 vertices (almost always). */
   indices: Uint16Array | Uint32Array;
   /**
-   * Where each face direction's quads start, in `FACE_ORDER` (+x, +y, +z, -x, -y, -z), then
-   * where the quads that face every way start (torches), then the quad count: 8 numbers. A
-   * camera can only see the faces of the directions that point towards it, so the renderer
-   * draws just those ranges. A mesh made without marking has everything in the last range.
+   * Where each group's parts start: group g's part k at g * PARTS + k, then the quad count
+   * (`FACE_STARTS` numbers). Parts are the face directions in `FACE_ORDER` (+x, +y, +z, -x, -y,
+   * -z), then the quads that face every way (torches and other shapes, flowing water). A camera can
+   * only see the faces of the directions that point towards it, so the renderer draws just those
+   * ranges, of the groups that could be seen. A mesh made without marking has everything in group
+   * 0's last part.
    */
   faceStarts: Uint32Array;
 }
@@ -37,16 +55,21 @@ export class MeshBuilder {
   private positions = new Float32Array(4096 * 3);
   private colors = new Uint8Array(4096 * 4);
   private uvl = new Uint8Array(4096 * 4);
-  private indices = new Uint32Array(4096 * 1.5);
-  /** Vertices and indices written since `reset()`. */
+  /** Each quad's group. */
+  private groups = new Uint8Array(1024);
+  /** Each quad's place in the sorted order (group * PARTS + part), worked out in `build`. */
+  private keys = new Uint16Array(1024);
+  private readonly counts = new Uint32Array(FACE_STARTS);
+  /** Vertices written since `reset()`. */
   vertexCount = 0;
-  indexCount = 0;
+  /** The group the next quads go in. */
+  group = 0;
   /** Quad counts at each `mark()` since `reset()`. */
   private readonly marks: number[] = [];
 
   reset(): void {
     this.vertexCount = 0;
-    this.indexCount = 0;
+    this.group = 0;
     this.marks.length = 0;
   }
 
@@ -63,7 +86,10 @@ export class MeshBuilder {
       this.positions = grow(this.positions, capacity * 3);
       this.colors = grow(this.colors, capacity * 4);
       this.uvl = grow(this.uvl, capacity * 4);
-      this.indices = grow(this.indices, capacity * 1.5);
+    }
+    if (vertices / 4 > this.groups.length) {
+      this.groups = grow(this.groups, (vertices / 4) * 2);
+      this.keys = new Uint16Array(this.groups.length);
     }
   }
 
@@ -83,8 +109,8 @@ export class MeshBuilder {
   }
 
   /**
-   * Two triangles over the last four vertices (written counter-clockwise from outside).
-   * `flip` splits the quad along 1–3 instead of 0–2.
+   * Two triangles over the last four vertices (written counter-clockwise from outside), in group
+   * `this.group`. `flip` splits the quad along 1–3 instead of 0–2.
    */
   quad(flip = false): void {
     const b = this.vertexCount - 4;
@@ -96,32 +122,70 @@ export class MeshBuilder {
       rotate(this.colors, b, 4);
       rotate(this.uvl, b, 4);
     }
-    const i = this.indexCount;
-    const idx = this.indices;
-    idx[i] = b; idx[i + 1] = b + 1; idx[i + 2] = b + 2;
-    idx[i + 3] = b; idx[i + 4] = b + 2; idx[i + 5] = b + 3;
-    this.indexCount += 6;
+    this.groups[b >> 2] = this.group;
   }
 
-  /** Copies of the used part, safe to keep or transfer while the builder is reused. */
+  /** Copies of the used part, sorted by group then part, safe to keep or transfer while the builder is reused. */
   build(): MeshData {
-    const indices = this.indices.subarray(0, this.indexCount);
-    let small: Uint16Array | undefined;
-    if (this.vertexCount <= 65536) {
-      small = new Uint16Array(indices.length);
-      small.set(indices);
-    }
     const quads = this.vertexCount / 4;
-    const faceStarts = new Uint32Array(8);
-    if (this.marks.length === 7) faceStarts.set(this.marks);
-    faceStarts[7] = quads;
-    return {
-      faceStarts,
-      positions: this.positions.slice(0, this.vertexCount * 3),
-      colors: this.colors.slice(0, this.vertexCount * 4),
-      uvl: this.uvl.slice(0, this.vertexCount * 4),
-      indices: small ?? indices.slice(),
-    };
+    const marks = this.marks;
+    const marked = marks.length === PARTS;
+    const groups = this.groups;
+    const keys = this.keys;
+    const counts = this.counts;
+    counts.fill(0);
+    // Each quad's part from the marks (all in the last part without them), and whether the
+    // quads are in order already (all in one group: far chunks, held blocks).
+    let part = marked ? 0 : PARTS - 1;
+    let sorted = true;
+    let last = 0;
+    for (let q = 0; q < quads; q++) {
+      while (part < PARTS - 1 && q >= marks[part + 1]) part++;
+      const key = groups[q] * PARTS + part;
+      keys[q] = key;
+      counts[key]++;
+      if (key < last) sorted = false;
+      last = key;
+    }
+    const faceStarts = new Uint32Array(FACE_STARTS);
+    for (let k = 0; k < FACE_STARTS - 1; k++) faceStarts[k + 1] = faceStarts[k] + counts[k];
+
+    let positions: Float32Array;
+    let colors: Uint8Array;
+    let uvl: Uint8Array;
+    if (sorted) {
+      positions = this.positions.slice(0, quads * 12);
+      colors = this.colors.slice(0, quads * 16);
+      uvl = this.uvl.slice(0, quads * 16);
+    } else {
+      positions = new Float32Array(quads * 12);
+      colors = new Uint8Array(quads * 16);
+      uvl = new Uint8Array(quads * 16);
+      const next = counts; // reused: where the next quad of each key goes
+      next.set(faceStarts.subarray(0, FACE_STARTS - 1));
+      const sp = this.positions;
+      const sc = this.colors;
+      const su = this.uvl;
+      for (let q = 0; q < quads; q++) {
+        const to = next[keys[q]]++;
+        for (let k = 0; k < 12; k++) positions[to * 12 + k] = sp[q * 12 + k];
+        for (let k = 0; k < 16; k++) {
+          colors[to * 16 + k] = sc[q * 16 + k];
+          uvl[to * 16 + k] = su[q * 16 + k];
+        }
+      }
+    }
+    const indices = this.vertexCount <= 65536 ? new Uint16Array(quads * 6) : new Uint32Array(quads * 6);
+    for (let q = 0, i = 0; q < quads; q++, i += 6) {
+      const b = q * 4;
+      indices[i] = b;
+      indices[i + 1] = b + 1;
+      indices[i + 2] = b + 2;
+      indices[i + 3] = b;
+      indices[i + 4] = b + 2;
+      indices[i + 5] = b + 3;
+    }
+    return { faceStarts, positions, colors, uvl, indices };
   }
 }
 
@@ -137,7 +201,7 @@ function rotate(a: Float32Array | Uint8Array, b: number, size: number): void {
   }
 }
 
-function grow<T extends Float32Array | Uint8Array | Uint32Array>(a: T, length: number): T {
+function grow<T extends Float32Array | Uint8Array | Uint16Array | Uint32Array>(a: T, length: number): T {
   const out = new (a.constructor as new (length: number) => T)(length);
   out.set(a);
   return out;

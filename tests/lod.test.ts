@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FACE_ORDER, type MeshData } from '../src/mesh/builder';
+import { FACE_ORDER, FACE_STARTS, GROUPS, type MeshData, PARTS } from '../src/mesh/builder';
 import { coarsen, type Lod, prepareLod, SEAM_POS_X } from '../src/mesh/lod';
 import { meshChunk } from '../src/mesh/mesher';
 import { PADDED, PADDED_VOLUME, paddedBlocks, paddedIndex, paddedLight } from '../src/mesh/padding';
@@ -8,6 +8,13 @@ import { Block, BLOCKS } from '../src/world/blocks';
 import { CHUNK_SIZE } from '../src/world/coords';
 import { SUNLIT } from '../src/world/light';
 import { World } from '../src/world/world';
+
+/** The quads of part k (a face direction in FACE_ORDER, or 6: the rest) of every group. */
+function partQuads(m: MeshData, k: number): number[] {
+  const out: number[] = [];
+  for (let g = 0; g < GROUPS; g++) for (let q = m.faceStarts[g * PARTS + k]; q < m.faceStarts[g * PARTS + k + 1]; q++) out.push(q);
+  return out;
+}
 
 const S = CHUNK_SIZE;
 /** Padded index of chunk-local (x, y, z). */
@@ -102,7 +109,7 @@ function meshAt(cx: number, cy: number, cz: number, lod: Lod, seams = 0): { mesh
 function covered(m: MeshData, k: number, axis: number, origin: number[], plane: number): Uint8Array {
   const [ua, va] = axis === 0 ? [2, 1] : axis === 1 ? [0, 2] : [0, 1];
   const grid = new Uint8Array(S * S);
-  for (let q = m.faceStarts[k]; q < m.faceStarts[k + 1]; q++) {
+  for (const q of partQuads(m, k)) {
     const p = (i: number, a: number) => m.positions[(q * 4 + i) * 3 + a] - origin[a];
     if (p(0, axis) !== plane) continue;
     const us = [0, 1, 2, 3].map((i) => p(i, ua));
@@ -115,7 +122,7 @@ function covered(m: MeshData, k: number, axis: number, origin: number[], plane: 
 describe('far chunk meshes', () => {
   it('have far fewer quads than full detail', () => {
     const quads = [0, 0, 0];
-    for (const lod of [0, 1, 2] as Lod[]) for (const [cx, cz] of columns) for (let cy = 0; cy <= 7; cy++) quads[lod] += meshAt(cx, cy, cz, lod).mesh.opaque.faceStarts[7];
+    for (const lod of [0, 1, 2] as Lod[]) for (const [cx, cz] of columns) for (let cy = 0; cy <= 7; cy++) quads[lod] += meshAt(cx, cy, cz, lod).mesh.opaque.faceStarts[FACE_STARTS - 1];
     expect(quads[1]).toBeLessThan(quads[0] * 0.4);
     // Under two thirds: the trunks kept at full detail (mountain spruces are dense) cost a little.
     expect(quads[2]).toBeLessThan(quads[1] * 0.67);
@@ -176,12 +183,12 @@ describe('far chunk meshes', () => {
       const b = blocks.slice();
       const l = light.slice();
       prepareLod(b, l, lod, 0);
-      expect(meshChunk(b, 0, 1, 0, l, lod > 0).opaque.faceStarts[7]).toBe(0);
+      expect(meshChunk(b, 0, 1, 0, l, lod > 0).opaque.faceStarts[FACE_STARTS - 1]).toBe(0);
       prepareLod(b, l, lod, SEAM_POS_X);
       const m = meshChunk(b, 0, 1, 0, l, lod > 0).opaque;
       // Only +x faces, all on the chunk's +x side, lit by full sun.
-      expect(m.faceStarts[1]).toBeGreaterThan(0);
-      expect(m.faceStarts[7]).toBe(m.faceStarts[1]);
+      expect(partQuads(m, 0).length).toBeGreaterThan(0);
+      expect(m.faceStarts[FACE_STARTS - 1]).toBe(partQuads(m, 0).length);
       for (let i = 0; i < m.positions.length / 3; i++) expect(m.positions[i * 3]).toBe(S);
       expect(l[paddedIndex(PADDED - 1, 5, 5)]).toBe(SUNLIT);
     }
@@ -190,8 +197,8 @@ describe('far chunk meshes', () => {
     const l = light.slice();
     prepareLod(b, l, 2, 0);
     const m = meshChunk(b, 0, 1, 0, l, true).opaque;
-    expect(m.faceStarts[7]).toBe(6);
-    for (let k = 0; k < 6; k++) expect(m.faceStarts[k + 1] - m.faceStarts[k]).toBe(1);
+    expect(m.faceStarts[FACE_STARTS - 1]).toBe(6);
+    for (let k = 0; k < 6; k++) expect(partQuads(m, k)).toHaveLength(1);
   });
 
   it('keep the water at full detail', () => {
@@ -199,7 +206,7 @@ describe('far chunk meshes', () => {
     const surface = (m: MeshData) => {
       let area = 0;
       const heights = new Set<number>();
-      for (let q = m.faceStarts[1]; q < m.faceStarts[2]; q++) {
+      for (const q of partQuads(m, 1)) {
         const p = (i: number, a: number) => m.positions[(q * 4 + i) * 3 + a];
         heights.add(p(0, 1));
         area += (Math.max(p(0, 0), p(2, 0)) - Math.min(p(0, 0), p(2, 0))) * (Math.max(p(0, 2), p(2, 2)) - Math.min(p(0, 2), p(2, 2)));

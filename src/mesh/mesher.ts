@@ -29,13 +29,22 @@
 // its own (`water`): its top at its depth, its sides where the neighbour isn't solid and isn't
 // water as deep. Where a full block of water meets shallower water, its side shows above the
 // other's surface (`steps`). So water of different depths meets with no hole and no doubled face.
+//
+// Groups (`builder.ts`): every quad goes in the group of the open region it's seen from
+// (`world/visibility.ts`, worked out here from the padded copy's middle, the chunk's own blocks, so
+// numbered as the chunk's regions are): the region of the block a face looks at, or a border group
+// when that block is across one of the chunk's faces. A shape's faces (torches, slabs, wheat...) go
+// with the region of its own block, as does flowing water's top. Faces seen only from a pocket (a
+// region sealed inside the chunk) aren't made at all: nothing outside can see them, and opening one
+// up is an edit, which remeshes the chunk. Far chunks (`flatFaces`) are one group.
 
 import { TUNING } from '../config';
 import { bedOf, Block, BLOCKS, FACINGS, gateOf } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
 import { connectedBoxes, joins } from '../world/shapes';
 import { textureLayer } from '../world/textures';
-import { FACE_ORDER, MeshBuilder, type MeshData } from './builder';
+import { NO_REGION, regionMap } from '../world/visibility';
+import { BORDER_GROUP, FACE_ORDER, MeshBuilder, type MeshData } from './builder';
 import { ALL_SUNLIT, PADDED } from './padding';
 
 export interface ChunkMesh {
@@ -52,8 +61,13 @@ export interface ChunkMesh {
 const S = CHUNK_SIZE;
 const P = PADDED;
 const AIR = Block.Air;
+const NONE = NO_REGION;
+const BORDER = BORDER_GROUP;
 /** Padded-array stride along x, y and z. */
 const STRIDE = [1, P * P, P];
+/** Chunk-array (and region map) stride along x, y and z. */
+const LOCAL = [1, S * S, S];
+const PP = P * P;
 
 /** Baked directional shading per direction (+x, -x, +y, -y, +z, -z): the classic voxel look, no lights needed. */
 export const SHADE = [0.8, 0.8, 1.0, 0.55, 0.68, 0.68];
@@ -171,6 +185,30 @@ const liquids: number[] = [];
 const steps: number[] = [];
 /** Padded-index step to the neighbour each face direction looks at (+x, -x, +y, -y, +z, -z). */
 const TOWARDS = [1, -1, P * P, -P * P, P, -P];
+/** The chunk's blocks (the padded copy's middle), and the open region of each (`NO_REGION` for solid blocks and pockets). */
+const inner = new Uint8Array(S * S * S);
+const regionOf = new Uint8Array(S * S * S);
+/** Whether this chunk's quads are being sorted into groups (not for far chunks). */
+let grouping = false;
+
+/** The region of the block at padded index i (inside the chunk). */
+const ownRegion = (i: number): number => regionOf[(((i / PP) | 0) - 1) * S * S + ((((i / P) | 0) % P) - 1) * S + (i % P) - 1];
+
+/**
+ * The group of a face of the block at padded index i looking along `dir`: the region of the block
+ * it looks at, a border group if that's across a face of the chunk, or the block's own region if
+ * it's solid (water's top under a block). `NO_REGION` for a pocket's.
+ */
+function sideGroup(i: number, dir: number): number {
+  if (!grouping) return 0;
+  const f = i + TOWARDS[dir];
+  const x = (f % P) - 1;
+  const y = ((f / PP) | 0) - 1;
+  const z = (((f / P) | 0) % P) - 1;
+  if (x < 0 || x >= S || y < 0 || y >= S || z < 0 || z >= S) return BORDER + (dir ^ 1);
+  const r = regionOf[y * S * S + z * S + x];
+  return r !== NONE ? r : ownRegion(i);
+}
 
 /** How deep the water at padded index `i` is: a full block with water above it, else its own depth. */
 const depthAt = (padded: Uint8Array, i: number): number => (LIQUID[padded[i + P * P]] ? 1 : DEPTH[padded[i]]);
@@ -195,6 +233,16 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   steps.length = 0;
   const origin = [cx * S, cy * S, cz * S];
   let quads = 0;
+  grouping = !flatFaces;
+  if (grouping) {
+    // The middle of the padded copy, row by row (no views made).
+    for (let y = 0, to = 0; y < S; y++)
+      for (let z = 0; z < S; z++) {
+        const from = (y + 1) * PP + (z + 1) * P + 1;
+        for (let x = 0; x < S; x++) inner[to++] = padded[from + x];
+      }
+    regionMap(inner, regionOf);
+  }
 
   for (const dir of FACE_ORDER) {
     opaque.mark();
@@ -214,8 +262,17 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
     // and bottom u along x and v along z, so textures stand upright on walls.
     const tu = d === 0 ? 2 : 0;
     const tv = d === 1 ? 2 : 1;
+    // The region map's steps, and the group of faces looking out of the chunk.
+    const ld = LOCAL[d];
+    const lu = LOCAL[ua];
+    const lv = LOCAL[va];
+    const border = BORDER + (dir ^ 1);
+    const grouped = grouping;
 
     for (let c = 0; c < S; c++) {
+      // The slice the faces look at, and whether it's across the chunk's face.
+      const fc = c + s;
+      const across = fc < 0 || fc >= S;
       // The masks; mask 0 is no face.
       let any = false;
       for (let v = 0; v < S; v++) {
@@ -237,6 +294,12 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
                 // Water against water: no face, but a side against shallower water shows above it.
                 if (d !== 1 && depthAt(padded, f) < 1) steps.push(i, dir);
               } else if (nb === AIR || (!OPAQUE[nb] && (nb !== b || CUTOUT[b]))) {
+                // The group: the region looked at (none for a pocket: no face), or across the chunk's face.
+                const g = !grouped ? 0 : across ? border : regionOf[fc * ld + u * lu + v * lv];
+                if (g === NONE) {
+                  mask[at] = 0;
+                  continue;
+                }
                 const lf = light[f];
                 if (TRANSPARENT[b] || flatFaces) {
                   key = b | (NO_AO << 8);
@@ -263,10 +326,11 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
                   const c2 = cornerLight(lf, oR, lR, oU, lU, oRU, light[f + su + sv]);
                   const c3 = cornerLight(lf, oL, lL, oU, lU, oLU, light[f - su + sv]);
                   sunMask[at] = (c0 & 255) | ((c1 & 255) << 8) | ((c2 & 255) << 16) | ((c3 & 255) << 24);
-                  const g = GLOW[b];
+                  const glow = GLOW[b];
                   glowMask[at] =
-                    Math.max(c0 >> 8, g) | (Math.max(c1 >> 8, g) << 8) | (Math.max(c2 >> 8, g) << 16) | (Math.max(c3 >> 8, g) << 24);
+                    Math.max(c0 >> 8, glow) | (Math.max(c1 >> 8, glow) << 8) | (Math.max(c2 >> 8, glow) << 16) | (Math.max(c3 >> 8, glow) << 24);
                 }
+                key |= g << 16;
                 any = true;
               }
             }
@@ -301,7 +365,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
           for (let dv = 0; dv < h; dv++) mask.fill(0, (v + dv) * S + u, (v + dv) * S + u + w);
 
           const b = key & 0xff;
-          const ao = key >> 8;
+          const ao = (key >> 8) & 0xff;
           const a0 = ao & 3;
           const a1 = (ao >> 2) & 3;
           const a2 = (ao >> 4) & 3;
@@ -315,6 +379,7 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
           const g2 = (gk >> 16) & 255;
           const g3 = (gk >>> 24) & 255;
           const out = TRANSPARENT[b] ? transparent : CUTOUT[b] ? cutout : opaque;
+          out.group = key >>> 16;
           const shade = dir * 4;
           const layer = LAYER[b * 6 + dir];
           const u0 = origin[ua] + u;
@@ -340,12 +405,18 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
   cutout.mark();
   transparent.mark();
   for (const i of shaped) {
+    const g = grouping ? ownRegion(i) : 0;
+    if (g === NONE) continue;
+    opaque.group = cutout.group = transparent.group = g;
     const shape = SHAPE[padded[i]];
     quads += shape === 1 ? torch(padded, light, i, origin) : shape <= 5 ? logicShape(padded, light, i, origin) : shape === 8 ? cross(padded, light, i, origin) : piece(padded, light, i, origin);
   }
   for (const i of liquids) quads += water(padded, light, i, origin);
   for (let n = 0; n < steps.length; n += 2) {
     const i = steps[n];
+    const g = sideGroup(i, steps[n + 1]);
+    if (g === NONE) continue;
+    transparent.group = g;
     const f = i + TOWARDS[steps[n + 1]];
     liquidFace(i, steps[n + 1], depthAt(padded, f), 1, light[f], padded[i], origin);
     quads++;
@@ -395,6 +466,10 @@ function water(padded: Uint8Array, light: Uint8Array, i: number, origin: number[
       from = depthAt(padded, f);
       if (from >= h) continue;
     }
+    // Its top is inside its own block (below the block's top); the rest look out of it.
+    const g = dir === 2 ? (grouping ? ownRegion(i) : 0) : sideGroup(i, dir);
+    if (g === NONE) continue;
+    transparent.group = g;
     liquidFace(i, dir, from, h, light[f], b, origin);
     quads++;
   }

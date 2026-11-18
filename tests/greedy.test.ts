@@ -8,6 +8,7 @@ import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { Block, BLOCKS } from '../src/world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
 import { SURFACE_ONLY } from '../src/world/generate';
+import { NO_REGION, regionMap } from '../src/world/visibility';
 import { Chunk, World } from '../src/world/world';
 
 type Vec = [number, number, number];
@@ -67,9 +68,9 @@ function unitFaces(q: Quad): { block: Vec; key: string }[] {
   return out;
 }
 
-/** Unit faces of a whole mesh; fails if any face is covered twice. */
-function faceSet(m: ChunkMesh): Set<string> {
-  const keys = quadsOfMesh(m).flatMap((q) => unitFaces(q).map((f) => f.key));
+/** Unit faces of a whole mesh (those `keep` keeps: by the block a face looks at); fails if any face is covered twice. */
+function faceSet(m: ChunkMesh, keep: (front: Vec) => boolean = () => true): Set<string> {
+  const keys = quadsOfMesh(m).flatMap((q) => unitFaces(q).filter((f) => keep(add(f.block, q.axis, q.sign))).map((f) => f.key));
   const set = new Set(keys);
   expect(set.size).toBe(keys.length);
   return set;
@@ -194,7 +195,16 @@ describe('greedy mesher', () => {
       cases.push([`terrain 1,${cy},1`, terrain, [1, cy, 1]]);
     }
     for (const [name, world, [cx, cy, cz]] of cases) {
-      expect([...faceSet(mesh(world, cx, cy, cz))].sort(), name).toEqual([...faceSet(culled(world, cx, cy, cz))].sort());
+      // Less the faces looking into a pocket (open blocks sealed inside the chunk): never seen from outside, not made.
+      const map = new Uint8Array(CHUNK_VOLUME);
+      regionMap(world.getChunk(cx, cy, cz)!.blocks, map);
+      const S = CHUNK_SIZE;
+      const seen = ([x, y, z]: Vec) => {
+        const [lx, ly, lz] = [x - cx * S, y - cy * S, z - cz * S];
+        if (lx < 0 || ly < 0 || lz < 0 || lx >= S || ly >= S || lz >= S) return true;
+        return map[ly * S * S + lz * S + lx] !== NO_REGION;
+      };
+      expect([...faceSet(mesh(world, cx, cy, cz))].sort(), name).toEqual([...faceSet(culled(world, cx, cy, cz), seen)].sort());
     }
   });
 

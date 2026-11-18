@@ -9,7 +9,7 @@
 // pages share one index buffer and nothing but vertices is ever uploaded.
 
 import * as THREE from 'three';
-import type { MeshData } from '../mesh/builder';
+import { FACE_STARTS, GROUPS, type MeshData, PARTS } from '../mesh/builder';
 import { PageAllocator } from './pageAllocator';
 
 /** BatchedMesh's own fields this class takes over (they aren't in its typings). */
@@ -27,11 +27,18 @@ export interface PageEntry {
   readonly quads: number;
   /** Centre of the chunk, for frustum culling and sorting. */
   readonly centre: THREE.Vector3;
-  /** `MeshData.faceStarts`: where each face direction's quads start, from `start`. */
+  /** `MeshData.faceStarts`: where each group's face directions' quads start, from `start`. */
   readonly faces: Uint32Array;
   /** Reached by the visibility walk (`ChunkRenderer.setVisible`). */
   visible: boolean;
+  /** The groups of it to draw (bit g for group g). */
+  groups: number;
 }
+
+/** Every group of a mesh. */
+export const ALL_GROUPS = (1 << GROUPS) - 1;
+/** Every part (direction) of a group: for the blended pass, seen from both sides. */
+export const ALL_PARTS = (1 << PARTS) - 1;
 
 /** Bytes of vertex data per quad: 4 vertices of position (12), colour (4) and uvl (4). */
 export const BYTES_PER_QUAD = 4 * (12 + 4 + 4);
@@ -62,15 +69,59 @@ function pageIndex(quads: number): THREE.BufferAttribute {
 }
 
 /**
- * The parts of a chunk mesh a camera at (ex, ey, ez) could see, into `out` as [first quad,
- * end quad) pairs, touching ones merged; returns how many. `faces` is `MeshData.faceStarts`
- * and the chunk spans `size` blocks from (minX, minY, minZ).
+ * The parts (`MeshData.faceStarts`) of a chunk spanning `size` blocks from (minX, minY, minZ) a
+ * camera at (ex, ey, ez) could see: bit k for part k.
  *
  * A +x face lies on a plane x = p with p > minX, and is seen only from x > p; so with the eye at
  * x <= minX no +x face of the chunk can be seen. The same goes for the other directions. The
- * last range (torches) faces every way and is always drawn. From outside the chunk on all
+ * last part (torches) faces every way and is always drawn. From outside the chunk on all
  * three axes that leaves three directions of six.
  */
+export function facing(minX: number, minY: number, minZ: number, size: number, ex: number, ey: number, ez: number): number {
+  // In FACE_ORDER: +x, +y, +z, -x, -y, -z, then every way.
+  return (
+    (ex > minX ? 1 : 0) |
+    (ey > minY ? 2 : 0) |
+    (ez > minZ ? 4 : 0) |
+    (ex < minX + size ? 8 : 0) |
+    (ey < minY + size ? 16 : 0) |
+    (ez < minZ + size ? 32 : 0) |
+    64
+  );
+}
+
+/**
+ * The quads of a chunk mesh in `groups` (bit g) and `parts` (bit k), into `out` as [first quad,
+ * end quad) pairs, touching ones merged (empty parts don't part them); returns how many. `faces`
+ * is `MeshData.faceStarts`. At most `MAX_RANGES`.
+ */
+export function drawRanges(faces: Uint32Array, groups: number, parts: number, out: Int32Array): number {
+  let n = 0;
+  let from = -1;
+  for (let g = 0; g < GROUPS; g++) {
+    const base = g * PARTS;
+    if (faces[base] === faces[base + PARTS]) continue;
+    const drawn = groups & (1 << g) ? parts : 0;
+    for (let k = 0; k < PARTS; k++) {
+      const lo = faces[base + k];
+      if (faces[base + k + 1] === lo) continue;
+      if (drawn & (1 << k)) {
+        if (from < 0) from = lo;
+      } else if (from >= 0) {
+        out[n++] = from;
+        out[n++] = lo;
+        from = -1;
+      }
+    }
+  }
+  if (from >= 0) {
+    out[n++] = from;
+    out[n++] = faces[FACE_STARTS - 1];
+  }
+  return n / 2;
+}
+
+/** `drawRanges` of every group, the parts a camera at (ex, ey, ez) could see (`facing`). */
 export function faceRanges(
   faces: Uint32Array,
   minX: number,
@@ -82,31 +133,11 @@ export function faceRanges(
   ez: number,
   out: Int32Array,
 ): number {
-  // In FACE_ORDER: +x, +y, +z, -x, -y, -z, then every way.
-  let n = 0;
-  let from = -1;
-  for (let k = 0; k < 7; k++) {
-    const lo = faces[k];
-    const hi = faces[k + 1];
-    // An empty range doesn't break a run.
-    const seen =
-      k === 0 ? ex > minX : k === 1 ? ey > minY : k === 2 ? ez > minZ : k === 3 ? ex < minX + size : k === 4 ? ey < minY + size : k === 5 ? ez < minZ + size : true;
-    if (seen || hi === lo) {
-      if (from < 0) from = lo;
-    } else {
-      if (from >= 0 && lo > from) {
-        out[n++] = from;
-        out[n++] = lo;
-      }
-      from = -1;
-    }
-  }
-  if (from >= 0 && faces[7] > from) {
-    out[n++] = from;
-    out[n++] = faces[7];
-  }
-  return n / 2;
+  return drawRanges(faces, ALL_GROUPS, facing(minX, minY, minZ, size, ex, ey, ez), out);
 }
+
+/** At most this many ranges come out of `drawRanges`: drawn and left out alternating, part by part. */
+export const MAX_RANGES = Math.ceil((GROUPS * PARTS) / 2);
 
 const frustum = new THREE.Frustum();
 const viewProjection = new THREE.Matrix4();
@@ -116,8 +147,7 @@ const HALF = 16;
 /** Radius of the sphere around a chunk cube. */
 const CHUNK_RADIUS = HALF * Math.sqrt(3);
 const sphere = new THREE.Sphere(new THREE.Vector3(), CHUNK_RADIUS);
-/** At most 4 ranges come out of `faceRanges` (7 parts, alternating). */
-const ranges = new Int32Array(8);
+const ranges = new Int32Array(2 * MAX_RANGES);
 
 export class ChunkPage extends THREE.BatchedMesh {
   readonly space: PageAllocator;
@@ -173,7 +203,7 @@ export class ChunkPage extends THREE.BatchedMesh {
     write(this.positions, data.positions, v * 3);
     write(this.colors, data.colors, v * 4);
     write(this.uvl, data.uvl, v * 4);
-    const entry: PageEntry = { page: this, start, quads, centre, faces: data.faceStarts, visible: true };
+    const entry: PageEntry = { page: this, start, quads, centre, faces: data.faceStarts, visible: true, groups: ALL_GROUPS };
     this.entries.add(entry);
     return entry;
   }
@@ -203,29 +233,35 @@ export class ChunkPage extends THREE.BatchedMesh {
     }
     const b = this.internals;
     const bytes = this.geometry.index!.array.BYTES_PER_ELEMENT;
-    if (b._multiDrawStarts.length < drawn.length * 4) {
-      const n = Math.max(drawn.length * 4, b._multiDrawStarts.length * 2);
-      b._multiDrawStarts = new Int32Array(n);
-      b._multiDrawCounts = new Int32Array(n);
-    }
-    const starts = b._multiDrawStarts;
-    const counts = b._multiDrawCounts;
+    let starts = b._multiDrawStarts;
+    let counts = b._multiDrawCounts;
     let n = 0;
     for (const e of drawn) {
-      if (this.blended) {
-        starts[n] = e.start * 6 * bytes; // bytes into the index buffer
-        counts[n++] = e.quads * 6;
-        continue;
-      }
+      // The blended pass is seen from both sides (the water's surface from below): every direction.
       const c = e.centre;
-      const parts = faceRanges(e.faces, c.x - HALF, c.y - HALF, c.z - HALF, 2 * HALF, eye.x, eye.y, eye.z, ranges);
-      for (let r = 0; r < parts; r++) {
-        starts[n] = (e.start + ranges[2 * r]) * 6 * bytes;
+      const parts = this.blended ? ALL_PARTS : facing(c.x - HALF, c.y - HALF, c.z - HALF, 2 * HALF, eye.x, eye.y, eye.z);
+      const found = drawRanges(e.faces, e.groups, parts, ranges);
+      if (n + found > starts.length) {
+        const size = Math.max(n + found, starts.length * 2);
+        starts = grown(starts, size);
+        counts = grown(counts, size);
+        b._multiDrawStarts = starts;
+        b._multiDrawCounts = counts;
+      }
+      for (let r = 0; r < found; r++) {
+        starts[n] = (e.start + ranges[2 * r]) * 6 * bytes; // bytes into the index buffer
         counts[n++] = (ranges[2 * r + 1] - ranges[2 * r]) * 6;
       }
     }
     b._multiDrawCount = n;
   }
+}
+
+/** A longer copy of `a`. */
+function grown(a: Int32Array, length: number): Int32Array {
+  const out = new Int32Array(length);
+  out.set(a);
+  return out;
 }
 
 /** `src` into `attr` from element `at`, uploaded with the next draw (just that range). */

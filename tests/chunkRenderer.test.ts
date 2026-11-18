@@ -1,10 +1,14 @@
 import * as THREE from 'three';
+import { FACE_STARTS, GROUPS, PARTS } from '../src/mesh/builder';
 import { describe, expect, it } from 'vitest';
 import { meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import type { ChunkPage } from '../src/render/chunkPage';
 import { ChunkRenderer } from '../src/render/chunkRenderer';
 import { World } from '../src/world/world';
+
+/** Quads in part k of every group. */
+const inPart = (f: Uint32Array, k: number) => Array.from({ length: GROUPS }, (_, g) => f[g * PARTS + k + 1] - f[g * PARTS + k]).reduce((a, b) => a + b, 0);
 
 const world = new World(20261022);
 for (let cz = -1; cz <= 1; cz++) for (let cx = -1; cx <= 1; cx++) world.ensureColumn(cx, cz);
@@ -67,7 +71,7 @@ describe('chunk renderer pages', () => {
   it('uses 16-bit indices in small pages, and gives a mesh too big for one a page of its own', () => {
     const q = quadsOf(ground.opaque);
     const r = new ChunkRenderer(false, Math.floor(q / 2));
-    r.set('small', 0, 1, 0, { ...ground, opaque: { positions: ground.opaque.positions.subarray(0, 12), colors: ground.opaque.colors.subarray(0, 16), uvl: ground.opaque.uvl.subarray(0, 16), indices: ground.opaque.indices.subarray(0, 6), faceStarts: Uint32Array.of(0, 0, 0, 0, 0, 0, 0, 1) } });
+    r.set('small', 0, 1, 0, { ...ground, opaque: { positions: ground.opaque.positions.subarray(0, 12), colors: ground.opaque.colors.subarray(0, 16), uvl: ground.opaque.uvl.subarray(0, 16), indices: ground.opaque.indices.subarray(0, 6), faceStarts: new Uint32Array(FACE_STARTS).fill(1, PARTS) } });
     r.set('big', 0, 1, 0, ground);
     const [small] = pagesOf(r);
     expect(small.geometry.index!.array).toBeInstanceOf(Uint16Array);
@@ -108,13 +112,14 @@ describe('chunk renderer pages', () => {
     const quadsDrawn = () => drawList(opaque, camera).reduce((sum, [, n]) => sum + n, 0);
     // From above, over the chunk: every direction but the undersides (-y), which face away.
     const f = ground.opaque.faceStarts;
-    const undersides = f[5] - f[4]; // FACE_ORDER: +x, +y, +z, -x, -y, -z
+    const end = FACE_STARTS - 1;
+    const undersides = inPart(f, 4); // FACE_ORDER: +x, +y, +z, -x, -y, -z
     const below = meshAt(0, 0, 0).opaque.faceStarts;
     const all = quadsDrawn();
-    expect(all).toBe(f[7] - undersides + below[7] - (below[5] - below[4]));
+    expect(all).toBe(f[end] - undersides + below[end] - inPart(below, 4));
     expect(drawList(opaque, camera).every(([, n]) => n > 0)).toBe(true);
     r.setVisible('below', false);
-    expect(quadsDrawn()).toBe(f[7] - undersides);
+    expect(quadsDrawn()).toBe(f[end] - undersides);
 
     // Water in two chunks, both in view: the farther one first.
     r.set('near water', 0, 2, 0, ground);

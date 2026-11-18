@@ -23,8 +23,6 @@ const S = CHUNK_SIZE;
 const VOLUME = S * S * S;
 /** Blocks on one face of a chunk. */
 const FACE_CELLS = S * S;
-/** Index step along x, y and z (layout: x fastest, then z, then y). */
-const STRIDE = [1, S * S, S];
 
 /** Faces, in order: -x, +x, -y, +y, -z, +z. The opposite of face f is f ^ 1. */
 export const FACE_OFFSETS: readonly (readonly [number, number, number])[] = [
@@ -98,8 +96,18 @@ function faceBlock(face: number, u: number, v: number): number {
 const FACE_BLOCKS = new Int32Array(6 * FACE_CELLS);
 for (let f = 0; f < 6; f++) for (let v = 0; v < S; v++) for (let u = 0; u < S; u++) FACE_BLOCKS[f * FACE_CELLS + faceCell(u, v)] = faceBlock(f, u, v);
 
+/** The faces of the chunk each block lies on (bit f for face f), so the flood needs no coordinates. */
+const EDGE = new Uint8Array(VOLUME);
+for (let i = 0; i < VOLUME; i++) {
+  const x = i & (S - 1);
+  const z = (i >> 5) & (S - 1);
+  const y = i >> 10;
+  EDGE[i] = (x === 0 ? 1 : 0) | (x === S - 1 ? 2 : 0) | (y === 0 ? 4 : 0) | (y === S - 1 ? 8 : 0) | (z === 0 ? 16 : 0) | (z === S - 1 ? 32 : 0);
+}
+
 // Reused for every chunk (one set per thread). Floods are labelled from 1; 0 is unvisited or solid.
-const labels = new Int32Array(VOLUME);
+// (At most VOLUME / 2 floods: no two open blocks of different floods touch.)
+const labels = new Uint16Array(VOLUME);
 const queue = new Int32Array(VOLUME);
 const sizes = new Int32Array(VOLUME + 1);
 const touched = new Uint8Array(VOLUME + 1);
@@ -125,20 +133,31 @@ export function regionMap(blocks: Uint8Array, map: Uint8Array): Regions {
     labels[start] = label;
     while (head < tail) {
       const i = queue[head++];
-      const x = i & (S - 1);
-      const z = (i >> 5) & (S - 1);
-      const y = i >> 10;
-      // Per face: at the chunk's edge note the face, else step to the open neighbour.
-      for (let face = 0; face < 6; face++) {
-        const axis = face >> 1;
-        const at = axis === 0 ? x : axis === 1 ? y : z;
-        const high = face & 1;
-        if (at === (high ? S - 1 : 0)) {
-          faces |= 1 << face;
-          continue;
-        }
-        const j = i + (high ? STRIDE[axis] : -STRIDE[axis]);
-        if (labels[j] || !see[blocks[j]]) continue;
+      // On a face of the chunk: note it, and don't step out that way; else step to each open neighbour.
+      const edge = EDGE[i];
+      faces |= edge;
+      let j: number;
+      if (!(edge & 1) && !labels[(j = i - 1)] && see[blocks[j]]) {
+        labels[j] = label;
+        queue[tail++] = j;
+      }
+      if (!(edge & 2) && !labels[(j = i + 1)] && see[blocks[j]]) {
+        labels[j] = label;
+        queue[tail++] = j;
+      }
+      if (!(edge & 4) && !labels[(j = i - S * S)] && see[blocks[j]]) {
+        labels[j] = label;
+        queue[tail++] = j;
+      }
+      if (!(edge & 8) && !labels[(j = i + S * S)] && see[blocks[j]]) {
+        labels[j] = label;
+        queue[tail++] = j;
+      }
+      if (!(edge & 16) && !labels[(j = i - S)] && see[blocks[j]]) {
+        labels[j] = label;
+        queue[tail++] = j;
+      }
+      if (!(edge & 32) && !labels[(j = i + S)] && see[blocks[j]]) {
         labels[j] = label;
         queue[tail++] = j;
       }

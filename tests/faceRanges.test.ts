@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '../src/math';
-import { FACE_ORDER, type MeshData } from '../src/mesh/builder';
+import { FACE_ORDER, FACE_STARTS, GROUPS, type MeshData, PARTS } from '../src/mesh/builder';
 import { meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
-import { faceRanges } from '../src/render/chunkPage';
+import { ALL_PARTS, drawRanges, faceRanges, MAX_RANGES } from '../src/render/chunkPage';
 import { Block } from '../src/world/blocks';
 import { CHUNK_SIZE } from '../src/world/coords';
 import { World } from '../src/world/world';
@@ -32,30 +32,52 @@ function dirOf(n: number[]): number {
   return axis * 2 + (n[axis] > 0 ? 0 : 1);
 }
 
+/** Quads in part k of every group. */
+const inPart = (f: Uint32Array, k: number) => Array.from({ length: GROUPS }, (_, g) => f[g * PARTS + k + 1] - f[g * PARTS + k]).reduce((a, b) => a + b, 0);
+
 describe('face direction ranges', () => {
-  it('hold each direction\'s quads in FACE_ORDER, then the torch, then nothing else', () => {
+  it("hold each group's quads by direction in FACE_ORDER, then the torch, then nothing else", () => {
     const [ground] = meshes;
     const f = ground.opaque.faceStarts;
-    expect(f[7]).toBe(ground.opaque.positions.length / 12);
-    for (let k = 0; k < 6; k++) {
-      expect(f[k + 1]).toBeGreaterThanOrEqual(f[k]);
-      for (let q = f[k]; q < f[k + 1]; q++) expect(dirOf(quadPlane(ground.opaque, q)[0])).toBe(FACE_ORDER[k]);
-    }
-    expect(f[7] - f[6]).toBe(5); // the torch: its box but the bottom
+    expect(f).toHaveLength(FACE_STARTS);
+    expect(f[FACE_STARTS - 1]).toBe(ground.opaque.positions.length / 12);
+    for (let g = 0; g < GROUPS; g++)
+      for (let k = 0; k < PARTS; k++) {
+        const at = g * PARTS + k;
+        expect(f[at + 1]).toBeGreaterThanOrEqual(f[at]);
+        if (k < 6) for (let q = f[at]; q < f[at + 1]; q++) expect(dirOf(quadPlane(ground.opaque, q)[0])).toBe(FACE_ORDER[k]);
+      }
+    expect(inPart(f, 6)).toBe(5); // the torch: its box but the bottom
     // Water and glass are ranged the same way, with no torches.
     const t = ground.transparent.faceStarts;
-    expect(t[7]).toBe(ground.transparent.positions.length / 12);
-    expect(t[7]).toBe(t[6]);
+    expect(t[FACE_STARTS - 1]).toBe(ground.transparent.positions.length / 12);
+    expect(inPart(t, 6)).toBe(0);
+  });
+
+  it('take just the groups asked for', () => {
+    const out = new Int32Array(2 * MAX_RANGES);
+    for (const m of meshes) {
+      const f = m.opaque.faceStarts;
+      for (let g = 0; g < GROUPS; g++) {
+        const n = drawRanges(f, (1 << g) | (1 << ((g + 5) % GROUPS)), ALL_PARTS, out);
+        const included = new Uint8Array(f[FACE_STARTS - 1]);
+        for (let r = 0; r < n; r++) included.fill(1, out[2 * r], out[2 * r + 1]);
+        for (let q = 0; q < included.length; q++) {
+          const group = Array.from({ length: GROUPS }, (_, h) => h).find((h) => q >= f[h * PARTS] && q < f[h * PARTS + PARTS])!;
+          expect(included[q], `quad ${q} of group ${group}`).toBe(group === g || group === (g + 5) % GROUPS ? 1 : 0);
+        }
+      }
+    }
   });
 
   it('never leave out a face that could face the camera, and leave out half from outside', () => {
     const rand = createRng(11);
-    const out = new Int32Array(8);
+    const out = new Int32Array(2 * MAX_RANGES);
     let drawn = 0;
     let total = 0;
     for (const m of meshes) {
       const mesh = m.opaque;
-      const quads = mesh.faceStarts[7];
+      const quads = mesh.faceStarts[FACE_STARTS - 1];
       if (!quads) continue;
       // The chunk's corner, from its first vertex.
       const min = [0, 1, 2].map((k) => Math.floor(mesh.positions[k] / CHUNK_SIZE) * CHUNK_SIZE);

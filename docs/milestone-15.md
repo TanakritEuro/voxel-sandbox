@@ -133,7 +133,7 @@ from flashing holes.
    flood), so we know what step 3 can win before building it. If it's small, we stop here or change
    course (I'll check with you). Done (2026-11-18).
 2. **Meshing by region.** Groups in the mesher, pockets left out, ranges by group; far meshes one group.
-   Mesher tests and bench.
+   Mesher tests and bench. Done (2026-11-18).
 3. **Drawing by region.** Masks from the walk to the renderer, the draw list by group, old meshes whole.
    Looked at in the browser: flying, caves, digging, a pocket, flowing water, a guest.
 4. **Measurements,** notes and CLAUDE.md (the known limit gone, or what's left of it).
@@ -225,4 +225,67 @@ it's seen from (its middle, half a block out), which is what steps 2 and 3 would
 
 **For step 2 (your call):** drawing by region would take a third of the triangles off from the surface
 and nearly all of them in caves, so I'd go on.
+
+## Step 2: meshing by region (2026-11-18)
+
+**What's in:**
+- **`mesh/builder.ts`:** every quad has a group. `build` sorts the quads by group and then by part
+  (a counting sort, skipped when they're in order already) and makes the indices.
+  - `faceStarts` holds 18 × 7 ranges plus the count: 12 region groups, then 6 border groups (one per
+    face of the chunk), each split into 6 directions and the rest.
+- **`mesh/mesher.ts`:**
+  - It works out the chunk's region map from the middle of the padded copy, which is the chunk's
+    own blocks, so the numbers are the chunk's regions' numbers.
+  - A greedy face goes in the region of the block it looks at, or in the border group of the face
+    of the chunk that block is across. The group is part of the merge key, so a quad never spans
+    two groups.
+  - Shapes go in their own block's region, and so does flowing water's top. Flowing water's sides
+    and the steps between waters look out, like greedy faces.
+  - Faces seen only from a pocket aren't made.
+  - Far chunks are all in one group, with no region map.
+- **`render/chunkPage.ts`:**
+  - `facing` gives the parts a camera could see; `drawRanges` gives the ranges of the groups
+    asked for.
+  - Each entry has a group mask, all groups for now, so this step draws what step 1 drew, less
+    the pockets.
+  - The multi-draw arrays grow as needed.
+- **The region flood** (`visibility.ts`) knows from a table which faces of the chunk each block is
+  on, instead of working out its coordinates. It's about a third faster: 0.12–0.13 ms a chunk.
+- **Tests (6 new, 3 updated):**
+  - every face on generated land and in a soup of blocks, block by block across each merged quad,
+    is in the group it's seen from (5,000+ quads);
+  - walls on a chunk's face in its border group;
+  - a sealed pocket has no faces, and once a tunnel opens it onto a face, all its walls are in
+    region 0, with the neighbour's closing wall in that neighbour's border group;
+  - shapes in their block's region, and none in a pocket;
+  - far chunks in one group;
+  - draw ranges take just the groups asked for;
+  - the greedy-against-culled test now leaves out the oracle's faces that look into pockets;
+  - the range and far-chunk tests read every group.
+
+**Measured:**
+- **The cost: meshing about 18% slower, in the workers.** These are A/B runs, three rounds alternating,
+  with the dev server stopped:
+
+  | | before | after |
+  | --- | --- | --- |
+  | full detail | 1.15 ms a chunk | 1.33–1.44 ms |
+  | far chunks | 1.0 ms | 1.0–1.17 ms (within noise) |
+
+  - The region map is about 0.12 ms of that, and sorting about 0.02.
+  - The bench agrees: greedy against the culled mesher in the same run is 1932k → 1924k triangles
+    (pockets left out) and 18% more time.
+- **The bench's "by region" column** now counts the meshes' own groups. It gives exactly what step 1
+  estimated: from the spawn point 1422k triangles, in a cave 130k, and the rest the same.
+- **A 20 s sprint flight in the browser:**
+  - none over 20 ms; frames p99 9.5 ms, max 16.9;
+  - main thread p50 3.1, p99 8.3, max 16.5 ms;
+  - no holes;
+  - 270k triangles drawn at the end, as in step 1;
+  - no console errors.
+  - The cave mouth (`?at=-48,71`) looks as before.
+- **A trap while measuring:** the game running in the browser pane competes with the bench for the
+  CPU. Swapping files back to measure the old code made the dev server reload the page, which then
+  crashed (the old builder lacks what the new page imports), freeing the CPU. That made the old code
+  look twice as fast. Measure with the dev server stopped.
 

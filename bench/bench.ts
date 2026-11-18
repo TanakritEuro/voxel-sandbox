@@ -16,6 +16,7 @@ import { MobManager } from '../src/mobs/mobs';
 import { findPath } from '../src/mobs/pathfind';
 import { meshCulled } from '../src/mesh/culled';
 import { type Lod, prepareLod } from '../src/mesh/lod';
+import { BORDER_GROUP, GROUPS, PARTS } from '../src/mesh/builder';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { decodeRle, encodeRle } from '../src/save/rle';
@@ -862,9 +863,7 @@ it('shapes', () => {
 it('visibility', () => {
   // What the walk leaves to mesh and draw from a few places, radius 8: the walk from chunk to chunk
   // (until Milestone 15), the region walk drawing whole chunks, and the region walk drawing only
-  // what each reached region (and each face seen from across) shows. The last is counted here by
-  // giving every quad of today's meshes to the region of the block it's seen from (its middle,
-  // half a block out along its normal); a merged quad spanning two regions counts as its middle's.
+  // what each reached region (and each face seen from across) shows, from the meshes' groups.
   const R = 8;
   const world = new World(SEED);
   const t0 = performance.now();
@@ -893,22 +892,12 @@ it('visibility', () => {
     ['flying, 40 over the spawn point', [spawn.x + 0.5, gen.height(spawn.x, spawn.z) + 40, spawn.z + 0.5]],
   ];
 
-  /** Per chunk: greedy triangles in all, those of each region, of walls on each face, of pockets, and of torches and box pieces. */
+  /** Per chunk: greedy triangles in all, those of each region and of walls on each face (the mesh's groups). */
   interface Split {
     total: number;
     region: number[];
     face: number[];
-    pocket: number;
-    other: number;
   }
-  const NORMALS = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-    [-1, 0, 0],
-    [0, -1, 0],
-    [0, 0, -1],
-  ];
   const map = new Uint8Array(CHUNK_VOLUME);
   const splits = new Map<string, Split | null>();
   const splitOf = (cx: number, cy: number, cz: number): Split | null => {
@@ -918,40 +907,13 @@ it('visibility', () => {
     let split: Split | null = null;
     if (!chunk.empty) {
       const m = meshChunk(paddedBlocks(world, cx, cy, cz), cx, cy, cz, paddedLight(world, cx, cy, cz));
-      regionMap(chunk.blocks, map);
-      split = { total: 0, region: new Array(MAX_REGIONS).fill(0), face: new Array(6).fill(0), pocket: 0, other: 0 };
-      const x0 = cx * 32;
-      const y0 = cy * 32;
-      const z0 = cz * 32;
+      split = { total: 0, region: new Array(MAX_REGIONS).fill(0), face: new Array(6).fill(0) };
       for (const d of [m.opaque, m.cutout, m.transparent]) {
-        const quads = d.indices.length / 6;
-        split.total += quads * 2;
-        for (let k = 0; k < 7; k++) {
-          for (let q = d.faceStarts[k]; q < d.faceStarts[k + 1]; q++) {
-            if (k === 6) {
-              split.other += 2;
-              continue;
-            }
-            let px = 0;
-            let py = 0;
-            let pz = 0;
-            for (let v = 0; v < 4; v++) {
-              px += d.positions[(q * 4 + v) * 3] / 4;
-              py += d.positions[(q * 4 + v) * 3 + 1] / 4;
-              pz += d.positions[(q * 4 + v) * 3 + 2] / 4;
-            }
-            const [nx, ny, nz] = NORMALS[k];
-            const bx = Math.floor(px + nx * 0.5) - x0;
-            const by = Math.floor(py + ny * 0.5) - y0;
-            const bz = Math.floor(pz + nz * 0.5) - z0;
-            const face = bx < 0 ? 0 : bx > 31 ? 1 : by < 0 ? 2 : by > 31 ? 3 : bz < 0 ? 4 : bz > 31 ? 5 : -1;
-            if (face >= 0) split.face[face] += 2;
-            else {
-              const r = map[localIndex(bx, by, bz)];
-              if (r === NO_REGION) split.pocket += 2;
-              else split.region[r] += 2;
-            }
-          }
+        split.total += (d.indices.length / 6) * 2;
+        for (let g = 0; g < GROUPS; g++) {
+          const triangles = (d.faceStarts[(g + 1) * PARTS] - d.faceStarts[g * PARTS]) * 2;
+          if (g < BORDER_GROUP) split.region[g] += triangles;
+          else split.face[g - BORDER_GROUP] += triangles;
         }
       }
     }
@@ -979,7 +941,6 @@ it('visibility', () => {
     const eye = toChunk(Math.floor(ey)) === sy ? map[localIndex(toLocal(Math.floor(ex)), toLocal(Math.floor(ey)), toLocal(Math.floor(ez)))] : NO_REGION;
     const reach = walkRegions([sx, sy, sz], eye === NO_REGION ? -1 : 1 << eye, R, MIN_CHUNK_Y, MAX_CHUNK_Y, (x, y, z) => world.getChunk(x, y, z)?.regions);
     const sums = { old: [0, 0], whole: [0, 0], region: [0, 0] };
-    let pockets = 0;
     for (let dz = -R; dz <= R; dz++)
       for (let dx = -R; dx <= R; dx++) {
         if (dx * dx + dz * dz > R * R) continue;
@@ -1000,15 +961,14 @@ it('visibility', () => {
           sums.whole[1] += split.total;
           sums.region[0]++;
           const i = reach.index(cx, cy, cz);
-          let drawn = split.other;
+          let drawn = 0;
           for (let r = 0; r < MAX_REGIONS; r++) if (reach.regions[i] & (1 << r)) drawn += split.region[r];
           for (let f = 0; f < 6; f++) if (reach.faces[i] & (1 << f)) drawn += split.face[f];
           sums.region[1] += drawn;
-          pockets += split.pocket;
         }
       }
     const cell = ([c, t]: number[]) => `${String(c).padStart(5)} ${k(t)}`;
-    lines.push(`${name.padEnd(34)}${cell(sums.old).padStart(18)}${cell(sums.whole).padStart(18)}${cell(sums.region).padStart(20)}  (${eye === NO_REGION ? 'all regions' : `region ${eye}`}; pockets ${k(pockets).trim()})`);
+    lines.push(`${name.padEnd(34)}${cell(sums.old).padStart(18)}${cell(sums.whole).padStart(18)}${cell(sums.region).padStart(20)}  (${eye === NO_REGION ? 'all regions' : `region ${eye}`})`);
   }
 
   // The walks' time from the spawn point, radius 8 and 16: the first (links worked out) and the median of 5 after.
