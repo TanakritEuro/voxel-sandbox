@@ -4,6 +4,7 @@
 import type { Lod } from '../mesh/lod';
 import type { ChunkMesh } from '../mesh/mesher';
 import type { PackedLight } from '../world/light';
+import type { Regions } from '../world/visibility';
 
 /** A saved chunk of a column: its height and its blocks, RLE-encoded (`save/rle.ts`). */
 export interface SavedChunk {
@@ -54,8 +55,8 @@ export type JobResult =
       cyMin: number;
       /** Chunks cyMin.. upwards; null for all air. */
       chunks: (Uint8Array | null)[];
-      /** Each chunk's face connectivity (`visibility.ts`), worked out here rather than on the main thread. */
-      connectivity: number[];
+      /** Each chunk's open regions (`visibility.ts`), worked out here rather than on the main thread; null for all air. */
+      regions: (Regions | null)[];
       /** Each chunk's light, the column lit on its own (`lightColumn`). */
       light: PackedLight[];
       /** Time the worker spent on the job. */
@@ -81,6 +82,8 @@ export const jobTransferables = (job: Job): ArrayBuffer[] =>
 export function resultTransferables(result: JobResult): ArrayBuffer[] {
   if (result.kind === 'generate') {
     const arrays = [...result.chunks, ...result.light].filter((a): a is Uint8Array => a instanceof Uint8Array);
+    // The shared regions (all open, all solid) stay where they are, copied.
+    for (const r of result.regions) if (r && !r.shared) arrays.push(r.faces, r.border);
     return arrays.map((a) => a.buffer as ArrayBuffer);
   }
   const { opaque, cutout, transparent } = result.mesh;

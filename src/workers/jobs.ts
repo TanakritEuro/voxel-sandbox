@@ -6,7 +6,7 @@ import { meshChunk } from '../mesh/mesher';
 import { decodeRle } from '../save/rle';
 import { Generator } from '../world/generate';
 import { lightColumn } from '../world/light';
-import { ALL_CONNECTED, chunkConnectivity } from '../world/visibility';
+import { chunkRegions } from '../world/visibility';
 import type { Job, JobResult } from './protocol';
 
 const generators = new Map<number, Generator>();
@@ -22,9 +22,9 @@ export function handleJob(job: Job): JobResult {
     const chunks = generator.generateColumn(job.cx, job.cz, job.cyMin, job.cyMax);
     // Edited chunks as they were saved, in place of the generated ones.
     for (const s of job.saved) chunks[s.cy - job.cyMin] = decodeRle(s.data);
-    const connectivity = chunks.map((c) => (c ? chunkConnectivity(c) : ALL_CONNECTED));
+    const regions = chunks.map((c) => (c ? chunkRegions(c) : null));
     const light = lightColumn(chunks);
-    return { kind: 'generate', id: job.id, cx: job.cx, cz: job.cz, cyMin: job.cyMin, chunks, connectivity, light, ms: performance.now() - t0 };
+    return { kind: 'generate', id: job.id, cx: job.cx, cz: job.cz, cyMin: job.cyMin, chunks, regions, light, ms: performance.now() - t0 };
   }
   // Coarsened and walled in place: the padded copies are the main thread's scratch buffers.
   if (job.lod || job.seams) prepareLod(job.padded, job.paddedLight, job.lod ?? 0, job.seams ?? 0);

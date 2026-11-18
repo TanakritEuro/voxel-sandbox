@@ -8,8 +8,11 @@ import { GpuTimer } from './render/gpuTimer';
 /** Engine numbers the overlay shows, read when it redraws. */
 export interface EngineCounters {
   chunks: number;
-  /** Chunks that could be seen from the player's chunk (the rest aren't meshed or drawn). */
+  /** Chunks that could be seen from the eye (the rest aren't meshed or drawn), and the open regions in them reached. */
   visible: number;
+  regions: number;
+  /** The visibility walk's time: the last, and the longest since the overlay last redrew (ms). */
+  walk: [number, number];
   meshed: number;
   /** Pages of chunk meshes (`render/chunkPage.ts`), and the share of their space in use. */
   pages: { count: number; full: number };
@@ -150,7 +153,7 @@ export class Stats {
       `over ${LONG_FRAME_MS} ms: ${this.longFrames} frames since load`,
       `mouse: biggest move ${c.mouse.now} px now, ${c.mouse.ever} px since load, ` + (c.mouse.raw ? 'raw input' : `${c.mouse.dropped} spike${c.mouse.dropped === 1 ? '' : 's'} dropped`),
       `draw calls ${r.calls}   triangles ${Math.round(r.triangles / 1000)}k drawn / ${Math.round(c.sceneTriangles / 1000)}k`,
-      `chunks ${c.chunks} loaded, ${c.visible} could be seen, ${c.meshed} meshed, in ${c.pages.count} pages ${Math.round(c.pages.full * 100)}% full`,
+      `chunks ${c.chunks} loaded, ${c.visible} could be seen (${c.regions} regions, walked in ${c.walk[0].toFixed(2)} ms, at most ${c.walk[1].toFixed(2)}), ${c.meshed} meshed, in ${c.pages.count} pages ${Math.round(c.pages.full * 100)}% full`,
       `detail: ${c.levels[0]} columns full, ${c.levels[1]} half, ${c.levels[2]} quarter`,
       `mobs: ${c.mobs}`,
       `water: ${c.water}`,

@@ -743,6 +743,8 @@ const stats = new Stats(
   () => ({
     chunks: world.chunks.size,
     visible: loader.visibleChunks,
+    regions: loader.visibleRegions,
+    walk: [loader.walkMs, loader.takeLongestWalk()],
     meshed: chunks.count,
     pages: chunks.pages,
     levels: loader.levels,

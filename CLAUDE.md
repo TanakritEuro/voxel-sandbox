@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 15 (cave culling: visibility by open region, not by chunk) in progress, plan approved (`docs/milestone-15.md`).
 Milestones 1–14 built (`docs/milestone-1.md` to `docs/milestone-14.md`), waiting for playtests
 (Milestone 14, shapes: slabs in stone, planks and sandstone in either half (two make the block),
 stairs facing away from you or upside down, fences that join and can't be jumped, glass panes, walking
@@ -166,8 +167,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
   `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one
   and the blocks written kept in reused arrays;
-  `sameLight`: changes that can't change light skipped; shared `FULL_SUN` / `DARK` arrays), `visibility.ts` (chunk face connectivity
-  and the walk from the player's chunk that decides what to mesh and draw),
+  `sameLight`: changes that can't change light skipped; shared `FULL_SUN` / `DARK` arrays), `visibility.ts` (each chunk's open regions,
+  pockets left out, at most 12 (`regionMap`, `Regions`: faces each touches, the region of every block on the chunk's faces);
+  `linkMask`: a region's links to the neighbour's across a face, kept; `walkRegions`: the walk from the eye's region
+  through linked regions that decides what to mesh and draw (`Reach`); the old chunk walk `reachableChunks` kept for comparison),
   `world.ts` (`Chunk`, `World`: get/set across chunks (`setBlocks`: many, one light update), columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `water.ts` (flowing water, a cellular automaton: `WaterFlow` wakes blocks round edits and ticks them,

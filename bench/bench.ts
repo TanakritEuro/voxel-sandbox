@@ -20,9 +20,9 @@ import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { decodeRle, encodeRle } from '../src/save/rle';
 import { Block, BLOCKS, delay, inverter } from '../src/world/blocks';
-import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
+import { chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from '../src/world/coords';
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
-import { ALL_CONNECTED, reachableChunks } from '../src/world/visibility';
+import { ALL_CONNECTED, chunkRegions, connectivityOf, MAX_REGIONS, NO_REGION, reachableChunks, regionBytes, regionMap, seeThrough, walkRegions } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { wakeColumn, WaterFlow } from '../src/world/water';
 import { LogicFlow } from '../src/world/logic';
@@ -152,7 +152,7 @@ it('bench', () => {
       const seen = reachableChunks(
         [toChunk(spawn.x), toChunk(eye), toChunk(spawn.z)],
         (x, y, z) => y >= MIN_CHUNK_Y && y <= MAX_CHUNK_Y && x * x + z * z <= RADIUS * RADIUS,
-        (x, y, z) => world.getChunk(x, y, z)?.connectivity ?? ALL_CONNECTED,
+        (x, y, z) => { const c = world.getChunk(x, y, z); return c ? connectivityOf(c.regions) : ALL_CONNECTED; },
       );
       let seenChunks = 0;
       let seenTriangles = 0;
@@ -857,4 +857,200 @@ it('shapes', () => {
   }
   const total = median(runs);
   console.log(`stairs walk: ${steps} steps (10 s up a 30-step flight, 10 s back), highest ${top.toFixed(1)}; ${total.toFixed(1)} ms, ${((total / steps) * 1000).toFixed(2)} us a step\n`);
+});
+
+it('visibility', () => {
+  // What the walk leaves to mesh and draw from a few places, radius 8: the walk from chunk to chunk
+  // (until Milestone 15), the region walk drawing whole chunks, and the region walk drawing only
+  // what each reached region (and each face seen from across) shows. The last is counted here by
+  // giving every quad of today's meshes to the region of the block it's seen from (its middle,
+  // half a block out along its normal); a merged quad spanning two regions counts as its middle's.
+  const R = 8;
+  const world = new World(SEED);
+  const t0 = performance.now();
+  for (const [cx, cz] of columns(17)) world.ensureColumn(cx, cz);
+  const genSeconds = (performance.now() - t0) / 1000;
+  const gen = world.generator;
+
+  /** The eye over the first block down from the sky that can't be seen through, at (x, z). */
+  const standing = (x: number, z: number): [number, number, number] => {
+    let y = 255;
+    while (y > 0 && seeThrough(world.getBlock(x, y, z))) y--;
+    return [x + 0.5, y + 2.62, z + 0.5];
+  };
+  const spawn = gen.findLand(0, 0);
+  let cave: [number, number, number] | null = null;
+  for (let d = 0; d < 64 && !cave; d++)
+    for (let y = gen.height(spawn.x + d, spawn.z) - 6; y > 8 && !cave; y--)
+      if (world.getBlock(spawn.x + d, y, spawn.z) === Block.Air && world.getBlock(spawn.x + d, y - 1, spawn.z) === Block.Stone) cave = [spawn.x + d + 0.5, y + 1.62, spawn.z + 0.5];
+  let peak = { x: 0, z: 0, h: -1 };
+  for (let z = -128; z <= 128; z += 4) for (let x = -128; x <= 128; x += 4) if (gen.height(x, z) > peak.h) peak = { x, z, h: gen.height(x, z) };
+  const places: [string, [number, number, number]][] = [
+    ['the spawn point', standing(spawn.x, spawn.z)],
+    ['a cave mouth (-48, 71)', standing(-48, 71)],
+    ['in a cave', cave!],
+    [`a mountain top (${peak.x}, ${peak.z})`, standing(peak.x, peak.z)],
+    ['flying, 40 over the spawn point', [spawn.x + 0.5, gen.height(spawn.x, spawn.z) + 40, spawn.z + 0.5]],
+  ];
+
+  /** Per chunk: greedy triangles in all, those of each region, of walls on each face, of pockets, and of torches and box pieces. */
+  interface Split {
+    total: number;
+    region: number[];
+    face: number[];
+    pocket: number;
+    other: number;
+  }
+  const NORMALS = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+    [-1, 0, 0],
+    [0, -1, 0],
+    [0, 0, -1],
+  ];
+  const map = new Uint8Array(CHUNK_VOLUME);
+  const splits = new Map<string, Split | null>();
+  const splitOf = (cx: number, cy: number, cz: number): Split | null => {
+    const key = chunkKey(cx, cy, cz);
+    if (splits.has(key)) return splits.get(key)!;
+    const chunk = world.getChunk(cx, cy, cz)!;
+    let split: Split | null = null;
+    if (!chunk.empty) {
+      const m = meshChunk(paddedBlocks(world, cx, cy, cz), cx, cy, cz, paddedLight(world, cx, cy, cz));
+      regionMap(chunk.blocks, map);
+      split = { total: 0, region: new Array(MAX_REGIONS).fill(0), face: new Array(6).fill(0), pocket: 0, other: 0 };
+      const x0 = cx * 32;
+      const y0 = cy * 32;
+      const z0 = cz * 32;
+      for (const d of [m.opaque, m.cutout, m.transparent]) {
+        const quads = d.indices.length / 6;
+        split.total += quads * 2;
+        for (let k = 0; k < 7; k++) {
+          for (let q = d.faceStarts[k]; q < d.faceStarts[k + 1]; q++) {
+            if (k === 6) {
+              split.other += 2;
+              continue;
+            }
+            let px = 0;
+            let py = 0;
+            let pz = 0;
+            for (let v = 0; v < 4; v++) {
+              px += d.positions[(q * 4 + v) * 3] / 4;
+              py += d.positions[(q * 4 + v) * 3 + 1] / 4;
+              pz += d.positions[(q * 4 + v) * 3 + 2] / 4;
+            }
+            const [nx, ny, nz] = NORMALS[k];
+            const bx = Math.floor(px + nx * 0.5) - x0;
+            const by = Math.floor(py + ny * 0.5) - y0;
+            const bz = Math.floor(pz + nz * 0.5) - z0;
+            const face = bx < 0 ? 0 : bx > 31 ? 1 : by < 0 ? 2 : by > 31 ? 3 : bz < 0 ? 4 : bz > 31 ? 5 : -1;
+            if (face >= 0) split.face[face] += 2;
+            else {
+              const r = map[localIndex(bx, by, bz)];
+              if (r === NO_REGION) split.pocket += 2;
+              else split.region[r] += 2;
+            }
+          }
+        }
+      }
+    }
+    splits.set(key, split);
+    return split;
+  };
+
+  const k = (n: number) => `${Math.round(n / 1000)}k`.padStart(6);
+  const lines = [
+    '',
+    `visibility, radius ${R} (world of radius 17 generated in ${genSeconds.toFixed(1)} s): chunks to mesh, triangles drawn`,
+    `${''.padEnd(34)}${'chunk walk'.padStart(18)}${'regions, whole'.padStart(18)}${'regions, by region'.padStart(20)}`,
+  ];
+  for (const [name, [ex, ey, ez]] of places) {
+    const sx = toChunk(Math.floor(ex));
+    const sy = Math.min(MAX_CHUNK_Y, toChunk(Math.floor(ey)));
+    const sz = toChunk(Math.floor(ez));
+    const old = reachableChunks(
+      [sx, sy, sz],
+      (x, y, z) => y >= MIN_CHUNK_Y && y <= MAX_CHUNK_Y && (x - sx) ** 2 + (z - sz) ** 2 <= R * R,
+      (x, y, z) => connectivityOf(world.getChunk(x, y, z)!.regions),
+    );
+    const eyeChunk = world.getChunk(sx, sy, sz)!;
+    regionMap(eyeChunk.blocks, map);
+    const eye = toChunk(Math.floor(ey)) === sy ? map[localIndex(toLocal(Math.floor(ex)), toLocal(Math.floor(ey)), toLocal(Math.floor(ez)))] : NO_REGION;
+    const reach = walkRegions([sx, sy, sz], eye === NO_REGION ? -1 : 1 << eye, R, MIN_CHUNK_Y, MAX_CHUNK_Y, (x, y, z) => world.getChunk(x, y, z)?.regions);
+    const sums = { old: [0, 0], whole: [0, 0], region: [0, 0] };
+    let pockets = 0;
+    for (let dz = -R; dz <= R; dz++)
+      for (let dx = -R; dx <= R; dx++) {
+        if (dx * dx + dz * dz > R * R) continue;
+        for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
+          const cx = sx + dx;
+          const cz = sz + dz;
+          const inOld = old.has(chunkKey(cx, cy, cz));
+          const inNew = reach.has(cx, cy, cz);
+          if (!inOld && !inNew) continue;
+          const split = splitOf(cx, cy, cz);
+          if (!split) continue;
+          if (inOld) {
+            sums.old[0]++;
+            sums.old[1] += split.total;
+          }
+          if (!inNew) continue;
+          sums.whole[0]++;
+          sums.whole[1] += split.total;
+          sums.region[0]++;
+          const i = reach.index(cx, cy, cz);
+          let drawn = split.other;
+          for (let r = 0; r < MAX_REGIONS; r++) if (reach.regions[i] & (1 << r)) drawn += split.region[r];
+          for (let f = 0; f < 6; f++) if (reach.faces[i] & (1 << f)) drawn += split.face[f];
+          sums.region[1] += drawn;
+          pockets += split.pocket;
+        }
+      }
+    const cell = ([c, t]: number[]) => `${String(c).padStart(5)} ${k(t)}`;
+    lines.push(`${name.padEnd(34)}${cell(sums.old).padStart(18)}${cell(sums.whole).padStart(18)}${cell(sums.region).padStart(20)}  (${eye === NO_REGION ? 'all regions' : `region ${eye}`}; pockets ${k(pockets).trim()})`);
+  }
+
+  // The walks' time from the spawn point, radius 8 and 16: the first (links worked out) and the median of 5 after.
+  const [ex, ey, ez] = places[0][1];
+  const start: [number, number, number] = [toChunk(Math.floor(ex)), toChunk(Math.floor(ey)), toChunk(Math.floor(ez))];
+  for (const radius of [8, 16]) {
+    const oldTimes: number[] = [];
+    const newTimes: number[] = [];
+    let first = 0;
+    for (const chunk of world.chunks.values()) chunk.regions = null; // fresh, unlinked regions
+    for (const chunk of world.chunks.values()) void chunk.regions;
+    for (let run = 0; run <= 5; run++) {
+      let t = performance.now();
+      reachableChunks(
+        start,
+        (x, y, z) => y >= MIN_CHUNK_Y && y <= MAX_CHUNK_Y && (x - start[0]) ** 2 + (z - start[2]) ** 2 <= radius * radius,
+        (x, y, z) => connectivityOf(world.getChunk(x, y, z)!.regions),
+      );
+      oldTimes.push(performance.now() - t);
+      t = performance.now();
+      walkRegions(start, -1, radius, MIN_CHUNK_Y, MAX_CHUNK_Y, (x, y, z) => world.getChunk(x, y, z)?.regions);
+      if (run === 0) first = performance.now() - t;
+      else newTimes.push(performance.now() - t);
+    }
+    lines.push(`walk, radius ${radius}: chunk walk ${median(oldTimes.slice(1)).toFixed(2)} ms; region walk ${first.toFixed(2)} ms the first time, ${median(newTimes).toFixed(2)} ms after`);
+  }
+
+  // Working out regions, and what they hold, over the chunks within radius 8 of the origin.
+  const all = columns(R).flatMap(([cx, cz]) => Array.from({ length: CHUNKS_PER_COLUMN }, (_, i) => world.getChunk(cx, MIN_CHUNK_Y + i, cz)!));
+  const nonEmpty = all.filter((c) => !c.empty);
+  const times: number[] = [];
+  for (let run = 0; run <= RUNS; run++) {
+    const t = performance.now();
+    for (const c of nonEmpty) chunkRegions(c.blocks);
+    if (run > 0) times.push(performance.now() - t);
+  }
+  const counts = nonEmpty.map((c) => c.regions.count);
+  const bytes = all.reduce((n, c) => n + regionBytes(c.regions), 0);
+  const own = all.filter((c) => !c.regions.shared).length;
+  lines.push(
+    `regions: ${(median(times) / nonEmpty.length).toFixed(3)} ms a chunk (${nonEmpty.length} chunks with blocks); ${own} chunks with their own (${(bytes / 2 ** 20).toFixed(1)} MB), the rest shared; at most ${Math.max(...counts)} a chunk, ${counts.filter((n) => n >= MAX_REGIONS).length} chunks at the cap`,
+  );
+  lines.push('');
+  console.log(lines.join('\n'));
 });

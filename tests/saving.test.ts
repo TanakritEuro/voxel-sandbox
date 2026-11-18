@@ -20,7 +20,7 @@ async function open(saver: WorldSaver, order: [number, number][]): Promise<World
     const saved = saver.has(cx, cz) ? await saver.load(cx, cz) : [];
     const result = handleJob({ kind: 'generate', id: 0, seed: SEED, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
     if (result.kind !== 'generate') throw new Error('wrong kind');
-    world.addColumn(cx, cz, result.chunks, result.connectivity, result.light);
+    world.addColumn(cx, cz, result.chunks, result.regions, result.light);
   }
   return world;
 }

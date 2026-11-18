@@ -9,6 +9,7 @@ import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
 import { Generator } from '../src/world/generate';
 import { lightColumn } from '../src/world/light';
 import { World } from '../src/world/world';
+import { chunkRegions } from '../src/world/visibility';
 
 /** Send through structured clone with the transfer list, as postMessage does: transferred buffers detach. */
 function send<T>(message: T, transfer: ArrayBuffer[]): T {
@@ -27,11 +28,17 @@ describe('chunk worker jobs', () => {
     expect(result.chunks).toEqual(expected);
     const light = lightColumn(expected);
     expect(result.light).toEqual(light);
-    const arrays = [...expected, ...light].filter((a) => a instanceof Uint8Array).length;
+    // Each chunk's regions as worked out here; the shared ones (open, solid) aren't transferred.
+    const regions = expected.map((c) => (c ? chunkRegions(c) : null));
+    expect(result.regions.map((r) => r && { count: r.count, faces: r.faces, border: r.border })).toEqual(regions.map((r) => r && { count: r.count, faces: r.faces, border: r.border }));
+    const own = regions.filter((r) => r && !r.shared).length;
+    expect(own).toBeGreaterThan(0);
+    const arrays = [...expected, ...light].filter((a) => a instanceof Uint8Array).length + 2 * own;
     expect(resultTransferables(result)).toHaveLength(arrays);
     const received = send(result, resultTransferables(result));
     expect(received.chunks).toEqual(expected);
     expect(received.light).toEqual(light);
+    expect(received.regions.map((r) => r?.count ?? -1)).toEqual(regions.map((r) => r?.count ?? -1));
   });
 
   it('put saved chunks in place of the generated ones, and light the column with them', () => {

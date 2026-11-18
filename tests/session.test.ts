@@ -113,7 +113,7 @@ async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, n
     const saved = session.saves.has(cx, cz) ? await env.until(session.saves.load(cx, cz)) : [];
     const r = handleJob({ kind: 'generate', id: 1, seed: welcome.seed, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
     if (r.kind !== 'generate') throw new Error('not generated');
-    world.addColumn(cx, cz, r.chunks, r.connectivity, r.light);
+    world.addColumn(cx, cz, r.chunks, r.regions, r.light);
     session.columnAdded(cx, cz);
   };
   /** The guest's own edit, as the game makes it: shown at once, then asked of the host. */
@@ -287,7 +287,7 @@ describe('the world over the network', () => {
     await env.pump(0.3);
     const r = handleJob({ kind: 'generate', id: 1, seed: SEED, cx: 1, cz: 1, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
     if (r.kind !== 'generate') throw new Error('not generated');
-    g.world.addColumn(1, 1, r.chunks, r.connectivity, r.light);
+    g.world.addColumn(1, 1, r.chunks, r.regions, r.light);
     g.session.columnAdded(1, 1);
     expect(g.world.getBlock(50, y, 33)).toBe(Block.Lamp);
     expect(difference(host.world, g.world)).toBe(null);

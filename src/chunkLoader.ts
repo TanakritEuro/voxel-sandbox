@@ -9,9 +9,9 @@
 // whatever is ready, up to the runner's capacity. Nothing is queued beyond that, so work for
 // chunks that went out of range is never started: cancelling is free.
 //
-// Only chunks that could be seen are meshed and drawn: a walk from the player's chunk through
-// open space (`world/visibility.ts`) decides which, so cave walls deep under the ground stay
-// unmeshed until the player goes down there.
+// Only chunks that could be seen are meshed and drawn: a walk from the open region the eye is in,
+// through open space (`world/visibility.ts`), decides which, so cave walls deep under the ground
+// stay unmeshed until the player goes down there.
 //
 // Far columns are meshed at lower detail (`mesh/lod.ts`, `TUNING.view.lod`), walled on every
 // side so the gaps between levels are covered. A chunk's mesh is known by its stamp: its
@@ -24,8 +24,8 @@ import { type Lod, prepareLod, SEAM_NEG_X, SEAM_NEG_Z, SEAM_POS_X, SEAM_POS_Z } 
 import { type ChunkMesh, meshChunk } from './mesh/mesher';
 import { paddedBlocks, paddedLight, PADDED_VOLUME } from './mesh/padding';
 import type { JobResult, JobRunner, SavedChunk } from './workers/protocol';
-import { chunkKey, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from './world/coords';
-import { ALL_CONNECTED, reachableChunks } from './world/visibility';
+import { CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './world/coords';
+import { NO_REGION, type Reach, regionMap, type Regions, walkRegions } from './world/visibility';
 import type { Chunk, World } from './world/world';
 
 /** Where meshes go (the chunk renderer). */
@@ -162,8 +162,15 @@ export class ChunkLoader {
    * skipped (idle frames, and frames waiting on workers).
    */
   private dirty = true;
-  /** Chunks that could be seen from the player's chunk (keys), from the last walk. */
-  private reachable = new Set<string>();
+  /** What could be seen from the eye, from the last walk. */
+  private reach: Reach | null = null;
+  /** The region the eye is in (-1 unknown), and the one the last walk started from. */
+  private eyeRegion = -1;
+  private walkedFrom = -1;
+  /** The region of every block of the chunk the eye is in, and which chunk and regions it was made for. */
+  private readonly eyeMap = new Uint8Array(CHUNK_VOLUME);
+  private eyeChunk: Chunk | null = null;
+  private eyeRegions: Regions | null = null;
   /** The walk is out of date: right away after moving or an edit, at the next interval after new chunks. */
   private walkNow = true;
   private walkSoon = false;
@@ -184,14 +191,28 @@ export class ChunkLoader {
     return this.running;
   }
 
-  /** Chunks that could be seen from the player's chunk (meshed or to be meshed). */
+  /** Chunks that could be seen from the eye (meshed or to be meshed). */
   get visibleChunks(): number {
-    return this.reachable.size;
+    return this.reach?.chunks ?? 0;
   }
 
-  /** Could chunk (cx, cy, cz) be seen from the player's chunk, as of the last walk? */
+  /** Open regions the last walk reached. */
+  get visibleRegions(): number {
+    return this.reach?.regionCount ?? 0;
+  }
+
+  /** How long the last walk took (ms), and the longest since this was last read (for `?stats`). */
+  walkMs = 0;
+  private longestWalk = 0;
+  takeLongestWalk(): number {
+    const ms = this.longestWalk;
+    this.longestWalk = 0;
+    return ms;
+  }
+
+  /** Could any of chunk (cx, cy, cz) be seen from the eye, as of the last walk? */
   canSee(cx: number, cy: number, cz: number): boolean {
-    return this.reachable.has(chunkKey(cx, cy, cz));
+    return this.reach?.has(cx, cy, cz) ?? false;
   }
 
   /** Columns in view at full, half and quarter detail (for `?stats`). */
@@ -222,7 +243,7 @@ export class ChunkLoader {
         for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
           const key = chunkKey(cx + dx, cy, cz + dz);
           if (this.meshed.has(key)) continue;
-          if (this.reachable.has(key) || !this.world.getChunk(cx + dx, cy, cz + dz)) n++;
+          if (this.canSee(cx + dx, cy, cz + dz) || !this.world.getChunk(cx + dx, cy, cz + dz)) n++;
         }
       }
     }
@@ -262,6 +283,9 @@ export class ChunkLoader {
         this.dirty = true;
       }
     }
+    // Into another open region of the same chunk without an edit (a fall, a respawn): walk from there.
+    this.eyeRegion = this.regionAt(Math.floor(x), Math.floor(y), Math.floor(z));
+    if (this.eyeRegion !== this.walkedFrom) this.walkNow = true;
     const deadline = performance.now() + TUNING.view.applyBudgetMs;
     // Results first: they unblock more work.
     while (this.results.length && performance.now() < deadline) {
@@ -346,7 +370,7 @@ export class ChunkLoader {
       // It, and its neighbours (now perhaps ready), have work again.
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) this.unsettle(result.cx + dx, result.cz + dz);
       if (this.inKeepRange(result.cx, result.cz)) {
-        this.world.addColumn(result.cx, result.cz, result.chunks, result.connectivity, result.light);
+        this.world.addColumn(result.cx, result.cz, result.chunks, result.regions, result.light);
         this.walkSoon = true;
         this.onColumnAdded?.(result.cx, result.cz, this.saves?.has(result.cx, result.cz) ?? false);
       }
@@ -367,24 +391,41 @@ export class ChunkLoader {
     const wanted = col ? stamp(chunk.version, col.lod, col.seams) : made;
     if (made !== wanted && this.meshed.get(key) === wanted) return;
     this.renderer.set(key, cx, cy, cz, result.mesh);
-    this.renderer.setVisible(key, this.reachable.has(key));
+    this.renderer.setVisible(key, this.canSee(cx, cy, cz));
     this.meshed.set(key, made);
   }
 
-  /** Work out which chunks could be seen from the player's chunk; show those meshes, hide the rest. */
+  /**
+   * The open region block (x, y, z) is in, if it's in a loaded chunk and open; else -1. The chunk's
+   * region map is made when the eye comes into it or its regions change (an edit).
+   */
+  private regionAt(x: number, y: number, z: number): number {
+    const chunk = this.world.getChunk(toChunk(x), toChunk(y), toChunk(z));
+    if (!chunk) return -1;
+    // (The chunk keeps the regions it has, numbered the same, and the links worked out with them.)
+    if (chunk !== this.eyeChunk || chunk.regions !== this.eyeRegions) {
+      regionMap(chunk.blocks, this.eyeMap);
+      this.eyeChunk = chunk;
+      this.eyeRegions = chunk.regions;
+    }
+    const r = this.eyeMap[localIndex(toLocal(x), toLocal(y), toLocal(z))];
+    return r === NO_REGION ? -1 : r;
+  }
+
+  /** Work out what could be seen from the eye; show those chunks' meshes, hide the rest. */
   private walk(): void {
     const { cx, cz } = this.centre;
     if (Number.isNaN(cx)) return;
-    const r = TUNING.view.radius;
-    // Above or below the world, start from its top or bottom chunk.
+    // Above or below the world, start from its top or bottom chunk (and all of its regions).
     const cy = Math.max(MIN_CHUNK_Y, Math.min(MAX_CHUNK_Y, this.centre.cy));
-    this.reachable = reachableChunks(
-      [cx, cy, cz],
-      (x, y, z) => y >= MIN_CHUNK_Y && y <= MAX_CHUNK_Y && (x - cx) ** 2 + (z - cz) ** 2 <= r * r,
-      // A chunk not loaded yet counts as open, so the walk carries on into it until it is.
-      (x, y, z) => this.world.getChunk(x, y, z)?.connectivity ?? ALL_CONNECTED,
-    );
-    for (const key of this.meshed.keys()) this.renderer.setVisible(key, this.reachable.has(key));
+    const from = cy === this.centre.cy ? this.eyeRegion : -1;
+    this.walkedFrom = this.eyeRegion;
+    const t0 = performance.now();
+    // A chunk not loaded yet counts as open, so the walk carries on into it until it is.
+    this.reach = walkRegions([cx, cy, cz], from < 0 ? -1 : 1 << from, TUNING.view.radius, MIN_CHUNK_Y, MAX_CHUNK_Y, (x, y, z) => this.world.getChunk(x, y, z)?.regions);
+    this.walkMs = performance.now() - t0;
+    this.longestWalk = Math.max(this.longestWalk, this.walkMs);
+    for (const chunk of this.world.chunks.values()) if (this.meshed.has(chunk.key)) this.renderer.setVisible(chunk.key, this.reach.has(chunk.cx, chunk.cy, chunk.cz));
     // What can be seen has changed: every column may have chunks to mesh, or none.
     for (const col of this.order) col.settled = false;
   }
@@ -466,7 +507,7 @@ export class ChunkLoader {
           }
           // A remesh waits for the second pass; a chunk with no mesh was the first pass's.
           if (shown === undefined ? remeshing : !remeshing) {
-            if (shown !== undefined || this.reachable.has(key)) busy = true;
+            if (shown !== undefined || this.canSee(cx, cy, cz)) busy = true;
             continue;
           }
           // All air has no faces (the faces of blocks next to it belong to their own chunks).
@@ -476,7 +517,7 @@ export class ChunkLoader {
             continue;
           }
           // Can't be seen from here: leave it until it can.
-          if (!this.reachable.has(key)) continue;
+          if (!this.canSee(cx, cy, cz)) continue;
           // Border faces and AO need the neighbours, or they'd be drawn against "air".
           col.ready ||= this.neighboursLoaded(cx, cz);
           busy = true;

@@ -5,7 +5,7 @@ import { Block } from './blocks';
 import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
 import { Generator, type GeneratorOptions } from './generate';
 import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, sameLight, SUNLIT, unpackLight, updateLight, updateLightAt } from './light';
-import { ALL_CONNECTED, chunkConnectivity } from './visibility';
+import { chunkRegions, OPEN_REGIONS, type Regions, seeThrough, SOLID_REGIONS } from './visibility';
 
 /**
  * The blocks of every all-air chunk until it's edited: one shared array, so the half of the
@@ -18,8 +18,8 @@ export class Chunk {
   version = 0;
   /** Edited by the player since it was generated or loaded (`save/saver.ts` keeps track of what to write). */
   modified = false;
-  /** Which faces see each other through open space (`visibility.ts`); -1 until worked out. */
-  private connections = -1;
+  /** Its open regions (`visibility.ts`); null until worked out. */
+  private regionData: Regions | null = null;
   /** Sun << 4 | block light per block (`light.ts`); `FULL_SUN` or `DARK` (shared, read-only) until it differs. */
   light: Uint8Array = DARK;
 
@@ -38,14 +38,18 @@ export class Chunk {
   /** "cx,cy,cz": made once, as maps keyed by it are asked thousands of times a frame. */
   readonly key: string;
 
-  /** Faces connected through the chunk's open space: given by the worker that made it, else worked out when first asked. */
-  get connectivity(): number {
-    if (this.connections < 0) this.connections = this.empty ? ALL_CONNECTED : chunkConnectivity(this.blocks);
-    return this.connections;
+  /**
+   * Its open regions: given by the worker that made it, else worked out when first asked (and
+   * again after an edit that changed whether a block can be seen through).
+   */
+  get regions(): Regions {
+    this.regionData ??= this.empty ? OPEN_REGIONS : chunkRegions(this.blocks);
+    return this.regionData;
   }
 
-  set connectivity(mask: number) {
-    this.connections = mask;
+  /** Regions from a worker (copies of the shared ones made the shared ones again), or null to work them out when next asked. */
+  set regions(regions: Regions | null) {
+    this.regionData = regions === null ? null : regions.count === 0 ? SOLID_REGIONS : regions.shared ? OPEN_REGIONS : regions;
   }
 
   /** The light array, made the chunk's own first if it was a shared one: call before writing to it. */
@@ -91,14 +95,14 @@ export class World {
    * here; then light flows across its borders with the loaded columns beside it. Returns the
    * number of blocks that flow lit or brightened.
    */
-  addColumn(cx: number, cz: number, chunks: (Uint8Array | null)[], connectivity?: number[], light: PackedLight[] = lightColumn(chunks)): number {
+  addColumn(cx: number, cz: number, chunks: (Uint8Array | null)[], regions?: (Regions | null)[], light: PackedLight[] = lightColumn(chunks)): number {
     chunks.forEach((blocks, i) => {
       const cy = MIN_CHUNK_Y + i;
       if (this.chunks.has(chunkKey(cx, cy, cz))) return;
       this.addGenerated(cx, cy, cz, blocks);
       const chunk = this.getChunk(cx, cy, cz)!;
       chunk.light = unpackLight(light[i]);
-      if (connectivity) chunk.connectivity = connectivity[i];
+      if (regions?.[i]) chunk.regions = regions[i];
     });
     return lightBorders(this, cx, cz);
   }
@@ -189,13 +193,15 @@ export class World {
     const chunk = this.getChunk(toChunk(x), toChunk(y), toChunk(z));
     if (!chunk) return [];
     const i = localIndex(toLocal(x), toLocal(y), toLocal(z));
-    if (chunk.blocks[i] === block) return [];
+    const was = chunk.blocks[i];
+    if (was === block) return [];
     if (chunk.blocks === EMPTY_BLOCKS) chunk.blocks = new Uint8Array(CHUNK_VOLUME);
     chunk.blocks[i] = block;
     chunk.version++;
     chunk.modified = true;
     chunk.empty = false;
-    chunk.connectivity = -1; // worked out again when next asked
+    // Opened or closed: the regions are worked out again when next asked.
+    if (seeThrough(was) !== seeThrough(block)) chunk.regions = null;
 
     // Per axis, the chunk offsets whose border reaches this block: 0, and -1 or +1 at an edge.
     const sides = (l: number) => (l === 0 ? [0, -1] : l === CHUNK_MASK ? [0, 1] : [0]);
