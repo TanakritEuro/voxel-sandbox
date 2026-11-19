@@ -1,6 +1,6 @@
 # Milestone 16: world, part two
 
-**Status:** plan approved (2026-11-19); step 1 in progress.
+**Status:** built (2026-11-19), waiting for playtests.
 
 ## Goal
 
@@ -156,7 +156,7 @@ generator, headless-fast), for checking in the browser and for playtesting.
    oaks, reeds, fog, animals; tests; `?find=savanna|swamp`. Done (2026-11-19).
 4. **Structures and loot.** Ruins, camps, placement across chunk borders, loot chests, bricks; tests;
    `?find=ruin|camp`. Done (2026-11-19).
-5. **Measurements,** notes, playtest questions.
+5. **Measurements,** notes, playtest questions. Done (2026-11-19).
 
 ## Decisions to agree
 
@@ -427,4 +427,76 @@ blocks). Cells of 112 at 80%, with level within 3 rather than 2, give about 220.
   17.0), main thread p50 3.1, p99 7.8, max 12.5 ms; no holes; no console errors.
 - **Not looked at in the browser:** opening a loot chest in survival (the tests cover filling,
   emptying, saving and a guest).
+
+## Step 5: measurements, and the end of the milestone (2026-11-19)
+
+**Bench** (`npm run bench`, the dev server stopped). The machine was slow during the full run:
+everything took about twice as long as in the step runs (a column 3.8 ms rather than about 2,
+physics 7.7 µs a step rather than 3.8). So these are the ratios, which hold run to run:
+
+| | |
+| --- | --- |
+| Generating a column, version 2 against version 1 | +8% (step 3) to +14% (this run); +10% in step 4 |
+| Version 1's land | unchanged: the checksums of 12 columns of 3 seeds match those taken before the milestone |
+| Meshing, light, physics, mobs, water, logic, survival | not touched by this milestone; the version 1 world the bench uses is the same |
+| Rivers | 1.8–2.3% of the land in water, 7–9% lowered by their valleys |
+| Savanna, swamp | 5–6% and 2–10% of the dry land |
+| Structures | about one every 256–279 blocks: 95–139 ruins and 114–126 camps in 4096 × 4096 |
+
+**In the browser:**
+- **Sprint flights over version 2 land, one each step** (`?autofly=20`, from the origin, the savanna and
+  a ruin):
+  - no frames over 20 ms in any valid run (the longest 16.9–17.0 ms);
+  - main thread p50 2.2–3.4, p99 7.3–9.5, max 12.5–13.3 ms;
+  - no holes.
+  - Two runs with the pane hidden were thrown away; the flight marks such runs itself.
+- **Each new thing looked at by its `?find`:** a river through a hill to the sea; the savanna and its
+  parasol trees; the swamp's mud flats, pools and reeds; a ruin in a forest; a camp on a desert shore;
+  the seven new blocks in the creative picker.
+- **A camp's chest in survival** (`?find=camp&survival`):
+  - opened, it held 3 berries, 4 sticks, 3 bread and an iron;
+  - taken to the hotbar, closed, opened again: empty.
+- No console errors anywhere.
+- **Not measured:** a laptop; playing together with version 2 in two browsers (the session tests carry
+  the version to a guest, and a guest's chests are the host's).
+
+**Changed from the plan, over the milestone:**
+- **Rivers:**
+  - are about 2% of the land in water; the "tenth" of the plan is their valleys;
+  - get a switch (`GeneratorOptions.rivers`), so their tests compare version 2 with and without them.
+- **Swamps** are raised and their continent flattened by 90%, mud only at the water: the first try was
+  open water with mud islands.
+- **Every `?find`** stands the player on the nearest dry block (`dryNear`) rather than `findLand`'s land
+  well above the sea.
+- **Structures:**
+  - cells are 112 blocks with an 80% chance, not 160: the first gave one every 490 blocks;
+  - level within 3, not 2;
+  - never over a cave opening at the floor.
+- **No canvas block:** camps are planks, as the plan allowed.
+- **Stone bricks** came in step 4 with the ruins, not step 3.
+- **`TREE_REACH`** went from 2 to 3 for the parasols' crowns.
+- **`PROTOCOL`** went to 6 in step 1 and to 7 in step 4: version 2's land changed after 6 went out.
+
+## Playtest questions
+
+Make a new world, or use the `?find` links (`?find=river`, `savanna`, `swamp`, `ruin`, `camp`; add
+`&survival` for loot).
+
+1. **Old worlds:** does a world you made before this milestone look exactly as it did, new chunks
+   joining old ones with no seams?
+2. **Rivers:**
+   - do they look like rivers: wide enough, winding enough, often enough?
+   - do they end well where they fade before mountains?
+   - do the steep stone sides where they cut through hills look right?
+3. **Savanna:** is it different enough from the plains and the desert? Are the parasol trees right
+   (how tall, how wide, how many)?
+4. **Swamp:** does it feel like a swamp: the pools, the mud at the water, the reeds, the swamp oaks'
+   hanging leaves? Too much water, or too little?
+5. **Ruins and camps:**
+   - are they worth walking to, and about as common as you'd like (about one every 270 blocks)?
+   - do they sit on the land well, with no floating floors or buried walls?
+6. **Loot:** is a chest's loot worth having in survival: too much, too little, or the wrong things?
+7. **Bricks:** are stone and mossy bricks worth building with, and should ruins drop more?
+8. **Together:** does a guest see the same rivers, biomes and structures as the host, and get loot
+   from a chest the host hasn't opened?
 

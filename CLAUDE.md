@@ -26,10 +26,12 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 16 (world, part two: rivers, savanna and swamp, ruins and camps with loot, behind a generation
-version) in progress, plan approved (`docs/milestone-16.md`).
-Milestones 1–15 built (`docs/milestone-1.md` to `docs/milestone-15.md`), waiting for playtests
-(Milestone 15, cave culling: visibility by open region instead of by chunk, a chunk's open regions linked
+Milestones 1–16 built (`docs/milestone-1.md` to `docs/milestone-16.md`), waiting for playtests
+(Milestone 16, world, part two, for worlds made from now on (generation version 2; older worlds keep their
+land, pinned by checksums): rivers cut down to the sea's level and fading before the mountains; savanna (dry grass,
+parasol trees) and swamp (mud, pools, swamp oaks), reeds by the water; ruins and camps about every 270 blocks
+with a chest each, filled from its loot once; stone and mossy bricks; `?find=river|savanna|swamp|ruin|camp`;
+Milestone 15, cave culling: visibility by open region instead of by chunk, a chunk's open regions linked
 to its neighbours' across its faces, the walk from the eye's region, every quad meshed into the group of the
 region it's seen from and only the reached groups drawn, pockets sealed in a chunk not meshed: triangles drawn
 halved at the spawn point, -16 % to -37 % elsewhere on the surface, -93 % inside a cave (headless);
