@@ -16,7 +16,7 @@ import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/c
 import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackState } from './playerState';
 
-export const PROTOCOL = 7;
+export const PROTOCOL = 8;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;
@@ -98,6 +98,8 @@ export type Message =
   | { type: 'mobsounds'; data: ArrayBuffer }
   /** Guest → host: this player hit mob `id` for `points` (1 by hand, more with a tool). */
   | { type: 'hit'; id: number; points: number }
+  /** Guest → host: fed mob `id` an `item` (its food) from what the guest holds (spent already; given back if refused). */
+  | { type: 'feed'; id: number; item: number }
   /** Host → guests: the time of day now (0–1). */
   | { type: 'time'; time: number }
   /** Host → guest, unordered: the items lying on the ground round the guest (`itemState.ts`). */
@@ -284,6 +286,8 @@ export function parseMessage(raw: unknown): Message | null {
       return raw.data instanceof ArrayBuffer && raw.data.byteLength <= 20 * 1024 && unpackMobSounds(raw.data) !== null ? { type: 'mobsounds', data: raw.data } : null;
     case 'hit':
       return isCount(raw.id, 0, 0x7fffffff) && isCount(raw.points, 1, 3) ? { type: 'hit', id: raw.id, points: raw.points } : null;
+    case 'feed':
+      return isCount(raw.id, 0, 0x7fffffff) && isCount(raw.item, 1, 0xffff) ? { type: 'feed', id: raw.id, item: raw.item } : null;
     case 'ground':
       return raw.data instanceof ArrayBuffer && raw.data.byteLength <= 24 * 512 && unpackGround(raw.data) !== null ? { type: 'ground', data: raw.data } : null;
     case 'drop': {

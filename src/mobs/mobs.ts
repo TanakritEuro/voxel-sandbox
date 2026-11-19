@@ -32,6 +32,7 @@ import { toChunk, WORLD_HEIGHT } from '../world/coords';
 import type { World } from '../world/world';
 import { BlockCache } from './blockCache';
 import { createMob, hurt, type Mob, type MobContext, pathOptions, type Prey, stepBrain } from './brain';
+import { type KeptRecord, KeptAnimals } from './kept';
 import { headroom, KINDS, type MobKind } from './kinds';
 import { findPath } from './pathfind';
 
@@ -222,10 +223,10 @@ export class MobManager {
     return this.attacks.splice(0);
   }
 
-  /** Animals around (hostile mobs have a cap of their own). */
+  /** Wild animals around (hostile mobs have a cap of their own; kept animals aren't counted). */
   private animals(): number {
     let n = 0;
-    for (const m of this.mobs) if (!KINDS[m.kind].hostile) n++;
+    for (const m of this.mobs) if (!KINDS[m.kind].hostile && !m.kept) n++;
     return n;
   }
 
@@ -297,6 +298,47 @@ export class MobManager {
     return this.sounds.splice(0);
   }
 
+  /** Kept animals whose columns aren't loaded (the game gives it the saved ones). */
+  kept = new KeptAnimals();
+
+  /** Kept animals, here and stored. */
+  get keptCount(): number {
+    let n = this.kept.stored;
+    for (const m of this.mobs) if (m.kept) n++;
+    return n;
+  }
+
+  /**
+   * Feed `mob` `item`: false unless it's the mob's food. A wild animal fed is kept, while there are
+   * fewer than `TUNING.mobs.kept`.
+   */
+  feed(mob: Mob, item: number): boolean {
+    if (KINDS[mob.kind].food === undefined || KINDS[mob.kind].food !== item) return false;
+    if (!mob.kept && this.keptCount < TUNING.mobs.kept) mob.kept = true;
+    this.sound(mob, 'call');
+    return true;
+  }
+
+  /** Column (cx, cz) has loaded: its kept animals come back where they were. */
+  columnLoaded(cx: number, cz: number): void {
+    for (const r of this.kept.take(cx, cz)) this.mobs.push(this.fromRecord(r));
+  }
+
+  /** Every kept animal, here and stored, as saved. */
+  keptRecords(): KeptRecord[] {
+    const out = this.kept.all();
+    for (const m of this.mobs) if (m.kept) out.push(recordOf(m));
+    return out;
+  }
+
+  private fromRecord(r: KeptRecord): Mob {
+    const mob = createMob(this.nextId++, r.kind, r.x, r.y, r.z, Math.floor(this.rng() * 0x7fffffff));
+    mob.kept = true;
+    mob.grow = r.grow;
+    mob.wait = r.wait;
+    return mob;
+  }
+
   /** Remove a mob (despawned, or gone in a puff). */
   remove(mob: Mob): void {
     const i = this.mobs.indexOf(mob);
@@ -317,10 +359,17 @@ export class MobManager {
   private despawn(players: readonly (readonly [number, number])[]): void {
     const far = TUNING.mobs.despawnDistance;
     for (let i = this.mobs.length - 1; i >= 0; i--) {
-      const b = this.mobs[i].body;
+      const mob = this.mobs[i];
+      const b = mob.body;
+      const loaded = this.world.hasColumn(toChunk(Math.floor(b.x)), toChunk(Math.floor(b.z)));
+      if (mob.kept) {
+        // Kept: stored when its land unloads, never let go for being far (fallen out of the world, gone).
+        if (!loaded) this.kept.store(recordOf(mob));
+        if (!loaded || b.y < -16) this.remove(mob);
+        continue;
+      }
       const near = players.some(([px, pz]) => Math.hypot(b.x - px, b.z - pz) <= far);
-      const gone = !near || b.y < -16 || !this.world.hasColumn(toChunk(Math.floor(b.x)), toChunk(Math.floor(b.z)));
-      if (gone) this.remove(this.mobs[i]);
+      if (!near || b.y < -16 || !loaded) this.remove(mob);
     }
   }
 
@@ -373,3 +422,9 @@ export class MobManager {
     return y + 1;
   }
 }
+
+/** A kept mob as stored and saved. */
+function recordOf(mob: Mob): KeptRecord {
+  return { kind: mob.kind, x: mob.body.x, y: mob.body.y, z: mob.body.z, grow: mob.grow, wait: mob.wait };
+}
+

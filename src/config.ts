@@ -314,6 +314,8 @@ export const TUNING = {
     step: 1 / 120,
     /** Most mobs around the player (`?mobs=40`; `?mobs=0` none). */
     max: 24,
+    /** Most kept animals a world has (fed ones beyond it stay wild). */
+    kept: 128,
     /** How fast a mob's velocity turns towards the one it wants (blocks / s²), on the ground and in the air. */
     groundAccel: 30,
     airAccel: 8,

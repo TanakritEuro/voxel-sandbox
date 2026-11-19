@@ -56,6 +56,8 @@ export interface WorldRecord {
   guests?: Record<string, SurvivalRecord>;
   /** The world generation version it was made with (`generationOf`; missing in worlds from before versions: 1). */
   generation?: number;
+  /** Kept animals (`mobs/kept.ts`, cleaned by `KeptAnimals.from`); missing until one is kept. */
+  animals?: unknown[];
 }
 
 /** A chunk's place and its RLE-encoded blocks. */

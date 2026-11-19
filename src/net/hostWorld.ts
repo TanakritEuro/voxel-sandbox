@@ -30,6 +30,7 @@ export interface HostGame {
   edit(x: number, y: number, z: number, block: Block): void;
   /** Player `player` hit mob `id` for `points`: check it's in reach, and make the hit. */
   hitMob(player: number, id: number, points: number): void;
+  feedMob(player: number, id: number, item: number): boolean;
   /** Guests' survival on the host's ground and in its furnaces (`HostWorld`'s). */
   drop: HostWorld['drop'];
   take: HostWorld['take'];
@@ -122,6 +123,7 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
     },
     blockAt: (x, y, z) => world.getBlock(x, y, z),
     hitMob: (player, id, points) => game.hitMob(player, id, points),
+    feedMob: (player, id, item) => game.feedMob(player, id, item),
     drop: (...a) => game.drop(...a),
     take: (...a) => game.take(...a),
     container: (...a) => game.container(...a),

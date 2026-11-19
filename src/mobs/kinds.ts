@@ -4,6 +4,7 @@
 // in a biome and hunts players. Their size, how they move and how far their paths may go, how
 // much hitting they take; their looks are in `render/mobRenderer.ts`.
 
+import { Item } from '../survival/items';
 import { Biome } from '../world/biomes';
 import { Block } from '../world/blocks';
 
@@ -60,6 +61,8 @@ export interface KindInfo {
   group: readonly [number, number];
   /** Points of hitting it takes to go (a hand hits for 1, `TUNING.mobs.toolDamage`). */
   health: number;
+  /** What it eats, fed by hand (an item): fed, a wild one is kept (`kept.ts`). None for hostile kinds. */
+  food?: number;
   hostile?: Hostile;
 }
 
@@ -80,6 +83,7 @@ export const KINDS: readonly KindInfo[] = [
     ground: [Block.Grass, Block.Dirt],
     group: [2, 4],
     health: 3,
+    food: Item.Wheat,
   },
   {
     name: 'Hopper',
@@ -97,6 +101,7 @@ export const KINDS: readonly KindInfo[] = [
     ground: [Block.Grass, Block.DryGrass],
     group: [1, 3],
     health: 3,
+    food: Item.Seeds,
   },
   {
     name: 'Crag goat',
@@ -114,6 +119,7 @@ export const KINDS: readonly KindInfo[] = [
     ground: [Block.Snow, Block.SnowyGrass, Block.Stone, Block.Gravel],
     group: [1, 3],
     health: 3,
+    food: Item.Wheat,
   },
   {
     name: 'Dune beetle',
@@ -131,6 +137,7 @@ export const KINDS: readonly KindInfo[] = [
     ground: [Block.Sand, Block.Sandstone],
     group: [1, 3],
     health: 3,
+    food: Item.Berries,
   },
   {
     // Thin and tall, long-armed, faster than a walk and slower than a sprint.
@@ -172,6 +179,7 @@ export const KINDS: readonly KindInfo[] = [
     ground: [Block.DryGrass],
     group: [2, 5],
     health: 4,
+    food: Item.Wheat,
   },
   {
     // Squat and wide, waddling on land and swimming well, by the swamp's pools.
@@ -191,6 +199,7 @@ export const KINDS: readonly KindInfo[] = [
     ground: [Block.Mud, Block.Grass],
     group: [1, 3],
     health: 3,
+    food: Item.Berries,
   },
 ];
 

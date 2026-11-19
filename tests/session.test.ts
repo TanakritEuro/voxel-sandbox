@@ -68,6 +68,15 @@ async function makeHost(env: Env, generation: Generation = 1) {
   const ground = new GroundItems();
   const furnaces = new Furnaces();
   const chests = new Chests();
+  // Its feeding of mobs: what was asked, and whether it's made.
+  const feeds = {
+    made: [] as [number, number, number][],
+    ok: true,
+    feed(player: number, id: number, item: number): boolean {
+      this.made.push([player, id, item]);
+      return this.ok;
+    },
+  };
   const edit = (x: number, y: number, z: number, b: Block) => {
     if (world.setBlock(x, y, z, b).length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
     logic.wake(x, y, z);
@@ -81,6 +90,7 @@ async function makeHost(env: Env, generation: Generation = 1) {
       allowed: () => allow.ok,
       edit,
       hitMob: () => {},
+      feedMob: (player, id, item) => feeds.feed(player, id, item),
       ...hostSurvival(ground, furnaces, chests, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
       mode: () => mode.value,
       kept: (name) => kept.get(name) ?? null,
@@ -100,7 +110,7 @@ async function makeHost(env: Env, generation: Generation = 1) {
     world.setBlocks(changes);
     session.shareEdits(changes, 0, 0, true);
   };
-  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces, chests };
+  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces, chests, feeds };
 }
 
 async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, name: string) {
@@ -532,6 +542,22 @@ describe('survival over the network', () => {
     await env.pump(0.3);
     expect(got).toEqual([]);
     expect(host.ground.items.length).toBe(1);
+  });
+
+  it("asks the host to make a guest's feeding of a mob, and gives the food back when it's refused", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    const given: Stack[] = [];
+    a.session.onGiven = (st) => given.push(st);
+    a.session.feed(17, Item.Wheat);
+    await env.pump(0.3);
+    expect(host.feeds.made).toEqual([[a.welcome.you, 17, Item.Wheat]]);
+    expect(given).toEqual([]);
+    host.feeds.ok = false;
+    a.session.feed(17, Item.Berries);
+    await env.pump(0.3);
+    expect(given).toEqual([{ item: Item.Berries, count: 1 }]);
   });
 
   it("opens the host's furnace for a guest: what's in it and its changes, what's put in and taken out checked there", async () => {

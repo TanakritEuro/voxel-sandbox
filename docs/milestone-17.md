@@ -135,7 +135,7 @@ Everything invented; behaviour, spawning and saving tested headless; feel left f
 
 1. **Ambler and wader.** Kinds, models, textures, poses, voices, spawning; tests; `?showcase`. Done (2026-11-19).
 2. **Kept animals.** Food, feeding (and the guest's `feed`), keeping, the cap, storing by column,
-   saving; tests.
+   saving; tests. Done (2026-11-19).
 3. **Breeding and the young.** Love, `court`, births, waits, growing, following; tests; `?farmyard`.
 4. **The delver.** Kind, model, voice, spawning below its depth, drops; tests.
 5. **Measurements,** notes, playtest questions.
@@ -192,4 +192,54 @@ the ambler grazing with its neck down; no console errors. The full showcase has 
 
 **Changed from the plan:** waders swim and spawn by the water, but don't seek it out or float at rest.
 That would be a new behaviour; their home ground is at the water anyway.
+
+## Step 2: kept animals (2026-11-19)
+
+**What's in:**
+- **`KindInfo.food`:**
+  - wheat for mossbacks, crag goats and amblers;
+  - seeds for hoppers;
+  - berries for dune beetles and waders;
+  - none for the gloamer.
+- **`Mob`** has `kept`, `grow` and `wait` (the last two for step 3; 0 for now).
+- **`MobManager`:**
+  - `feed(mob, item)`: only the mob's food feeds it. A wild one fed is kept while there are fewer than
+    `TUNING.mobs.kept` (128); it calls as it's fed.
+  - A kept animal isn't let go for being far from every player. When its column unloads it's
+    stored; one that falls out of the world is gone.
+  - `columnLoaded` gives a column's stored animals back where they were.
+  - Kept animals don't count against the wild cap.
+  - `keptRecords` is every kept animal, here and stored, for saving.
+- **`mobs/kept.ts`:**
+  - `KeptAnimals`: records (kind, place, `grow`, `wait`) by column.
+  - `from` cleans what was saved: animal kinds only (never a hostile one), finite places, times
+    not below 0, at most the cap.
+- **The game:**
+  - loads the world record's `animals` into the manager;
+  - gives each column's kept animals back as it loads;
+  - saves them with the record;
+  - **right-clicking an animal with its food** (survival) feeds it: one spent, the hotbar redrawn,
+    a pink burst over its back. Eating berries waits while you look at an animal that eats them.
+- **Playing together:**
+  - a guest's feeding is a new message, `feed` (the mob and the item), with the food spent on the
+    guest's side;
+  - the host makes it as its own if the guest was within reach of the mob and it's the mob's food;
+  - if not, the food comes back (`given`).
+  - `PROTOCOL` 8.
+- **Tests (7 new):**
+  - each animal kind has a food, the hostile none;
+  - only its food feeds an animal, and keeps it once;
+  - the cap;
+  - kept animals stay when the player is far, while wild ones go;
+  - a kept animal stored as its column unloads comes back at the same place with its times;
+  - saving and loading, here and stored, junk cleaned, the cap on loading;
+  - a guest's feeding made by the host, and the food given back when refused.
+
+**In the browser** (`?find=savanna&showcase=ambler,mossback&survival&kit&nolock`):
+- wheat moved to the hotbar, right-click on the mossback: a burst of pink over it, the wheat 6 → 5;
+- no console errors.
+- **A bug found there:** the first try spent the wheat without redrawing the hotbar, so it still read 6.
+  Fixed.
+- **Not looked at in the browser:** a kept animal saved and back after reloading a saved world, and
+  after walking away and back (the tests cover both).
 

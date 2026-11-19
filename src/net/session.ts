@@ -53,6 +53,8 @@ export interface HostWorld {
   blockAt(x: number, y: number, z: number): number;
   /** Player `player` hit mob `id` for `points`: the game checks it's in reach and makes the hit. */
   hitMob(player: number, id: number, points: number): void;
+  /** A guest's feeding of mob `id` with `item`: made, or false if not (out of reach, not its food, no such mob). */
+  feedMob(player: number, id: number, item: number): boolean;
   /** The world's mode now. */
   mode(): WorldMode;
   /** The survival state kept for a guest called `name`, or null. */
@@ -311,6 +313,10 @@ export class HostSession {
       case 'hit':
         this.world.hitMob(id, m.id, m.points);
         break;
+      case 'feed':
+        // Refused: the food back to the guest who spent it.
+        if (!this.world.feedMob(id, m.id, m.item)) link.send({ type: 'given', stack: { item: m.item, count: 1 } });
+        break;
       case 'drop':
         this.world.drop(id, m.stack, m.x, m.y, m.z, m.vx, m.vy, m.vz, m.delay);
         break;
@@ -532,6 +538,11 @@ export class GuestSession {
   }
 
   /** This player hit mob `id`: the host makes the hit (the knockback, the flash and any puff come back with the mobs). */
+  /** Fed mob `id` an `item` (spent here already): the host feeds it, or gives the item back. */
+  feed(id: number, item: number): void {
+    if (!this.closed) this.link.send({ type: 'feed', id, item });
+  }
+
   hit(id: number, points = 1): void {
     if (!this.closed) this.link.send({ type: 'hit', id, points });
   }

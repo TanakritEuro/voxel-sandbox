@@ -121,6 +121,7 @@ describe('states over the network', () => {
     keep: () => {},
     blockAt: () => Block.Air,
     hitMob: () => {},
+    feedMob: () => false,
     drop: () => {},
     take: () => null,
     container: () => null,

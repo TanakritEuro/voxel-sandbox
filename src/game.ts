@@ -2,6 +2,7 @@
 // `?at=`, `?autofly`): world, saving, chunk loading, the player, block editing, the HUD and
 // the pause menu.
 
+import { KeptAnimals } from './mobs/kept';
 import { lootSource } from './survival/loot';
 import { dryNear, findNearest, isFindable } from './world/find';
 import { generationOf } from './world/generate';
@@ -246,6 +247,8 @@ let daylightNow = 1;
 const mobsParam = Number(params.get('mobs') ?? Number.NaN);
 const mobCap = Number.isFinite(mobsParam) ? Math.max(0, Math.floor(mobsParam)) : TUNING.mobs.max;
 const mobs = mobCap > 0 && !guest ? new MobManager(world, record.seed ^ 0x6d6f62, mobCap) : null;
+// The world's kept animals, waiting for their columns to load.
+if (mobs) mobs.kept = KeptAnimals.from(record.animals);
 // Room for the most there can be: twice the cap when playing together.
 const mobView = mobCap > 0 ? new MobRenderer(mobCap * 2) : null;
 if (mobView) {
@@ -369,6 +372,7 @@ let logicWorst = 0;
 // water lets it through. On a guest, the host's edits that came for a column meanwhile are made in it.
 loader.onColumnAdded = (cx, cz, saved) => {
   if (guest) return guest.columnAdded(cx, cz);
+  mobs?.columnLoaded(cx, cz);
   wakeColumn(flow, world, cx, cz, saved);
   wakeLogicColumn(logic, world, cx, cz, saved);
 };
@@ -605,6 +609,7 @@ function openToFriends(room: Room): HostSession {
       allowed: (id, x, y, z, block): boolean => editAllowed(session.states().get(id), session.states().values(), x, y, z, block),
       edit: (x, y, z, block) => guestEdit(x, y, z, block),
       hitMob: (id, mobId, points) => guestHit(id, mobId, points),
+      feedMob: (id, mobId, item) => guestFeed(id, mobId, item),
       // Guests' survival on this world's ground and in its furnaces.
       ...hostSurvival(ground, furnaces, chests, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
       mode: () => modeOf(record),
@@ -687,6 +692,42 @@ function guestHit(id: number, mobId: number, points: number): void {
   const far = Math.hypot(b.x - who.x, b.y + b.height / 2 - (who.y + TUNING.player.eyeHeight), b.z - who.z);
   if (far <= TUNING.edit.reach + TUNING.net.reachSlack + 1) hitMob(mob, who.x, who.z, points);
 }
+
+/** A guest fed mob `mobId` `item`: made as this player's feeding would be, if it was in reach of where they were last heard. */
+function guestFeed(id: number, mobId: number, item: number): boolean {
+  const mob = mobs?.byId(mobId);
+  const who = host?.states().get(id);
+  if (!mob || !who || !mobs) return false;
+  const b = mob.body;
+  const far = Math.hypot(b.x - who.x, b.y + b.height / 2 - (who.y + TUNING.player.eyeHeight), b.z - who.z);
+  if (far > TUNING.edit.reach + TUNING.net.reachSlack + 1 || !mobs.feed(mob, item)) return false;
+  hearts(mob);
+  return true;
+}
+
+/** A fed animal's pleasure: a little burst of pink over its back. */
+function hearts(mob: Mob): void {
+  const b = mob.body;
+  particles.burst(b.x - 0.5, b.y + b.height - 0.4, b.z - 0.5, HEARTS, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow));
+}
+const HEARTS: readonly [number, number, number][] = [
+  [0.95, 0.35, 0.45],
+  [1, 0.62, 0.7],
+];
+
+/** Survival: right click on an animal holding its food feeds it (and keeps it, if wild); a guest's is the host's to make. */
+function feed(mob: Mob): void {
+  const item = pack.slots[selected]?.item;
+  if (item === undefined || KINDS[mob.kind].food !== item) return;
+  if (guest) guest.feed(mob.id, item);
+  else if (!mobs?.feed(mob, item)) return;
+  pack.takeOne(selected);
+  renderHotbar();
+  hearts(mob);
+}
+
+/** The mob looked at last frame (eating waits while it's one the food held would feed). */
+let lastAimed: Mob | null = null;
 
 /** Once a frame, playing together: this player's state now and then, the others drawn; a host also sends mobs and time, and keeps the others' land loaded. */
 function playTogether(now: number): void {
@@ -1239,7 +1280,8 @@ let eatRefused = false;
 /** Survival: holding the right button with food selected eats it, a mouthful at a time, after `eatSeconds`. */
 function eating(dt: number): void {
   const food = survival && !dead ? foodOf(pack.slots[selected]?.item) : 0;
-  if (!food || !input.isHeld('Mouse2')) {
+  const feeding = lastAimed !== null && KINDS[lastAimed.kind].food === pack.slots[selected]?.item;
+  if (!food || !input.isHeld('Mouse2') || feeding) {
     eatingFor = 0;
     eatRefused = false;
     return;
@@ -1707,6 +1749,9 @@ function frame(now: number): void {
   const shown = mobs?.mobs ?? guest?.mobs.mobs;
   const aimed = shown && !paused() ? mobOnRay(shown, camera.position, dir, target ? target.distance : TUNING.edit.reach) : null;
   if (aimed) target = null;
+  lastAimed = aimed?.mob ?? null;
+  // Right click on an animal holding its food: fed (before eating it, or using it on a block).
+  if (aimed && survival && !dead && KINDS[aimed.mob.kind].food === pack.slots[selected]?.item && input.take('Mouse2')) feed(aimed.mob);
   if (input.take('Mouse0') && aimed) {
     // A guest's hit is the host's to make: the knockback and any puff come back with the mobs.
     if (guest) {
@@ -1848,6 +1893,8 @@ function saveRecord(): Promise<void> {
   record.furnaces = furnaces.toJSON();
   record.containers = chests.toJSON();
   record.crops = crops.toJSON();
+  // Kept animals, here and stored (with mobs off, as they were).
+  if (mobs) record.animals = mobs.keptRecords();
   return saver.saveRecord(playerState(), time);
 }
 

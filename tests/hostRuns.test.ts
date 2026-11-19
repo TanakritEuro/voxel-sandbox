@@ -142,6 +142,7 @@ describe('what the host runs, for its guests', () => {
       keep: () => {},
       blockAt: () => Block.Air,
       hitMob: (player, id, points) => hits.push([player, id, points]),
+      feedMob: () => false,
       drop: () => {},
       take: () => null,
       container: () => null,

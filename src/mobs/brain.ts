@@ -59,6 +59,11 @@ export interface Mob {
   /** Hunting: the player (an index into the prey) and seconds until it may hit again. */
   target: number;
   cooldown: number;
+  /** Fed by a player, and so theirs (`kept.ts`): never despawned, saved. */
+  kept: boolean;
+  /** Seconds left growing up (0: grown), and before it may breed again. */
+  grow: number;
+  wait: number;
   readonly rng: Rng;
 }
 
@@ -108,6 +113,9 @@ export function createMob(id: number, kind: MobKind, x: number, y: number, z: nu
     hits: 0,
     target: -1,
     cooldown: 0,
+    kept: false,
+    grow: 0,
+    wait: 0,
     rng,
   };
 }

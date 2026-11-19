@@ -222,7 +222,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   air and drowning, cactus, hunger (faster working hard; starving down to 1; `eat`), healing only well
   fed, death; stepped a frame at a time with how the body is).
 - `src/mobs/` — `kinds.ts` (the six animals (the ambler in the savanna, the wader in the swamp) and the gloamer: size,
-  speeds, climb and drop, biomes, ground, groups, health in points, how far the head nods walking (`headBob`); `hostile`: sight, reach, hit, darkness to appear in, sun to fade in, how many), `brain.ts` (a mob: idle, wander, flee, rest, and hunt for hostile kinds (paths to the
+  speeds, climb and drop, biomes, ground, groups, health in points, how far the head nods walking (`headBob`), the `food`
+  that feeds it (wheat, seeds or berries); `hostile`: sight, reach, hit, darkness to appear in, sun to fade in, how many), `brain.ts` (a mob: idle, wander, flee, rest, and hunt for hostile kinds (paths to the
   nearest prey, hitting at reach every so often); following paths, jumping, getting
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
   spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
@@ -232,7 +233,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   by players; not saved), `hit.ts` (the mob under the
   crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
   cutting, swimming at the surface, through open doors and not closed ones, never over a fence, node and range limits; typed arrays reused between
-  searches), `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
+  searches), `kept.ts` (`KeptAnimals`: kept animals whose columns
+  aren't loaded, by column, stored and given back, cleaned from the world record's `animals`; a fed wild animal is kept, up to
+  `TUNING.mobs.kept`, never despawned, not counted in the wild cap: `MobManager.feed`, `columnLoaded`, `keptRecords`),
+  `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
   `World.getBlock`), `models.ts` (each kind's boxes, pivots, textures and how each part moves; pure
   data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
   and ears; pure).
@@ -292,7 +296,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
-  inventory, health and bed), `furnaces`, `containers` (chests), `crops`, `guests` (guests' survival states by name) and `generation` (missing in older worlds: 1)), `saver.ts` (`WorldSaver`: which chunks a world
+  inventory, health and bed), `furnaces`, `containers` (chests), `crops`, `guests` (guests' survival states by name), `generation` (missing in older worlds: 1)
+  and `animals` (kept animals)), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -304,7 +309,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (7), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (8), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
   blocks; the world's mode in the welcome and when it changes, guests' survival states kept by name
