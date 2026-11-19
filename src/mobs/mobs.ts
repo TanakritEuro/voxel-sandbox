@@ -24,6 +24,11 @@
 // hour, never by a torch), at most `most` for each player. Out on the surface by day it fades into
 // a puff. It hunts the players given as prey (`brain.ts`), and its hits are kept for the game to
 // take (`takeAttacks`).
+//
+// Kept animals breed (`TUNING.mobs.breeding`): one fed while grown and not waiting is in love for a
+// while; two of a kind in love near each other are paired and court (`brain.ts`), and when they meet a
+// young one is born beside them, kept, and each parent waits before it may breed again. Each young one
+// stays near a grown one of its kind (its `lead`), the nearest, kept ones first.
 
 import { TUNING } from '../config';
 import { createRng, FixedStep, type Rng } from '../math';
@@ -31,7 +36,7 @@ import { BLOCKS, Block } from '../world/blocks';
 import { toChunk, WORLD_HEIGHT } from '../world/coords';
 import type { World } from '../world/world';
 import { BlockCache } from './blockCache';
-import { createMob, hurt, type Mob, type MobContext, pathOptions, type Prey, stepBrain } from './brain';
+import { createMob, fitBody, hurt, type Mob, type MobContext, pathOptions, type Prey, stepBrain } from './brain';
 import { type KeptRecord, KeptAnimals } from './kept';
 import { headroom, KINDS, type MobKind } from './kinds';
 import { findPath } from './pathfind';
@@ -137,7 +142,10 @@ export class MobManager {
       this.untilHostile = TUNING.mobs.hostileInterval;
       this.trySpawnHostile(prey[Math.floor(this.rng() * prey.length)], prey, daylight);
     }
-    if (dt > 0) this.fade(daylight);
+    if (dt > 0) {
+      this.fade(daylight);
+      this.breed();
+    }
     const steps = this.clock.advance(dt);
     if (steps > 0) {
       for (const m of this.mobs) this.before.set(m, { x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw, onGround: m.body.onGround });
@@ -202,6 +210,36 @@ export class MobManager {
         return;
       }
     });
+  }
+
+  /**
+   * `?farmyard` (`?farmyard=32`): `count` kept animals of every kind in turn, 3–12 blocks round (x, z)
+   * on open ground (any animal's), every other one young at an age between born and nearly grown.
+   * Up to the kept cap; how many were made.
+   */
+  farmyard(x: number, z: number, count = 32): number {
+    const B = TUNING.mobs.breeding;
+    const animals = KINDS.map((_, k) => k as MobKind).filter((k) => !KINDS[k].hostile);
+    const grounds = new Set(animals.flatMap((k) => KINDS[k].ground));
+    let made = 0;
+    for (let i = 0; i < count * 8 && made < count && this.keptCount < TUNING.mobs.kept; i++) {
+      const kind = animals[made % animals.length];
+      const angle = this.rng() * 2 * Math.PI;
+      const r = 3 + 9 * this.rng();
+      const gx = Math.floor(x + Math.sin(angle) * r);
+      const gz = Math.floor(z + Math.cos(angle) * r);
+      if (!this.world.hasColumn(toChunk(gx), toChunk(gz))) continue;
+      let y = WORLD_HEIGHT - 1;
+      while (y > 0 && this.world.getBlock(gx, y, gz) === Block.Air) y--;
+      if (!grounds.has(this.world.getBlock(gx, y, gz)) || y + 1 + headroom(KINDS[kind]) > WORLD_HEIGHT) continue;
+      const mob = createMob(this.nextId++, kind, gx + 0.5, y + 1, gz + 0.5, Math.floor(this.rng() * 0x7fffffff));
+      mob.kept = true;
+      if (made % 2 === 1) mob.grow = B.grow * (0.1 + 0.9 * this.rng());
+      fitBody(mob);
+      this.mobs.push(mob);
+      made++;
+    }
+    return made;
   }
 
   /**
@@ -313,10 +351,99 @@ export class MobManager {
    * fewer than `TUNING.mobs.kept`.
    */
   feed(mob: Mob, item: number): boolean {
+    const B = TUNING.mobs.breeding;
     if (KINDS[mob.kind].food === undefined || KINDS[mob.kind].food !== item) return false;
-    if (!mob.kept && this.keptCount < TUNING.mobs.kept) mob.kept = true;
+    if (!mob.kept) {
+      if (this.keptCount < TUNING.mobs.kept) mob.kept = true;
+    } else if (mob.grow > 0) mob.grow = Math.max(0, mob.grow - B.grow * B.feedGrow);
+    else if (mob.love > 0 || mob.wait > 0) return false;
+    else mob.love = B.love;
     this.sound(mob, 'call');
     return true;
+  }
+
+  /** Young ones born since the last time this was asked (for the game's burst of pink). */
+  takeBorn(): Mob[] {
+    return this.born.splice(0);
+  }
+
+  private readonly born: Mob[] = [];
+
+  /**
+   * Once a frame: pairs out of love, or one no longer courting, are let go; animals in love and not
+   * paired are paired with the nearest of their kind in love within `near`; a pair whose boxes
+   * meet make a young one; young ones without a grown one to follow are given the nearest.
+   */
+  private breed(): void {
+    const B = TUNING.mobs.breeding;
+    for (const m of this.mobs) {
+      const mate = m.mate;
+      if (!mate) continue;
+      if (m.love > 0 && mate.love > 0 && m.state === 'court' && mate.state === 'court' && mate.mate === m && this.mobs.includes(mate)) continue;
+      m.mate = null;
+      if (m.state === 'court') m.state = 'idle';
+    }
+    for (const m of this.mobs) {
+      if (m.love <= 0 || m.mate || !m.kept || m.state === 'flee') continue;
+      let best: Mob | null = null;
+      let bestD = B.near;
+      for (const o of this.mobs) {
+        if (o === m || o.kind !== m.kind || o.love <= 0 || o.mate || !o.kept || o.state === 'flee') continue;
+        const d = Math.hypot(o.body.x - m.body.x, o.body.y - m.body.y, o.body.z - m.body.z);
+        if (d <= bestD) [best, bestD] = [o, d];
+      }
+      if (!best) continue;
+      for (const [a, b] of [[m, best], [best, m]] as const) {
+        a.mate = b;
+        a.state = 'court';
+        a.timer = 0;
+        a.path = null;
+      }
+    }
+    for (const m of [...this.mobs]) {
+      const o = m.mate;
+      if (!o || m.id > o.id) continue;
+      const a = m.body;
+      const b = o.body;
+      const gap = Math.max(Math.abs(a.x - b.x), Math.abs(a.z - b.z)) - a.halfWidth - b.halfWidth;
+      if (gap > B.meet || Math.abs(a.y - b.y) > 1) continue;
+      for (const p of [m, o]) {
+        p.love = 0;
+        p.mate = null;
+        p.wait = B.wait;
+        p.state = 'idle';
+        p.timer = 1;
+        p.path = null;
+      }
+      // At the cap, no young one (the parents wait all the same).
+      if (this.keptCount >= TUNING.mobs.kept) continue;
+      const young = createMob(this.nextId++, m.kind, (a.x + b.x) / 2, Math.max(a.y, b.y), (a.z + b.z) / 2, Math.floor(this.rng() * 0x7fffffff));
+      young.kept = true;
+      young.grow = B.grow;
+      young.lead = m;
+      fitBody(young);
+      this.mobs.push(young);
+      this.born.push(young);
+      this.sound(young, 'call');
+    }
+    for (const m of this.mobs) {
+      if (m.grow <= 0) {
+        m.lead = null;
+        continue;
+      }
+      if (m.lead && m.lead.grow <= 0 && this.mobs.includes(m.lead)) continue;
+      m.lead = null;
+      let bestD = B.lead;
+      let bestKept = false;
+      for (const o of this.mobs) {
+        if (o === m || o.kind !== m.kind || o.grow > 0) continue;
+        const d = Math.hypot(o.body.x - m.body.x, o.body.y - m.body.y, o.body.z - m.body.z);
+        if (d > B.lead || (bestKept && !o.kept) || (d > bestD && o.kept === bestKept)) continue;
+        m.lead = o;
+        bestD = d;
+        bestKept = o.kept;
+      }
+    }
   }
 
   /** Column (cx, cz) has loaded: its kept animals come back where they were. */
@@ -336,6 +463,7 @@ export class MobManager {
     mob.kept = true;
     mob.grow = r.grow;
     mob.wait = r.wait;
+    fitBody(mob);
     return mob;
   }
 

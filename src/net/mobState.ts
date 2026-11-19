@@ -1,5 +1,5 @@
 // Mobs on the wire, host → guests: what a guest needs to draw a mob (and its pose) and hit it,
-// 13 float32s a mob (52 bytes); and the sounds they made, 5 float32s each. Pure.
+// 14 float32s a mob (56 bytes); and the sounds they made, 5 float32s each. Pure.
 
 import type { Mob, MobState } from '../mobs/brain';
 import { KINDS, type MobKind } from '../mobs/kinds';
@@ -21,11 +21,13 @@ export interface MobSnap {
   /** Ground walked (its legs) and seconds since it was hit (its red flash; 99 if long ago). */
   walked: number;
   sinceHurt: number;
+  /** A young one's seconds left growing up (0: grown), for its size. */
+  grow: number;
 }
 
-const STATES: readonly MobState[] = ['idle', 'wander', 'flee', 'rest', 'hunt'];
+const STATES: readonly MobState[] = ['idle', 'wander', 'flee', 'rest', 'hunt', 'court'];
 const VOICES: readonly MobVoice[] = ['call', 'hurt', 'land', 'puff'];
-const MOB_FLOATS = 13;
+const MOB_FLOATS = 14;
 const SOUND_FLOATS = 5;
 /** Far beyond the world: a number like this is junk. */
 const FAR = 2 ** 21;
@@ -35,7 +37,7 @@ export function packMobs(mobs: readonly Mob[]): ArrayBuffer {
   mobs.forEach((m, i) => {
     const b = m.body;
     out.set(
-      [m.id, m.kind, b.x, b.y, b.z, m.yaw, STATES.indexOf(m.state), b.vx, b.vz, b.vy, b.onGround ? 1 : 0, m.walked, Math.min(m.sinceHurt, 99)],
+      [m.id, m.kind, b.x, b.y, b.z, m.yaw, STATES.indexOf(m.state), b.vx, b.vz, b.vy, b.onGround ? 1 : 0, m.walked, Math.min(m.sinceHurt, 99), m.grow],
       i * MOB_FLOATS,
     );
   });
@@ -48,11 +50,11 @@ export function unpackMobs(data: ArrayBuffer): MobSnap[] | null {
   const v = new Float32Array(data);
   const out: MobSnap[] = [];
   for (let i = 0; i < v.length; i += MOB_FLOATS) {
-    const [id, kind, x, y, z, yaw, state, vx, vz, vy, onGround, walked, sinceHurt] = v.subarray(i, i + MOB_FLOATS);
+    const [id, kind, x, y, z, yaw, state, vx, vz, vy, onGround, walked, sinceHurt, grow] = v.subarray(i, i + MOB_FLOATS);
     if (!v.subarray(i, i + MOB_FLOATS).every(Number.isFinite)) return null;
     if (!Number.isInteger(id) || id < 0 || !Number.isInteger(kind) || kind < 0 || kind >= KINDS.length || !Number.isInteger(state) || !STATES[state]) return null;
-    if (Math.abs(x) > FAR || Math.abs(z) > FAR || Math.abs(y) > 1024) return null;
-    out.push({ id, kind: kind as MobKind, x, y, z, yaw, state: STATES[state], vx, vz, vy, onGround: onGround !== 0, walked, sinceHurt });
+    if (Math.abs(x) > FAR || Math.abs(z) > FAR || Math.abs(y) > 1024 || grow < 0) return null;
+    out.push({ id, kind: kind as MobKind, x, y, z, yaw, state: STATES[state], vx, vz, vy, onGround: onGround !== 0, walked, sinceHurt, grow });
   }
   return out;
 }

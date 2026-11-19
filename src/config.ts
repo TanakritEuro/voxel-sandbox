@@ -316,6 +316,25 @@ export const TUNING = {
     max: 24,
     /** Most kept animals a world has (fed ones beyond it stay wild). */
     kept: 128,
+    /** Kept animals breeding (`mobs.ts`, `brain.ts`). */
+    breeding: {
+      /** Seconds a kept, grown animal fed while it may breed is in love. */
+      love: 30,
+      /** Two of a kind in love this near (blocks) court each other... */
+      near: 8,
+      /** ...and make a young one when their boxes are this close (blocks apart). */
+      meet: 0.4,
+      /** Seconds a parent waits before it may breed again. */
+      wait: 300,
+      /** Seconds a young one takes to grow up (from half size), and the part of that one feeding takes off. */
+      grow: 600,
+      feedGrow: 0.1,
+      /** How much faster a young one walks and runs. */
+      youngSpeed: 1.3,
+      /** A young one goes back to its parent when further than this (blocks); it looks for one this far. */
+      follow: 4,
+      lead: 16,
+    },
     /** How fast a mob's velocity turns towards the one it wants (blocks / s²), on the ground and in the air. */
     groundAccel: 30,
     airAccel: 8,

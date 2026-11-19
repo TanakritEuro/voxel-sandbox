@@ -327,6 +327,10 @@ function plantField(x: number, z: number): void {
 
 /** `?showcase`: one of each kind in front of the player once the ground is there. */
 let showcase = params.has('showcase');
+/** `?farmyard` (`?farmyard=32`): kept animals of every kind round the player once the ground is there, half of them young. */
+let farmyard = params.has('farmyard');
+/** Seconds until the next hearts over animals courting. */
+let untilLoveHearts = 0;
 /** The mobs line of `?stats`: how many of each kind, path searches a second since last read (and put off), time this frame. */
 function mobLine(): string {
   if (guest) return `${guest.mobs.mobs.length} near, run by the host`;
@@ -1793,6 +1797,11 @@ function frame(now: number): void {
       mobs.showcase(player.body.x, player.body.y, player.body.z, input.yaw, only.length ? only : undefined);
       showcase = false;
     }
+    if (farmyard && !player.waiting) {
+      mobs.farmyard(player.body.x, player.body.z, Math.max(1, Math.min(128, Number(params.get('farmyard')) || 32)));
+      farmyard = false;
+    }
+    for (const m of mobs.takeBorn()) hearts(m);
     mobView.update(mobs, world, daylightNow, now / 1000);
     const p = camera.position;
     for (const s of mobs.takeSounds()) {
@@ -1805,6 +1814,11 @@ function frame(now: number): void {
   if (guest && mobView) {
     guest.mobs.update(guest.clock());
     mobView.update(guest.mobs, world, daylightNow, now / 1000);
+  }
+  // Animals courting show it: hearts over them now and then.
+  if (worldRuns() && (untilLoveHearts -= dt) <= 0) {
+    untilLoveHearts = 1.2;
+    for (const m of shown ?? []) if (m.state === 'court') hearts(m);
   }
   playTogether(now);
   outline.visible = target !== null;

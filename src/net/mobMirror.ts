@@ -7,7 +7,7 @@
 // them as they take the host's (`MobView`). Pure.
 
 import { TUNING } from '../config';
-import { createMob, type Mob } from '../mobs/brain';
+import { createMob, fitBody, type Mob } from '../mobs/brain';
 import type { Before } from '../mobs/mobs';
 import type { MobView } from '../render/mobRenderer';
 import type { MobSnap } from './mobState';
@@ -91,6 +91,11 @@ export class MobMirror implements MobView {
       mob.yaw = lerpAngle(sa.yaw, sb.yaw, k);
       mob.state = near.state;
       mob.walked = lerp(sa.walked, sb.walked, k);
+      // A young one at its size, for drawing and the crosshair's ray.
+      if (mob.grow !== near.grow) {
+        mob.grow = near.grow;
+        fitBody(mob);
+      }
       // Its red flash fades on its own clock between snapshots.
       mob.sinceHurt = near.sinceHurt + Math.max(0, t - (k < 0.5 ? a.time : b.time));
     }

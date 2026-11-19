@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { SHADE } from '../mesh/mesher';
-import type { Mob } from '../mobs/brain';
+import { type Mob, sizeOf } from '../mobs/brain';
 import { MobKind } from '../mobs/kinds';
 import type { Before } from '../mobs/mobs';
 
@@ -63,6 +63,7 @@ interface Part {
 const m = new THREE.Matrix4();
 const place = new THREE.Matrix4();
 const step = new THREE.Matrix4();
+const scaled = new THREE.Vector3();
 const colour = new THREE.Color();
 
 export class MobRenderer {
@@ -109,7 +110,10 @@ export class MobRenderer {
       colour.setRGB(light, light * (1 - flash), light * (1 - flash), THREE.SRGBColorSpace);
       const pose = poseOf(mob, t);
       const head = MODELS[mob.kind].headPivot;
-      place.makeRotationY(yaw).setPosition(x, y - pose.drop, z);
+      // A young one smaller, all of it (`sizeOf`).
+      const size = sizeOf(mob);
+      place.makeRotationY(yaw).setPosition(x, y - pose.drop * size, z);
+      if (size !== 1) place.scale(scaled.set(size, size, size));
       for (const p of this.parts) {
         if (p.kind !== mob.kind) continue;
         const part = p.part;

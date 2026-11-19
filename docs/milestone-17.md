@@ -136,7 +136,7 @@ Everything invented; behaviour, spawning and saving tested headless; feel left f
 1. **Ambler and wader.** Kinds, models, textures, poses, voices, spawning; tests; `?showcase`. Done (2026-11-19).
 2. **Kept animals.** Food, feeding (and the guest's `feed`), keeping, the cap, storing by column,
    saving; tests. Done (2026-11-19).
-3. **Breeding and the young.** Love, `court`, births, waits, growing, following; tests; `?farmyard`.
+3. **Breeding and the young.** Love, `court`, births, waits, growing, following; tests; `?farmyard`. Done (2026-11-19).
 4. **The delver.** Kind, model, voice, spawning below its depth, drops; tests.
 5. **Measurements,** notes, playtest questions.
 
@@ -242,4 +242,53 @@ That would be a new behaviour; their home ground is at the water anyway.
   Fixed.
 - **Not looked at in the browser:** a kept animal saved and back after reloading a saved world, and
   after walking away and back (the tests cover both).
+
+## Step 3: breeding and the young (2026-11-19)
+
+**What's in:**
+- **`TUNING.mobs.breeding`:** love 30 s, courting within 8 blocks, meeting at 0.4 blocks apart, a parent's wait
+  300 s, growing up 600 s (feeding a young one takes a tenth off), the young 1.3 times as fast, going back to
+  their grown one beyond 4 blocks and looking for one within 16.
+- **Feeding (`MobManager.feed`):**
+  - a wild animal: kept, as before (not in love on the same feeding);
+  - a kept, grown one not waiting: in love;
+  - a young one: grows sooner;
+  - one in love already, or waiting: refused, so the food isn't spent.
+- **`Mob`** has `love`, `mate` and `lead`. `love` isn't saved: a world reloaded mid-courtship starts over.
+- **Courting:** once a frame the manager:
+  - lets go of pairs where either is out of love, not courting any more (hit, it flees) or gone;
+  - pairs each animal in love with the nearest of its kind in love within 8 blocks (both kept, not fleeing);
+  - when a pair's boxes meet: a young one between them, kept, half size, the parents out of love and waiting
+    5 minutes. At the kept cap no young one is born, and the parents wait all the same.
+- **`court` (`brain.ts`):** like the hunt: a way to the mate every second (none: not for 2 s, straight at it
+  meanwhile), at walking speed. Animals courting don't lie down at nightfall until they're done.
+- **The young:**
+  - `sizeOf`: half size at birth, whole when grown, linear in between. The box grows with it, only where it
+    fits (not into a wall or a ceiling); `fitBody` sets it at once (a birth, a load, a guest's mirror).
+  - 1.3 times as fast walking and running.
+  - each has a `lead`, the nearest grown one of its kind within 16 blocks, kept ones first. Idling more than
+    4 blocks from it, it walks back to it; more than 8, at once. Its wandering is half as far.
+- **Drawing:** the renderer scales the whole model by `sizeOf`.
+- **Hearts:** a burst at a birth, and every 1.2 s over each animal courting (guests too, from the mobs' state).
+- **Playing together:** mob states carry `grow` (14 floats, 56 bytes a mob); the mirror sizes the young one's
+  box and model from it. `court` added to the states sent. `PROTOCOL` 9.
+- **`?farmyard`** (`?farmyard=32`, at most 128): kept animals of every kind in turn, 3–12 blocks round you on any
+  animal's ground, every other one young at an age between born and nearly grown.
+- **Tests (8 new, 1 updated):**
+  - love from feeding, refused in love or waiting, a wild one only kept;
+  - two in love court, meet and make one young one, kept and half size, the parents waiting, and no more;
+  - not with another kind, not beyond 8 blocks, not wild, not while one waits;
+  - at the cap, no young one but the parents wait;
+  - growing to full size in its time, the box with it, sooner for feeding;
+  - a young one keeps near its grown one;
+  - a young one's age through `packMobs` and the mirror;
+  - `?farmyard`'s kinds and young.
+  - The mob packing test packs an age and checks 56 bytes.
+- **Tests run with frames of 0.1 s:** the mobs' fixed step runs at most 8 steps a frame, so frames of 0.25 s
+  stepped barely a quarter of the time.
+
+**In the browser** (`?seed=20261022&farmyard=40&survival&kit&nolock`):
+- the farmyard round the spawn: amblers, mossbacks, hoppers and goats, grown and young among them;
+- 115–120 fps; no console errors.
+- **Not looked at in the browser:** a pair fed and courting to a birth (the tests cover it).
 

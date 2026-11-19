@@ -10,6 +10,12 @@
 //           asking for the way again every second or when they've moved off, and hits them every
 //           so often (its kind's `hostile.every`) when within reach. It never rests or flees; a
 //           hit knocks it back a little.
+//   court   a kept animal in love paired with a mate (`mobs.ts` pairs them, and makes the young one
+//           when they meet): paths to the mate, asking again every second; straight at it with no way.
+//
+// A young one (`grow` above 0) is smaller, by its age (`sizeOf`), its box growing with it where there's
+// room; it walks and runs faster, and idling far from its `lead` (a grown one of its kind, chosen by
+// the manager) it goes back to it.
 //
 // Following a path: steer at the next waypoint's middle, jump when it's higher, on to the next
 // within `arrive`. No closer to it for `stuckSeconds` (a block placed in the way, another mob):
@@ -22,7 +28,7 @@ import { type BlockSource, type Body, createBody, HALF_WIDTH, HEIGHT, stepMob } 
 import { headroom, KINDS, type MobKind } from './kinds';
 import { findPath, type Path, type PathOptions } from './pathfind';
 
-export type MobState = 'idle' | 'wander' | 'flee' | 'rest' | 'hunt';
+export type MobState = 'idle' | 'wander' | 'flee' | 'rest' | 'hunt' | 'court';
 
 /** A player a hostile mob can hunt: where their feet are. */
 export interface Prey {
@@ -64,6 +70,11 @@ export interface Mob {
   /** Seconds left growing up (0: grown), and before it may breed again. */
   grow: number;
   wait: number;
+  /** Seconds left in love, and the mate it's courting (paired by the manager). */
+  love: number;
+  mate: Mob | null;
+  /** A young one's grown one to stay near. */
+  lead: Mob | null;
   readonly rng: Rng;
 }
 
@@ -116,8 +127,44 @@ export function createMob(id: number, kind: MobKind, x: number, y: number, z: nu
     kept: false,
     grow: 0,
     wait: 0,
+    love: 0,
+    mate: null,
+    lead: null,
     rng,
   };
+}
+
+/** How big a mob is drawn and bumps, of its kind's size: half when born, whole when grown. */
+export function sizeOf(mob: Mob): number {
+  return mob.grow > 0 ? 1 - 0.5 * Math.min(1, mob.grow / TUNING.mobs.breeding.grow) : 1;
+}
+
+/** Its box made its size now (a guest's mirror, or a young one born or loaded). */
+export function fitBody(mob: Mob): void {
+  const k = KINDS[mob.kind];
+  const s = sizeOf(mob);
+  mob.body.halfWidth = k.halfWidth * s;
+  mob.body.height = k.height * s;
+}
+
+/** A young one's box grows with it, but only where it fits (not into a wall or a ceiling). */
+function grow(mob: Mob, blocks: BlockSource): void {
+  const k = KINDS[mob.kind];
+  const s = sizeOf(mob);
+  const b = mob.body;
+  const w = k.halfWidth * s;
+  const h = k.height * s;
+  if (w <= b.halfWidth && h <= b.height) {
+    b.halfWidth = w;
+    b.height = h;
+    return;
+  }
+  const e = 1e-3;
+  for (let y = Math.floor(b.y + e); y <= Math.floor(b.y + h - e); y++)
+    for (let z = Math.floor(b.z - w + e); z <= Math.floor(b.z + w - e); z++)
+      for (let x = Math.floor(b.x - w + e); x <= Math.floor(b.x + w - e); x++) if (!BLOCKS[blocks.getBlock(x, y, z)].passable) return;
+  b.halfWidth = w;
+  b.height = h;
 }
 
 /** The block its feet are in. */
@@ -226,6 +273,41 @@ function hunt(mob: Mob, ctx: MobContext, dt: number): { speed: number; straight:
   return { speed: k.runSpeed, straight: [(dx / d) * k.runSpeed, (dz / d) * k.runSpeed] };
 }
 
+/**
+ * Courting: a way to the mate, asked for again every second (with none, not for 2 s); the speed to go
+ * along it, or a straight line at the mate with no way. Out of love or with no mate: idle again.
+ */
+function court(mob: Mob, ctx: MobContext, dt: number): { speed: number; straight: [number, number] | null } {
+  const k = KINDS[mob.kind];
+  const m = mob.mate;
+  if (!m || mob.love <= 0) {
+    mob.state = 'idle';
+    mob.timer = between(mob.rng, TUNING.mobs.idle);
+    mob.path = null;
+    mob.mate = null;
+    return { speed: 0, straight: null };
+  }
+  mob.timer -= dt;
+  if (mob.timer <= 0) {
+    const goal = feet(m);
+    const path = ctx.findPath(mob, feet(mob), goal, 1);
+    if (path === undefined) mob.timer = 0.2;
+    else if (path === null) {
+      mob.timer = 2;
+      mob.path = null;
+    } else {
+      mob.timer = 1;
+      setPath(mob, path, goal, 1);
+    }
+  }
+  if (mob.path) return { speed: k.walkSpeed, straight: null };
+  const dx = m.body.x - mob.body.x;
+  const dz = m.body.z - mob.body.z;
+  const d = Math.hypot(dx, dz);
+  if (d < 0.1) return { speed: 0, straight: [0, 0] };
+  return { speed: k.walkSpeed, straight: [(dx / d) * k.walkSpeed, (dz / d) * k.walkSpeed] };
+}
+
 /** Send the mob along a path to `goal` (within `near`); false if there's none (or it must wait). */
 export function goTo(mob: Mob, ctx: MobContext, goal: [number, number, number], near = 0): boolean {
   const path = ctx.findPath(mob, feet(mob), goal, near);
@@ -275,6 +357,13 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
   const k = KINDS[mob.kind];
   const b = mob.body;
   mob.sinceHurt += dt;
+  mob.love = Math.max(0, mob.love - dt);
+  mob.wait = Math.max(0, mob.wait - dt);
+  if (mob.grow > 0) {
+    mob.grow = Math.max(0, mob.grow - dt);
+    grow(mob, ctx.blocks);
+  }
+  const young = mob.grow > 0 ? M.breeding.youngSpeed : 1;
 
   // A hostile kind hunts the players it sees, and never rests.
   if (k.hostile) {
@@ -284,8 +373,14 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
       if (!mob.path) return moveAndTurn(mob, ctx, 0, 0, false, dt);
       return follow(mob, ctx, speed, dt);
     }
+  } else if (mob.state === 'court') {
+    const { speed, straight } = court(mob, ctx, dt);
+    if (mob.state === 'court') {
+      if (straight) return moveAndTurn(mob, ctx, straight[0] * young, straight[1] * young, false, dt);
+      return follow(mob, ctx, speed * young, dt);
+    }
   } else if (ctx.daylight < M.rest && mob.state !== 'flee' && mob.state !== 'rest') {
-    // Night: rest (unless running from something); morning: wake up.
+    // Night: rest (unless running from something or courting); morning: wake up.
     mob.state = 'rest';
     mob.path = null;
   } else if (mob.state === 'rest' && ctx.daylight > M.wake) {
@@ -296,9 +391,13 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
   let speed = 0;
   if (mob.state === 'idle') {
     mob.timer -= dt;
+    // A young one far from its grown one goes back to it at once.
+    const lead = mob.grow > 0 ? mob.lead : null;
+    const away = lead ? Math.hypot(lead.body.x - b.x, lead.body.z - b.z) : 0;
+    if (lead && away > M.breeding.follow * 2) mob.timer = Math.min(mob.timer, 0);
     if (mob.timer <= 0) {
-      const goal = placeToward(mob, ctx, mob.rng() * 2 * Math.PI, between(mob.rng, M.wander));
-      const found = goal ? goTo(mob, ctx, goal, 0) : false;
+      const goal = lead && away > M.breeding.follow ? feet(lead) : placeToward(mob, ctx, mob.rng() * 2 * Math.PI, between(mob.rng, M.wander) * (lead ? 0.5 : 1));
+      const found = goal ? goTo(mob, ctx, goal, lead && away > M.breeding.follow ? 2 : 0) : false;
       if (found) mob.state = 'wander';
       // No way there: look about a little longer, then try another place.
       else mob.timer = 0.5 + mob.rng();
@@ -326,10 +425,10 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
   } else if (mob.state === 'wander') {
     speed = k.walkSpeed;
   }
-  follow(mob, ctx, speed, dt);
+  follow(mob, ctx, speed * young, dt);
 }
 
-/** Along its path (if it has one, wandering, fleeing or hunting) at `speed`, then moving and turning. */
+/** Along its path (if it has one, wandering, fleeing, hunting or courting) at `speed`, then moving and turning. */
 function follow(mob: Mob, ctx: MobContext, speed: number, dt: number): void {
   const M = TUNING.mobs;
   const b = mob.body;
@@ -342,7 +441,7 @@ function follow(mob: Mob, ctx: MobContext, speed: number, dt: number): void {
     mob.state = 'idle';
     mob.timer = between(mob.rng, M.idle);
   }
-  if ((mob.state === 'wander' || mob.state === 'flee' || mob.state === 'hunt') && mob.path && mob.next < mob.path.length) {
+  if ((mob.state === 'wander' || mob.state === 'flee' || mob.state === 'hunt' || mob.state === 'court') && mob.path && mob.next < mob.path.length) {
     const w = mob.path[mob.next];
     const dx = w[0] + 0.5 - b.x;
     const dz = w[2] + 0.5 - b.z;

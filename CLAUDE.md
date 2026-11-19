@@ -149,7 +149,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, stepping up, light, day length, sleep, sky, mobs, water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
+  reach, stepping up, light, day length, sleep, sky, mobs (kept animals, breeding), water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
   wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
   eating, meat from animals, smelting time, items on the ground, farming), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
@@ -224,7 +224,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/mobs/` — `kinds.ts` (the six animals (the ambler in the savanna, the wader in the swamp) and the gloamer: size,
   speeds, climb and drop, biomes, ground, groups, health in points, how far the head nods walking (`headBob`), the `food`
   that feeds it (wheat, seeds or berries); `hostile`: sight, reach, hit, darkness to appear in, sun to fade in, how many), `brain.ts` (a mob: idle, wander, flee, rest, and hunt for hostile kinds (paths to the
-  nearest prey, hitting at reach every so often); following paths, jumping, getting
+  nearest prey, hitting at reach every so often), court for kept animals in love (paths to its mate); the young (`grow`)
+  smaller by age (`sizeOf`, `fitBody`, the box growing where it fits), faster, going back to their `lead`; following paths, jumping, getting
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
   spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
   or with the column, a cap, stepping at the fixed rate with a per-frame path search budget;
@@ -235,7 +236,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   cutting, swimming at the surface, through open doors and not closed ones, never over a fence, node and range limits; typed arrays reused between
   searches), `kept.ts` (`KeptAnimals`: kept animals whose columns
   aren't loaded, by column, stored and given back, cleaned from the world record's `animals`; a fed wild animal is kept, up to
-  `TUNING.mobs.kept`, never despawned, not counted in the wild cap: `MobManager.feed`, `columnLoaded`, `keptRecords`),
+  `TUNING.mobs.kept`, never despawned, not counted in the wild cap: `MobManager.feed`, `columnLoaded`, `keptRecords`;
+  breeding in `MobManager`: a kept, grown one fed while not waiting is in love, two of a kind in love near each other paired
+  to court, a young one born when they meet (`takeBorn`), the parents waiting; each young one given a grown one to follow;
+  `TUNING.mobs.breeding`),
   `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
   `World.getBlock`), `models.ts` (each kind's boxes, pivots, textures and how each part moves; pure
   data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
@@ -309,7 +313,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (8), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (9), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
   blocks; the world's mode in the welcome and when it changes, guests' survival states kept by name
@@ -328,7 +332,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   against where the guest was last heard; pure), `itemState.ts` (items on the ground 24 bytes each,
   host → guests), `playerState.ts` (a player's state packed in 80 bytes, asleep or not),
   `remotePlayer.ts` (states → where to draw someone now: 0.1 s behind, between states, guessed on
-  briefly past the newest), `mobState.ts` (mobs 52 bytes each and their sounds, host → guests),
+  briefly past the newest), `mobState.ts` (mobs 56 bytes each, a young one's age with them, and their sounds, host → guests),
   `mobMirror.ts` (a guest's mobs: real `Mob`s placed between the host's snapshots, for drawing and
   hitting), `traffic.ts` (bytes each way, counted by wrapping links and rooms, for `?stats`),
   `bot.ts` (`?bot`: a test guest in the page).
@@ -359,7 +363,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
-  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

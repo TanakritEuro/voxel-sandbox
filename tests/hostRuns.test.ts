@@ -26,20 +26,22 @@ const snap = (over: Partial<MobSnap> = {}): MobSnap => ({
   onGround: true,
   walked: 3,
   sinceHurt: 99,
+  grow: 0,
   ...over,
 });
 
 describe('mobs on the wire', () => {
-  it('pack 52 bytes a mob and come back as they were', () => {
+  it('pack 56 bytes a mob and come back as they were, a young one with its age', () => {
     const mob = createMob(7, MobKind.CragGoat, 10.5, 70, -4.25, 1);
     mob.yaw = 1;
     mob.state = 'flee';
     mob.walked = 3.5;
     mob.sinceHurt = 0.25;
+    mob.grow = 120;
     const data = packMobs([mob, createMob(8, MobKind.Hopper, 0.5, 64, 0.5, 2)]);
-    expect(data.byteLength).toBe(104);
+    expect(data.byteLength).toBe(112);
     const [a, b] = unpackMobs(data)!;
-    expect(a).toMatchObject({ id: 7, kind: MobKind.CragGoat, x: 10.5, y: 70, z: -4.25, state: 'flee', walked: 3.5, sinceHurt: 0.25, onGround: false });
+    expect(a).toMatchObject({ id: 7, kind: MobKind.CragGoat, x: 10.5, y: 70, z: -4.25, state: 'flee', walked: 3.5, sinceHurt: 0.25, onGround: false, grow: 120 });
     expect(a.yaw).toBeCloseTo(1, 6);
     expect(b.sinceHurt).toBe(99); // never hit: as long ago as it goes
     const sounds: MobSound[] = [{ voice: 'puff', kind: MobKind.Hopper, x: 1.5, y: 64, z: -2 }];
@@ -56,7 +58,8 @@ describe('mobs on the wire', () => {
     expect(bad(6, 9)).toBe(null); // no such state
     expect(bad(2, Number.NaN)).toBe(null);
     expect(bad(0, 1.5)).toBe(null);
-    expect(unpackMobs(new ArrayBuffer(51))).toBe(null);
+    expect(bad(13, -1)).toBe(null); // younger than born
+    expect(unpackMobs(new ArrayBuffer(55))).toBe(null);
   });
 });
 
