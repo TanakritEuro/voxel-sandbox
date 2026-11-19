@@ -9,15 +9,17 @@ import { lightColumn } from '../world/light';
 import { chunkRegions } from '../world/visibility';
 import type { Job, JobResult } from './protocol';
 
-const generators = new Map<number, Generator>();
+/** By seed and generation version. */
+const generators = new Map<string, Generator>();
 
 export function handleJob(job: Job): JobResult {
   const t0 = performance.now();
   if (job.kind === 'generate') {
-    let generator = generators.get(job.seed);
+    const key = `${job.seed}/${job.generation}`;
+    let generator = generators.get(key);
     if (!generator) {
-      generator = new Generator(job.seed);
-      generators.set(job.seed, generator);
+      generator = new Generator(job.seed, { generation: job.generation });
+      generators.set(key, generator);
     }
     const chunks = generator.generateColumn(job.cx, job.cz, job.cyMin, job.cyMax);
     // Edited chunks as they were saved, in place of the generated ones.

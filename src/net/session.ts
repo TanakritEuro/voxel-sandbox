@@ -14,6 +14,7 @@
 // the column is added. A column being made while the edit arrived (asked for, or generating)
 // would miss it otherwise; for one the host's answer already had, making it again changes nothing.
 
+import type { Generation } from '../world/generate';
 import type { WorldMode } from '../save/store';
 import type { ChunkSaves } from '../chunkLoader';
 import { TUNING } from '../config';
@@ -35,6 +36,8 @@ import { type BlockChange, checkChunk, MAX_PLAYERS, type Message, packEdits, par
 /** What the host's game gives its session. */
 export interface HostWorld {
   seed: number;
+  /** Its generation version (`world/generate.ts`). */
+  generation: Generation;
   /** Time of day now, 0–1. */
   time(): number;
   /** Where the host stands. */
@@ -254,6 +257,7 @@ export class HostSession {
         type: 'welcome',
         you: id,
         seed: this.world.seed,
+        generation: this.world.generation,
         time: this.world.time(),
         players: this.players,
         at: this.world.position(),

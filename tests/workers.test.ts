@@ -21,7 +21,7 @@ function send<T>(message: T, transfer: ArrayBuffer[]): T {
 
 describe('chunk worker jobs', () => {
   it('generate and light a column, transferring every non-empty chunk and every light array', () => {
-    const result = handleJob({ kind: 'generate', id: 7, seed: 20261022, cx: 2, cz: -3, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved: [] });
+    const result = handleJob({ kind: 'generate', id: 7, seed: 20261022, generation: 1, cx: 2, cz: -3, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved: [] });
     const expected = new Generator(20261022).generateColumn(2, -3, MIN_CHUNK_Y, MAX_CHUNK_Y);
     if (result.kind !== 'generate') throw new Error('wrong kind');
     expect(result.id).toBe(7);
@@ -44,7 +44,7 @@ describe('chunk worker jobs', () => {
   it('put saved chunks in place of the generated ones, and light the column with them', () => {
     const edited = new Uint8Array(CHUNK_VOLUME).fill(Block.Lamp, 0, 32); // a row of lamps in the air
     const saved = [{ cy: MAX_CHUNK_Y, data: encodeRle(edited) }];
-    const job = { kind: 'generate' as const, id: 8, seed: 20261022, cx: 2, cz: -3, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved };
+    const job = { kind: 'generate' as const, id: 8, seed: 20261022, generation: 1 as const, cx: 2, cz: -3, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved };
     expect(jobTransferables(job)).toEqual([saved[0].data.buffer]);
     const result = handleJob(send(job, jobTransferables(job)));
     if (result.kind !== 'generate') throw new Error('wrong kind');

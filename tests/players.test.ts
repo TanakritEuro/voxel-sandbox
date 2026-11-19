@@ -109,6 +109,7 @@ describe('another player, drawn', () => {
 describe('states over the network', () => {
   const world: HostWorld = {
     seed: 1,
+    generation: 1,
     time: () => 0.5,
     position: () => [0, 70, 0],
     editedColumns: () => [],

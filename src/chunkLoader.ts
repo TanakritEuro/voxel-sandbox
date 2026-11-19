@@ -511,7 +511,7 @@ export class ChunkLoader {
           this.read.delete(key);
           this.generating.add(key);
           this.running++;
-          this.runner.run({ kind: 'generate', id: this.nextId++, seed: world.generator.seed, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
+          this.runner.run({ kind: 'generate', id: this.nextId++, seed: world.generator.seed, generation: world.generator.options.generation, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
           continue;
         }
         if (!col.mesh) {

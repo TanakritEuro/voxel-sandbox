@@ -6,6 +6,7 @@
 // generates the land itself from the seed, so both must make exactly the same land.
 // Mismatched versions are turned away.
 
+import type { Generation } from '../world/generate';
 import type { WorldMode } from '../save/store';
 import { CHEST_SLOTS } from '../survival/chest';
 import { Inventory, type Stack } from '../survival/inventory';
@@ -15,7 +16,7 @@ import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/c
 import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackState } from './playerState';
 
-export const PROTOCOL = 5;
+export const PROTOCOL = 6;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;
@@ -44,6 +45,8 @@ export type Message =
       type: 'welcome';
       you: number;
       seed: number;
+      /** The world's generation version. */
+      generation: Generation;
       time: number;
       players: PlayerInfo[];
       at: [number, number, number];
@@ -215,10 +218,12 @@ export function parseMessage(raw: unknown): Message | null {
       if (!Array.isArray(raw.at) || raw.at.length !== 3 || !raw.at.every(isNumber)) return null;
       if (!Array.isArray(raw.edited) || raw.edited.length % 2 !== 0 || raw.edited.length > 2 * 65536 || !raw.edited.every(isChunkCoord)) return null;
       if (!isMode(raw.mode) || (raw.kept !== null && !isKept(raw.kept))) return null;
+      if (raw.generation !== 1 && raw.generation !== 2) return null;
       return {
         type: 'welcome',
         you: raw.you,
         seed: raw.seed,
+        generation: raw.generation,
         time: raw.time,
         players: players as PlayerInfo[],
         at: raw.at as [number, number, number],

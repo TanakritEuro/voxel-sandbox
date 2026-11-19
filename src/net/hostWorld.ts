@@ -82,6 +82,7 @@ export const settable = (block: number): boolean =>
 export function hostWorld(world: World, saver: WorldSaver, game: HostGame): HostWorld {
   return {
     seed: world.generator.seed,
+    generation: world.generator.options.generation,
     time: () => game.time(),
     position: () => game.position(),
     editedColumns: () => {

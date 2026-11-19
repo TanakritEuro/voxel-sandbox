@@ -1,3 +1,4 @@
+import type { Generation } from '../src/world/generate';
 import { describe, expect, it } from 'vitest';
 import { hostWorld } from '../src/net/hostWorld';
 import { Network } from '../src/net/loopback';
@@ -53,8 +54,8 @@ function setup(delay = 0.04, jitter = 0.02) {
 
 type Env = ReturnType<typeof setup>;
 
-async function makeHost(env: Env) {
-  const world = new World(SEED);
+async function makeHost(env: Env, generation: Generation = 1) {
+  const world = new World(SEED, { generation });
   for (const [cx, cz] of COLUMNS) world.ensureColumn(cx, cz);
   const saver = await WorldSaver.open(new MemoryStore(), newWorldRecord('w', 'World', SEED, 0.3));
   const allow = { ok: true };
@@ -106,12 +107,12 @@ async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, n
   const { guest } = host.room.join();
   const session = new GuestSession(guest, name, env.now);
   const welcome = await env.until(session.welcome);
-  const world = new World(welcome.seed);
+  const world = new World(welcome.seed, { generation: welcome.generation });
   session.attach({ apply: (changes) => world.setBlocks(changes), hasColumn: (cx, cz) => world.hasColumn(cx, cz) });
   /** Load a column as the game's loader does: its edited chunks from the host first, then generated with them. */
   const load = async (cx: number, cz: number) => {
     const saved = session.saves.has(cx, cz) ? await env.until(session.saves.load(cx, cz)) : [];
-    const r = handleJob({ kind: 'generate', id: 1, seed: welcome.seed, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
+    const r = handleJob({ kind: 'generate', id: 1, seed: welcome.seed, generation: welcome.generation, cx, cz, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
     if (r.kind !== 'generate') throw new Error('not generated');
     world.addColumn(cx, cz, r.chunks, r.regions, r.light);
     session.columnAdded(cx, cz);
@@ -168,6 +169,16 @@ describe('joining', () => {
     expect(g.session.saves.has(-1, 1)).toBe(true);
     expect(g.session.saves.has(1, 1)).toBe(false);
     expect(host.session.players.map((p) => p.name)).toEqual(['Host', 'Pim']);
+  });
+
+  it("gives a guest the world's generation version", async () => {
+    for (const generation of [1, 2] as Generation[]) {
+      const env = setup();
+      const host = await makeHost(env, generation);
+      const { welcome, world } = await makeGuest(env, host, 'Ann');
+      expect(welcome.generation).toBe(generation);
+      expect(world.generator.options.generation).toBe(generation);
+    }
   });
 
   it('turns away a fourth guest and another version, and tells the others who joins and leaves', async () => {
@@ -285,7 +296,7 @@ describe('the world over the network', () => {
     const y = surface(host.world, 50, 33);
     host.hostEdit(50, y, 33, Block.Lamp);
     await env.pump(0.3);
-    const r = handleJob({ kind: 'generate', id: 1, seed: SEED, cx: 1, cz: 1, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
+    const r = handleJob({ kind: 'generate', id: 1, seed: SEED, generation: 1, cx: 1, cz: 1, cyMin: MIN_CHUNK_Y, cyMax: MAX_CHUNK_Y, saved });
     if (r.kind !== 'generate') throw new Error('not generated');
     g.world.addColumn(1, 1, r.chunks, r.regions, r.light);
     g.session.columnAdded(1, 1);

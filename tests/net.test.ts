@@ -143,8 +143,9 @@ describe('messages', () => {
   ];
   const good: Message[] = [
     { type: 'hello', version: PROTOCOL, name: 'Pim' },
-    { type: 'welcome', you: 2, seed: 20261022, time: 0.25, players, at: [10.5, 70, -3.5], edited: [0, 0, -1, 4], mode: 'survival', kept: { inventory: [null, { item: 1, count: 3 }], health: { health: 12, air: 10 } } },
-    { type: 'welcome', you: 2, seed: 20261022, time: 0.25, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
+    { type: 'welcome', you: 2, seed: 20261022, generation: 2, time: 0.25, players, at: [10.5, 70, -3.5], edited: [0, 0, -1, 4], mode: 'survival', kept: { inventory: [null, { item: 1, count: 3 }], health: { health: 12, air: 10 } } },
+    { type: 'welcome', you: 2, seed: 20261022, generation: 2, time: 0.25, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
+    { type: 'welcome', you: 2, seed: 20261022, generation: 1, time: 0.25, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
     { type: 'mode', mode: 'creative' },
     { type: 'kept', survival: { inventory: [], health: { health: 20, air: 10 } } },
     { type: 'reject', reason: 'This world is full.' },

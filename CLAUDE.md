@@ -26,6 +26,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 16 (world, part two: rivers, savanna and swamp, ruins and camps with loot, behind a generation
+version) in progress, plan approved (`docs/milestone-16.md`).
 Milestones 1–15 built (`docs/milestone-1.md` to `docs/milestone-15.md`), waiting for playtests
 (Milestone 15, cave culling: visibility by open region instead of by chunk, a chunk's open regions linked
 to its neighbours' across its faces, the walk from the eye's region, every quad meshed into the group of the
@@ -165,7 +167,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `blockBoxes`: any block's boxes as drawn), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
-  (climate, biome weights, blended heights), `generate.ts` (column jobs: height map with a
+  (climate, biome weights, blended heights), `generate.ts` (`Generation`: a world's generation version, 1 before Milestone 16 and 2 since, `GENERATION` the
+  newest, `generationOf` cleaning a saved one; a `Generator` is version 1 unless told; column jobs: height map with a
   border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
   `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `light.ts` (sunlight and block
@@ -278,7 +281,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   voices panned to their side, volume, mute).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
-  inventory, health and bed), `furnaces`, `containers` (chests), `crops` and `guests` (guests' survival states by name)), `saver.ts` (`WorldSaver`: which chunks a world
+  inventory, health and bed), `furnaces`, `containers` (chests), `crops`, `guests` (guests' survival states by name) and `generation` (missing in older worlds: 1)), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -290,7 +293,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (5), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (6), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
   blocks; the world's mode in the welcome and when it changes, guests' survival states kept by name

@@ -97,11 +97,26 @@ export function columnLayers(info: ColumnInfo): Run[] {
   return runs;
 }
 
-/** Generation passes that can be switched off (all on by default), for tests that compare with and without them. */
+/**
+ * Versions of world generation. A world keeps the version it was made with, so land it hasn't
+ * edited yet comes out the same next to land it has: 1 is the world before Milestone 16, 2 adds
+ * rivers, savanna and swamp, and structures.
+ */
+export type Generation = 1 | 2;
+/** The version new worlds get. */
+export const GENERATION: Generation = 2;
+/** A version as saved or sent: 2 if it says so, else 1 (worlds from before versions say nothing). */
+export const generationOf = (v: unknown): Generation => (v === 2 ? 2 : 1);
+
+/**
+ * Generation passes that can be switched off (all on by default), for tests that compare with and
+ * without them; and the version (1 unless given: the game always gives a world's own).
+ */
 export interface GeneratorOptions {
   caves?: boolean;
   ores?: boolean;
   trees?: boolean;
+  generation?: Generation;
 }
 
 /** Just the terrain's layers: for tests of the surface. */
@@ -133,7 +148,7 @@ export class Generator {
     readonly seed: number,
     options: GeneratorOptions = {},
   ) {
-    this.options = { caves: true, ores: true, trees: true, ...options };
+    this.options = { caves: true, ores: true, trees: true, generation: 1, ...options };
     this.climate = new Climate(seed);
     this.caves = new Caves(seed);
     this.detail = new Noise(seed ^ 0x51e7);

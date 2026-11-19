@@ -130,6 +130,7 @@ describe('what the host runs, for its guests', () => {
     const hits: [number, number, number][] = [];
     const world: HostWorld = {
       seed: 1,
+      generation: 1,
       time: () => 0.4,
       position: () => [0, 70, 0],
       editedColumns: () => [],

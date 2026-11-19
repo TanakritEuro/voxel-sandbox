@@ -4,6 +4,7 @@
 import type { Lod } from '../mesh/lod';
 import type { ChunkMesh } from '../mesh/mesher';
 import type { PackedLight } from '../world/light';
+import type { Generation } from '../world/generate';
 import type { Regions } from '../world/visibility';
 
 /** A saved chunk of a column: its height and its blocks, RLE-encoded (`save/rle.ts`). */
@@ -17,6 +18,8 @@ export type Job =
       kind: 'generate';
       id: number;
       seed: number;
+      /** The world's generation version (`world/generate.ts`). */
+      generation: Generation;
       cx: number;
       cz: number;
       cyMin: number;

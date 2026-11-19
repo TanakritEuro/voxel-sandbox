@@ -2,6 +2,7 @@
 // `?at=`, `?autofly`): world, saving, chunk loading, the player, block editing, the HUD and
 // the pause menu.
 
+import { generationOf } from './world/generate';
 import * as THREE from 'three';
 import { heard, SoundCues, underfoot } from './audio/cues';
 import { Sound } from './audio/sound';
@@ -169,7 +170,7 @@ if (!unsaved && !found) {
 const record =
   found ??
   (welcome
-    ? newWorldRecord('guest', `${hostName}’s world`, welcome.seed, welcome.time)
+    ? newWorldRecord('guest', `${hostName}’s world`, welcome.seed, welcome.time, 'creative', welcome.generation)
     : newWorldRecord('unsaved', 'Unsaved world', Number(params.get('seed') ?? TUNING.world.seed), TUNING.day.start, params.has('survival') ? 'survival' : 'creative'));
 // A guest starts where the host stands.
 if (welcome) record.player = { x: welcome.at[0], y: welcome.at[1], z: welcome.at[2], yaw: 0, pitch: 0, flying: false };
@@ -223,7 +224,7 @@ const chests = Chests.from(record.containers);
 const crops = Crops.from(record.crops);
 let time = timeHeld ? Number(timeParam) : record.time;
 
-const world = new World(record.seed);
+const world = new World(record.seed, { generation: generationOf(record.generation) });
 // Sounds wait for the first click or key (browsers allow audio only after a gesture).
 const sound = new Sound(settings.volume, settings.muted);
 const cues = new SoundCues();
