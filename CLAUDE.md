@@ -26,10 +26,12 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 17 (creatures, part two: the ambler and the wader, keeping and breeding animals, the delver in deep
-caves) in progress, plan approved (`docs/milestone-17.md`).
-Milestones 1–16 built (`docs/milestone-1.md` to `docs/milestone-16.md`), waiting for playtests
-(Milestone 16, world, part two, for worlds made from now on (generation version 2; older worlds keep their
+Milestones 1–17 built (`docs/milestone-1.md` to `docs/milestone-17.md`), waiting for playtests
+(Milestone 17, creatures, part two: the ambler on the savanna and the wader in the swamp; an animal fed its food
+(wheat, seeds or berries) is kept, saved with the world and never despawned, up to 128; kept animals fed again fall
+in love, court and have young that grow up in 10 minutes following a grown one; the delver, slow, tough and hitting
+hard, only in the dark below y 40, leaving raw iron; `?farmyard`, `?showcase=delver`;
+Milestone 16, world, part two, for worlds made from now on (generation version 2; older worlds keep their
 land, pinned by checksums): rivers cut down to the sea's level and fading before the mountains; savanna (dry grass,
 parasol trees) and swamp (mud, pools, swamp oaks), reeds by the water; ruins and camps about every 270 blocks
 with a chest each, filled from its loot once; stone and mossy bricks; `?find=river|savanna|swamp|ruin|camp`;

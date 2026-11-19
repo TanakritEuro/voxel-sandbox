@@ -68,6 +68,18 @@ describe('kept animals', () => {
     expect(m.mobs).not.toContain(wild);
   });
 
+  it('leave room for wild ones to spawn however many there are', () => {
+    // A cap of 4, and 10 kept animals already about.
+    const m = new MobManager(world, 5, 4);
+    for (let i = 0; i < 10; i++) {
+      const mob = createMob(100 + i, MobKind.Mossback, 10.5 + i, top(10 + i, 10), 10.5, i);
+      mob.kept = true;
+      m.mobs.push(mob);
+    }
+    for (let i = 0; i < 4000 && m.mobs.filter((x) => !x.kept).length < 4; i++) m.trySpawn(10, 10);
+    expect(m.mobs.filter((x) => !x.kept)).toHaveLength(4);
+  });
+
   it('are stored when their column unloads and come back where they were when it loads', () => {
     const own = new World(20261022);
     for (let cz = -1; cz <= 1; cz++) for (let cx = -1; cx <= 1; cx++) own.ensureColumn(cx, cz);

@@ -531,7 +531,9 @@ export class MobManager {
     const [lo, hi] = info.group;
     const size = lo + Math.floor(this.rng() * (hi - lo + 1));
     let made = 0;
-    for (let i = 0; i < size * 3 && made < size && this.mobs.length < this.cap; i++) {
+    // Wild ones up to the cap (kept animals and hostile ones aren't counted).
+    let wild = this.animals();
+    for (let i = 0; i < size * 3 && made < size && wild < this.cap; i++) {
       // The first where the try was, the rest a few blocks round it.
       const gx = i === 0 ? x : x + Math.floor((this.rng() - 0.5) * 7);
       const gz = i === 0 ? z : z + Math.floor((this.rng() - 0.5) * 7);
@@ -540,6 +542,7 @@ export class MobManager {
       if (y === null) continue;
       this.mobs.push(createMob(this.nextId++, kind, gx + 0.5, y, gz + 0.5, Math.floor(this.rng() * 0x7fffffff)));
       made++;
+      wild++;
     }
     return made > 0;
   }

@@ -14,7 +14,8 @@ import { TUNING } from '../src/config';
 import { createRng } from '../src/math';
 import { BlockCache } from '../src/mobs/blockCache';
 import { createMob, type Mob, type MobContext, pathOptions, stepBrain } from '../src/mobs/brain';
-import { MobKind } from '../src/mobs/kinds';
+import { KINDS, MobKind } from '../src/mobs/kinds';
+import { KeptAnimals } from '../src/mobs/kept';
 import { MobManager } from '../src/mobs/mobs';
 import { findPath } from '../src/mobs/pathfind';
 import { meshCulled } from '../src/mesh/culled';
@@ -738,6 +739,80 @@ it('gloamers at noon', () => {
   }
   console.log(
     `\ngloamers at noon: ${m.mobs.length} in caves round a player (${hunting} hunting at most), 10 s: ${hits} hits on the player, ${m.searches - searches} path searches; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}, over 2 ms ${times.filter((t) => t > 2).length} frames\n`,
+  );
+});
+
+it('kept animals', () => {
+  // The mob manager round a player at the spawn with nearly every kept animal a world may have (112 of 128, by
+  // `?farmyard`: every kind, half of them young) and the wild ones (up to 24) coming and going round
+  // them; a fifth of the grown ones fed so they court and breed. 60 s of it, a frame at a time.
+  // Then saving and loading them all as the world record does (JSON).
+  const world = new World(SEED);
+  const spawn = world.generator.findLand(0, 0);
+  for (let cz = toChunk(spawn.z) - 3; cz <= toChunk(spawn.z) + 3; cz++) for (let cx = toChunk(spawn.x) - 3; cx <= toChunk(spawn.x) + 3; cx++) world.ensureColumn(cx, cz);
+  const m = new MobManager(world, 9, 24);
+  // 16 short of the cap, so there's room for young ones.
+  const made = m.farmyard(spawn.x + 0.5, spawn.z + 0.5, TUNING.mobs.kept - 16);
+  const grown = m.mobs.filter((x) => x.grow === 0);
+  grown.slice(0, Math.floor(grown.length / 5)).forEach((x) => m.feed(x, KINDS[x.kind].food!));
+  const times: number[] = [];
+  let born = 0;
+  let courting = 0;
+  for (let f = 0; f < 3600; f++) {
+    m.update(1 / 60, [[spawn.x + 0.5, spawn.z + 0.5]], 1);
+    times.push(m.ms);
+    born += m.takeBorn().length;
+    courting = Math.max(courting, m.mobs.filter((x) => x.state === 'court').length);
+  }
+  const wild = m.mobs.filter((x) => !x.kept).length;
+  const out: number[] = [];
+  const back: number[] = [];
+  let bytes = 0;
+  for (let run = 0; run <= RUNS; run++) {
+    const t0 = performance.now();
+    const json = JSON.stringify(m.keptRecords());
+    const t1 = performance.now();
+    KeptAnimals.from(JSON.parse(json));
+    const t2 = performance.now();
+    bytes = json.length;
+    if (run > 0) {
+      out.push(t1 - t0);
+      back.push(t2 - t1);
+    }
+  }
+  console.log(
+    `\nkept animals: ${made} kept (${m.keptCount} at the end, ${born} born, ${courting} courting at most) and ${wild} wild round a player, 60 s: ` +
+      `${m.searches} path searches (${m.deferred} put off); ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}; ` +
+      `saving ${median(out).toFixed(3)} ms, loading ${median(back).toFixed(3)} ms, ${(bytes / 1024).toFixed(1)} KB\n`,
+  );
+});
+
+it('delvers', () => {
+  // A player in a dark room dug 69 x 69 blocks wide at y 20-21 under the spawn, as the game steps the
+  // manager: animals off, delvers and gloamers appearing in the dark round them up to their caps and
+  // coming for them. Gathered for up to a minute, then 10 s.
+  const world = new World(SEED);
+  const spawn = world.generator.findLand(0, 0);
+  for (let cz = toChunk(spawn.z) - 3; cz <= toChunk(spawn.z) + 3; cz++) for (let cx = toChunk(spawn.x) - 3; cx <= toChunk(spawn.x) + 3; cx++) world.ensureColumn(cx, cz);
+  const room: [number, number, number, Block][] = [];
+  for (let z = -34; z <= 34; z++) for (let x = -34; x <= 34; x++) room.push([spawn.x + x, 20, spawn.z + z, Block.Air], [spawn.x + x, 21, spawn.z + z, Block.Air]);
+  world.setBlocks(room);
+  const player = { x: spawn.x + 0.5, y: 20, z: spawn.z + 0.5 };
+  const m = new MobManager(world, 9, 0);
+  for (let f = 0; f < 3600 && m.mobs.filter((x) => x.kind === MobKind.Delver).length < 2; f++) m.update(1 / 60, [[player.x, player.z]], 1, [player]);
+  const times: number[] = [];
+  let hits = 0;
+  let hunting = 0;
+  const searches = m.searches;
+  for (let f = 0; f < 600; f++) {
+    m.update(1 / 60, [[player.x, player.z]], 1, [player]);
+    times.push(m.ms);
+    hits += m.takeAttacks().length;
+    hunting = Math.max(hunting, m.mobs.filter((g) => g.state === 'hunt').length);
+  }
+  const delvers = m.mobs.filter((x) => x.kind === MobKind.Delver).length;
+  console.log(
+    `\ndelvers: ${delvers} delvers and ${m.mobs.length - delvers} gloamers in a room under the spawn round a player (${hunting} hunting at most), 10 s: ${hits} hits on the player, ${m.searches - searches} path searches; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}\n`,
   );
 });
 

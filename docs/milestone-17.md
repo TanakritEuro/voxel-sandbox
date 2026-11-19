@@ -1,6 +1,6 @@
 # Milestone 17: creatures, part two
 
-**Status:** plan approved (2026-11-19); step 1 in progress.
+**Status:** built (2026-11-19), waiting for playtests.
 
 ## Goal
 
@@ -138,7 +138,7 @@ Everything invented; behaviour, spawning and saving tested headless; feel left f
    saving; tests. Done (2026-11-19).
 3. **Breeding and the young.** Love, `court`, births, waits, growing, following; tests; `?farmyard`. Done (2026-11-19).
 4. **The delver.** Kind, model, voice, spawning below its depth, drops; tests. Done (2026-11-19).
-5. **Measurements,** notes, playtest questions.
+5. **Measurements,** notes, playtest questions. Done (2026-11-19).
 
 ## Decisions to agree
 
@@ -338,4 +338,82 @@ broader and lower than a mossback; no console errors. The first hide's diagonal 
 they became scattered flecks.
 
 **Not looked at in the browser:** a delver hunting in a real cave (the tests cover appearing and hunting).
+
+## Step 5: measurements (2026-11-19)
+
+**A bug found measuring:** wild animals stopped spawning once there were as many kept animals as the wild
+cap (24). The cap itself left kept ones out, but the loop placing a group still counted every mob. It now counts
+wild ones only. Test added (kept animals about, wild ones still come); it fails without the fix.
+
+**Bench** (`npm run bench`, the server stopped; the same machine as Milestone 16's slow day, so compare ratios):
+
+| | |
+| --- | --- |
+| `mobs` (24 wild, 60 s) | 0.096 ms a frame median, p95 0.268, max 2.2 (step 1: 0.079 median); 168 path searches, as before |
+| `kept animals` (new) | 112 kept by `?farmyard` (half young), a fifth of the grown fed, 24 wild round them, 60 s: 0.90 ms a frame median, p95 1.85, max 9.3; 1000 path searches (170 put off); 4 born, 6 courting at most |
+| Saving and loading them | 0.09 ms to JSON, 0.14 ms back (`KeptAnimals.from`), 10.6 KB for 116 |
+| `delvers` (new) | a player in a dark room under the spawn: 2 delvers and 3 gloamers came, 2 hunting at most; 10 s: 2 hits, 14 path searches; 0.048 ms a frame median, p95 0.137, max 4.6 |
+| `gloamers`, `gloamers at noon` | 0.024 and 0.065 ms median, about as before |
+| Generation | 3.3 ms a column (version 1 3.8, version 2 4.3, the same 13% apart): not touched |
+
+- **The slow frames with 136 animals are each one path search** (5–10 ms under Vitest) that goes through all its
+  nodes without finding a way. Logged: mostly an idle animal picking a place to wander 2–4 blocks up the slope
+  by the spawn and finding no way up, as since Milestone 7; a few young ones' and one courting. The per-frame budget
+  lets at most one such search start late in a frame. Crowding 136 animals onto one slope makes them common;
+  spread over a farm, fewer.
+- **The first run's farmyard was the whole cap (128),** so no young could be born and none were; it now leaves
+  16 places.
+
+**In the browser** (`?seed=20261022&farmyard=112&survival&stats`, at the spawn):
+
+| | with the farmyard (137–138 mobs) | without (27 mobs) |
+| --- | --- | --- |
+| fps | 120 | 120 |
+| main thread | 1.8–2.9 ms average, 4.3 max | 2.4 ms average, 2.9 max |
+| mobs | 0.40–0.50 ms a frame | 0.30 ms |
+| frames over 20 ms since load | 5 after 10 s, 6 after 30 s | 3 after 30 s |
+
+The farmyard adds two or three frames over 20 ms while it loads, then about one per 20 s. No console errors.
+
+**Not measured:** a laptop; playing together with kept animals and young (the session and mirror tests cover
+feeding, ages and the delver's hits).
+
+**Changed from the plan, over the milestone:**
+- **Waders** swim and spawn by the water, but don't seek it out or float at rest.
+- **The first feeding only keeps a wild animal;** it falls in love from the next one. Feeding one in love
+  already or waiting is refused and the food kept; feeding a young one takes a tenth off its growing.
+- **No young one at the kept cap,** but the parents wait all the same.
+- **A young one follows the nearest grown one of its kind** (kept first), not only its parent, so one loaded
+  from a save has someone to follow.
+- **Delvers** appear only round a player who is below y 40 too, at most 2 for each, 16–32 blocks away; hostile kinds
+  take turns at being tried first.
+- **`PROTOCOL`** went to 8 (feeding), 9 (ages in mob states) and 10 (the delver, the kind in `hurt`), as each step
+  went out.
+- **The bench** has `kept animals` (112, not 128, to leave room for births) and `delvers`.
+- **Fixed on the way:** wild animals no longer stop spawning because of kept ones.
+
+## Playtest questions
+
+Use a survival world. `?farmyard` puts kept animals round you; `?showcase=ambler,wader,delver` stands the new
+kinds in front of you; `?find=savanna` and `?find=swamp` take you to the amblers and waders.
+
+1. **Amblers and waders:** do they look and move right: the ambler's long neck nodding, the wader's waddle and
+   swimming? Are there about the right number?
+2. **Feeding:** is right-clicking an animal with its food clear enough? Would you know which food is whose without
+   being told (wheat for mossbacks, goats and amblers; seeds for hoppers; berries for beetles and waders)?
+3. **Kept animals:** walk away from your animals and come back, and save, quit and reload. Are they all where you
+   left them?
+4. **Breeding:**
+   - feeding two kept ones of a kind: do they find each other and is it clear when they're in love (the hearts)?
+   - is 5 minutes before they breed again about right?
+5. **The young:** do they look right at half size, and does growing up over 10 minutes feel right? Do they keep
+   close to a grown one without getting in the way?
+6. **The delver:**
+   - down in caves below y 40: is it worth the trouble? Is it frightening, too slow to matter, or too hard
+     (4 points every 2 s, 12 to kill)?
+   - is 1–2 raw iron a fair reward?
+   - does it ever come up somewhere you didn't expect?
+7. **Many animals:** with a big farm (`?farmyard=100`), do you notice any hitches?
+8. **Together:** does a guest's feeding work, do guests see the young at their size, and does a delver's hit on a
+   guest say so when they die?
 
