@@ -22,8 +22,14 @@ function matches(g: Generator, kind: Findable, x: number, z: number): boolean {
       return false; // searched by cell, in `findNearest`
     case 'savanna':
     case 'swamp':
-      // Well inside it (most of the weight), on dry land.
-      return g.climate.weights(x, z)[kind === 'savanna' ? Biome.Savanna : Biome.Swamp] > 0.7 && g.height(x, z) >= SEA_LEVEL;
+    {
+      // Well inside it: most of the weight here and 32 blocks out every way, on its own ground (the
+      // savanna's dry grass, above the beaches; the swamp's grass, above its mud).
+      const biome = kind === 'savanna' ? Biome.Savanna : Biome.Swamp;
+      if (g.height(x, z) < SEA_LEVEL + (kind === 'savanna' ? 3 : 1)) return false;
+      for (const [dx, dz] of [[0, 0], [32, 0], [-32, 0], [0, 32], [0, -32]]) if (g.climate.weights(x + dx, z + dz)[biome] <= 0.7) return false;
+      return true;
+    }
   }
 }
 

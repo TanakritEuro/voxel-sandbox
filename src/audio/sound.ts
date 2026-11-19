@@ -179,6 +179,15 @@ export class Sound {
       case MobKind.DuneBeetle:
         for (let i = 0; i < (hurt ? 3 : 5); i++) this.tone(3300 * p * vary(0.05), 0.018, gain * 0.25, t + i * 0.032, out);
         break;
+      case MobKind.Ambler:
+        // A low hoot, then a lower one.
+        this.voiced('sine', 190 * p, 165 * p, 0.22 * len, 900, 4, 3, gain * 0.5, t, out);
+        if (!hurt) this.voiced('sine', 150 * p, 128 * p, 0.32, 900, 4, 3, gain * 0.45, t + 0.3, out);
+        break;
+      case MobKind.Wader:
+        // A croaking burble: short low rasps in a row.
+        for (let i = 0; i < (hurt ? 2 : 4); i++) this.voiced('square', 96 * p * vary(0.05), 80 * p, 0.07, 900, 30, 8, gain * 0.22, t + i * 0.09, out);
+        break;
       case MobKind.Gloamer:
         // A low rasp, shaking fast; hurt, a hiss over it.
         this.voiced('sawtooth', 74 * p, 52 * p, 1.1 * len, 480, 23, 14, gain * 0.55, t, out);

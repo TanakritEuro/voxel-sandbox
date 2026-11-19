@@ -9,7 +9,7 @@ import { MobRenderer } from '../src/render/mobRenderer';
 import { mobTextures, sideAndFront } from '../src/render/mobTextures';
 import { World } from '../src/world/world';
 
-const kinds = [MobKind.Mossback, MobKind.Hopper, MobKind.CragGoat, MobKind.DuneBeetle];
+const kinds = [MobKind.Mossback, MobKind.Hopper, MobKind.CragGoat, MobKind.DuneBeetle, MobKind.Ambler, MobKind.Wader];
 
 describe('mob poses', () => {
   it('keep the legs still when standing, and swing them with the ground covered, harder when faster', () => {

@@ -122,7 +122,8 @@ describe('savanna and swamp (generation 2)', () => {
   it('have fogs, animals and finds', () => {
     expect(biomeFogs()).toHaveLength(BIOME_COUNT);
     expect(KINDS[MobKind.Hopper].biomes).toContain(Biome.Savanna);
-    expect(KINDS[MobKind.Mossback].biomes).toContain(Biome.Swamp);
+    expect(KINDS[MobKind.Wader].biomes).toContain(Biome.Swamp);
+    expect(KINDS[MobKind.Ambler].biomes).toContain(Biome.Savanna);
     for (const kind of ['savanna', 'swamp'] as const) {
       const at = findNearest(v2, kind, 0, 0)!;
       expect(v2.biome(at.x, at.z)).toBe(kind === 'savanna' ? Biome.Savanna : Biome.Swamp);

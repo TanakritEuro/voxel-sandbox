@@ -98,5 +98,18 @@ export function mobTextures(): Record<MobTexture, THREE.DataTexture> {
     // The gloamer: near-black with a violet cast and faint streaks, two pale eyes set wide.
     gloom: painted(14, (x, y, r) => shade(rgb((x * 5 + y * 3) % 9 === 0 ? 0x3a2f48 : 0x231d2c), 1 + (r() - 0.5) * 0.2)),
     gloomFace: face(15, 0x231d2c, 0xdfe8c8, undefined, 0x9fb27a),
+    // The ambler: sandy with brown blotches, pale legs darkening to the hoof.
+    amblerHide: painted(16, (x, y, r) => {
+      const blotch = Math.sin(x * 0.9 + 1.3) * Math.sin(y * 0.8 + 0.4) > 0.45 || (x * 5 + y * 11) % 13 === 0;
+      return shade(rgb(blotch ? 0x7a4e2a : 0xc9a368), 1 + (r() - 0.5) * 0.14);
+    }),
+    amblerFace: face(17, 0xc9a368, 0x1e1810, 0x5a3a20),
+    amblerLeg: painted(18, (_x, y, r) => shade(rgb(y > 12 ? 0x3a2a1c : 0xd8c49a), 1 + (r() - 0.5) * 0.12)),
+    // The wader: mottled green-brown, darker spots.
+    waderSkin: painted(19, (x, y, r) => {
+      const spot = (x * 7 + y * 5) % 11 === 0 || (x * 3 + y * 13) % 17 === 0;
+      return shade(rgb(spot ? 0x3c4a26 : 0x6a7a3e), 1 + (r() - 0.5) * 0.2);
+    }),
+    waderFace: face(20, 0x6a7a3e, 0xd8c040, 0x3c4a26, 0x141410),
   };
 }

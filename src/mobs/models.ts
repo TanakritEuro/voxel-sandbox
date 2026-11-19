@@ -20,7 +20,12 @@ export type MobTexture =
   | 'beetleFace'
   | 'black'
   | 'gloom'
-  | 'gloomFace';
+  | 'gloomFace'
+  | 'amblerHide'
+  | 'amblerFace'
+  | 'amblerLeg'
+  | 'waderSkin'
+  | 'waderFace';
 
 /**
  * How a part moves: not at all; a leg swinging forward and back (and folding at rest); a
@@ -145,6 +150,43 @@ export const MODELS: Record<MobKind, Model> = {
         tilt: -0.3,
         texture: 'black',
       },
+    ],
+  },
+  [MobKind.Ambler]: {
+    // The neck and head turn together about the base of the neck, high on the front of the body.
+    headPivot: [0, 1.2, -0.42],
+    parts: [
+      { size: [0.55, 0.5, 1.0], at: [{ pivot: [0, 1.05, 0.08] }], offset: [0, 0, 0], anim: 'none', texture: 'amblerHide' },
+      { size: [0.2, 0.52, 0.2], at: [{ pivot: [0, 1.2, -0.42] }], offset: [0, 0.22, -0.04], anim: 'head', texture: 'amblerHide' },
+      { size: [0.24, 0.22, 0.4], at: [{ pivot: [0, 1.2, -0.42] }], offset: [0, 0.45, -0.18], anim: 'head', texture: 'amblerHide', front: 'amblerFace' },
+      {
+        size: [0.05, 0.14, 0.05],
+        at: [{ pivot: [-0.1, 1.76, -0.46] }, { pivot: [0.1, 1.76, -0.46] }],
+        offset: [0, 0.03, 0],
+        anim: 'none',
+        onHead: true,
+        tilt: 0.3,
+        texture: 'amblerLeg',
+      },
+      { size: [0.12, 0.8, 0.12], at: fourLegs(0.18, 0.8, -0.3, 0.44), offset: [0, -0.4, 0], anim: 'leg', texture: 'amblerLeg' },
+      { size: [0.06, 0.32, 0.06], at: [{ pivot: [0, 1.22, 0.58] }], offset: [0, -0.14, 0.02], anim: 'none', tilt: 0.3, texture: 'amblerLeg' },
+    ],
+  },
+  [MobKind.Wader]: {
+    headPivot: [0, 0.36, -0.36],
+    parts: [
+      { size: [0.7, 0.32, 0.8], at: [{ pivot: [0, 0.3, 0.06] }], offset: [0, 0, 0], anim: 'none', texture: 'waderSkin' },
+      { size: [0.52, 0.18, 0.32], at: [{ pivot: [0, 0.36, -0.36] }], offset: [0, 0.02, -0.14], anim: 'head', texture: 'waderSkin', front: 'waderFace' },
+      // Eyes bulging on top of the flat head.
+      {
+        size: [0.11, 0.09, 0.11],
+        at: [{ pivot: [-0.15, 0.46, -0.44] }, { pivot: [0.15, 0.46, -0.44] }],
+        offset: [0, 0.02, 0],
+        anim: 'none',
+        onHead: true,
+        texture: 'waderFace',
+      },
+      { size: [0.15, 0.16, 0.15], at: fourLegs(0.27, 0.16, -0.2, 0.3), offset: [0, -0.08, 0], anim: 'leg', texture: 'waderSkin' },
     ],
   },
   [MobKind.Gloamer]: {

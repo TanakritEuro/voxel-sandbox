@@ -1742,7 +1742,10 @@ function frame(now: number): void {
       particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 1), Math.floor(b.z)), daylightNow));
     }
     if (showcase && !player.waiting) {
-      mobs.showcase(player.body.x, player.body.y, player.body.z, input.yaw);
+      // `?showcase=ambler,wader`: just those kinds (by name, lower case, spaces as dashes).
+      const names = (params.get('showcase') ?? '').split(',').filter((n) => n);
+      const only = KINDS.map((_, k) => k as MobKind).filter((k) => names.includes(KINDS[k].name.toLowerCase().replace(/ /g, '-')));
+      mobs.showcase(player.body.x, player.body.y, player.body.z, input.yaw, only.length ? only : undefined);
       showcase = false;
     }
     mobView.update(mobs, world, daylightNow, now / 1000);

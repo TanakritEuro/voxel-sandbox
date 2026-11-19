@@ -177,18 +177,19 @@ export class MobManager {
   }
 
   /**
-   * One of each kind in a row four blocks in front of (x, y, z), looking along `yaw`, standing
-   * where they can and grazing there for good, turned three-quarters to the viewer (`?showcase`,
-   * for looking at the models).
+   * One of each kind (or of `only`) in a row four blocks in front of (x, y, z), looking along `yaw`,
+   * standing where they can and grazing there for good, turned three-quarters to the viewer
+   * (`?showcase`, `?showcase=ambler,wader`, for looking at the models).
    */
-  showcase(x: number, y: number, z: number, yaw: number): void {
+  showcase(x: number, y: number, z: number, yaw: number, only: readonly MobKind[] = KINDS.map((_, k) => k as MobKind)): void {
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
-    KINDS.forEach((info, kind) => {
-      const side = (kind - (KINDS.length - 1) / 2) * 1.8;
+    only.forEach((kind, n) => {
+      const info = KINDS[kind];
+      const side = (n - (only.length - 1) / 2) * 1.8;
       const bx = Math.floor(x + fx * 4 + fz * side);
       const bz = Math.floor(z + fz * 4 - fx * side);
-      for (let ny = Math.floor(y) + 3; ny >= Math.floor(y) - 6; ny--) {
+      for (let ny = Math.floor(y) + 12; ny >= Math.floor(y) - 12; ny--) {
         const ground = !BLOCKS[this.world.getBlock(bx, ny - 1, bz)].passable;
         let room = true;
         for (let i = 0; i < headroom(info); i++) room &&= BLOCKS[this.world.getBlock(bx, ny + i, bz)].passable;

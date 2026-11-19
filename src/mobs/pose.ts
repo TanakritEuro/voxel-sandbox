@@ -46,7 +46,7 @@ export function poseOf(mob: Mob, t: number): Pose {
     // mob in its own time.
     const phase = (t + mob.id * 1.7) % GRAZE_CYCLE;
     if (phase < GRAZE_DOWN) head = GRAZE_DEPTH * Math.sin((phase / GRAZE_DOWN) * Math.PI);
-  } else head = Math.sin(mob.walked * STRIDE * 2) * 0.06 * pace;
+  } else head = Math.sin(mob.walked * STRIDE * 2) * (k.headBob ?? 0.06) * pace;
   // A hopper leans nose up as it rises and down as it falls, and lays its ears back.
   const lean = k.hops && !b.onGround ? Math.max(-0.4, Math.min(0.4, b.vy * 0.08)) : 0;
   const ears = k.hops ? Math.min(0.9, Math.abs(b.vy) * 0.15 + pace * 0.3) : 0;

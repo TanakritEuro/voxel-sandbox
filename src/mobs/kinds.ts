@@ -1,4 +1,5 @@
-// The kinds of mob: four invented animals, all passive, each at home in a biome or two; and the
+// The kinds of mob: six invented animals, all passive, each at home in a biome or two (the ambler and
+// the wader, Milestone 17, in the savanna and the swamp); and the
 // gloamer, a hostile thing of the dark (survival only), that appears where it's dark rather than
 // in a biome and hunts players. Their size, how they move and how far their paths may go, how
 // much hitting they take; their looks are in `render/mobRenderer.ts`.
@@ -12,6 +13,8 @@ export enum MobKind {
   CragGoat = 2,
   DuneBeetle = 3,
   Gloamer = 4,
+  Ambler = 5,
+  Wader = 6,
 }
 
 /** What makes a kind hostile: it hunts players and hits them. */
@@ -49,6 +52,8 @@ export interface KindInfo {
   maxNodes: number;
   /** Moves by hopping: jumps whenever it's on the ground and going somewhere. */
   hops: boolean;
+  /** How far its head nods with each step, walking (radians at full pace; 0.06 if not given). */
+  headBob?: number;
   /** Where it appears: biomes, the blocks it stands on, how many together. */
   biomes: readonly Biome[];
   ground: readonly Block[];
@@ -71,8 +76,8 @@ export const KINDS: readonly KindInfo[] = [
     swim: true,
     maxNodes: 500,
     hops: false,
-    biomes: [Biome.Forest, Biome.Plains, Biome.Swamp],
-    ground: [Block.Grass, Block.Dirt, Block.Mud],
+    biomes: [Biome.Forest, Biome.Plains],
+    ground: [Block.Grass, Block.Dirt],
     group: [2, 4],
     health: 3,
   },
@@ -148,6 +153,44 @@ export const KINDS: readonly KindInfo[] = [
     // Softened after the first try (3 points every second, 4 a player, killed a player in 9 s):
     // up to 4.8 points a second with all three round you, one alone about 12 s to kill you.
     hostile: { sight: 32, reach: 0.9, damage: 2, push: 5, every: 1.25, darkness: 4, fadeSun: 12, most: 3, distance: [24, 36] },
+  },
+  {
+    // Tall and long-legged, a long neck that nods as it walks: slow about, fast away.
+    name: 'Ambler',
+    halfWidth: 0.4,
+    height: 1.8,
+    walkSpeed: 1.4,
+    runSpeed: 5.5,
+    jumpHeight: 1.25,
+    step: 1,
+    drop: 3,
+    swim: false,
+    maxNodes: 800,
+    hops: false,
+    headBob: 0.22,
+    biomes: [Biome.Savanna],
+    ground: [Block.DryGrass],
+    group: [2, 5],
+    health: 4,
+  },
+  {
+    // Squat and wide, waddling on land and swimming well, by the swamp's pools.
+    name: 'Wader',
+    halfWidth: 0.4,
+    height: 0.6,
+    walkSpeed: 1.2,
+    runSpeed: 3.2,
+    jumpHeight: 1.25,
+    step: 1,
+    drop: 2,
+    swim: true,
+    maxNodes: 500,
+    hops: false,
+    headBob: 0.12,
+    biomes: [Biome.Swamp],
+    ground: [Block.Mud, Block.Grass],
+    group: [1, 3],
+    health: 3,
   },
 ];
 
