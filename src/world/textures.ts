@@ -93,6 +93,8 @@ export const TEXTURE_NAMES = [
   'parasol_top',
   'parasol_side',
   'parasol_leaves',
+  'stone_bricks',
+  'mossy_bricks',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -615,6 +617,13 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
         const ring = Math.floor(Math.hypot(x - 7.5, y - 7.5) * 0.9) % 2;
         c.set(x, y, edge ? PARASOL_BARK : hex(0xb0905c), (edge ? 1 : ring ? 0.88 : 1.03) * (1 + (c.rng() - 0.5) * 0.08));
       }
+  },
+  stone_bricks: (c) => bricks(c),
+  mossy_bricks(c) {
+    bricks(c);
+    // Moss creeping over the bricks, thickest along the joints.
+    c.spots(14, hex(0x4f7a3a), 0.2);
+    c.spots(8, hex(0x6a9a4a), 0.2);
   },
   parasol_leaves(c) {
     // Small olive leaves, sparse: more holes than oak.

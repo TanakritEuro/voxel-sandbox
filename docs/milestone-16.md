@@ -155,7 +155,7 @@ generator, headless-fast), for checking in the browser and for playtesting.
 3. **Savanna and swamp.** Climate, heights, layers, the new blocks and textures, parasol trees, swamp
    oaks, reeds, fog, animals; tests; `?find=savanna|swamp`. Done (2026-11-19).
 4. **Structures and loot.** Ruins, camps, placement across chunk borders, loot chests, bricks; tests;
-   `?find=ruin|camp`.
+   `?find=ruin|camp`. Done (2026-11-19).
 5. **Measurements,** notes, playtest questions.
 
 ## Decisions to agree
@@ -336,4 +336,95 @@ Nothing generates differently yet: version 2 is version 1 until step 2.
 - **A sprint flight from the savanna** (`?find=savanna&autofly=20`): no frames over 20 ms (the
   longest 16.9), main thread p50 2.2, p99 7.3, max 13.2 ms; no holes; no console errors. A first run
   with the pane briefly hidden was thrown away; the flight marks such runs itself.
+
+## Step 4: structures and loot (2026-11-19)
+
+**What's in:**
+- **`world/structures.ts`:**
+  - **placement:** one chance a 112 × 112-block cell (80%), a spot at least 12 in from the cell's
+    edge, a facing, and a kind by the biome there:
+    - ruins in forests, on the lower mountains (below 40 above the sea) and half the plains;
+    - camps in the savanna, the desert and the other half of the plains;
+    - none in swamps.
+  - **kept only:**
+    - on dry land (2 or more above the sea);
+    - nearly level: within 3 of the floor at the corners and halfway along each side;
+    - with no cave carved at or just under the floor at those points
+      (`Generator.caveAt`; a camp first stood over a cave mouth).
+  - All of it comes from the generator's height and biome functions, so every column job decides
+    the same.
+  - **`structureBlocks`:**
+    - the footprint's volume above the floor is cleared (a tree's leaves included);
+    - the ground is filled up to the floor (stone, or sandstone in the desert, under a ruin; earth
+      under a camp);
+    - then come the walls or the tent, and the chest.
+  - **A ruin** (9 × 9): a stone and mossy brick floor; walls round it broken to 0–4 high, the corners
+    standing; a doorway in the front; rubble inside now and then; the chest in the back corner on
+    the left, facing the door.
+  - **A camp** (7 × 7): a plank tent along the way it faces, plank stairs sloping out on both sides
+    and a slab along the ridge; a cold furnace and the chest at its open end.
+  - Column jobs ask for the structures within 4 blocks of their columns and write their parts last;
+    a structure's top counts for which chunks are all air.
+- **Blocks 180–181:** stone bricks and mossy bricks: the furnace's brick texture, and the same with
+  moss. A wooden pick or better gets them. 4 stone make 4 stone bricks.
+- **Loot** (`survival/loot.ts`):
+  - a table per kind, each line an item, how many and its chance:
+    - ruins: coal, copper, iron, the odd crystal, torches, bread, seeds, a stone or (rarely) iron
+      pick;
+    - camps: bread, berries, seeds, torches, sticks, coal, a little iron, a stone or (rarely) iron
+      axe.
+  - `lootFor` rolls it from the chest's place and puts each stack in a slot of its own anywhere in
+    the chest.
+  - **`Chests` takes a loot source:**
+    - the first time a structure's chest is opened (by the host or a guest, through `hostSurvival`)
+      or broken, it's filled, and that place is never filled again, however it's emptied, broken
+      and placed again;
+    - looted places are saved even when empty, and every saved place counts as looted after
+      loading.
+  - **The game** gives its chests the world's loot source (`Generator.lootAt`). The host fills them
+    for guests, through the container messages there are already.
+- **`?find=ruin|camp`:** cells in rings round the start. It stands the player 2 blocks out in front
+  of the door.
+- **`PROTOCOL` 7:** version 2's land changed again since 6 went out with step 1.
+- **Tests (8):**
+  - over 4096 × 4096 blocks, more than 50 ruins and 50 camps, between one every 400 and one every
+    120 blocks; none in version 1;
+  - for 12 structures in the blocks:
+    - on dry level land;
+    - a ruin's floor all bricks, a camp's floor all solid;
+    - ground under 90% or more of the floor;
+    - the chest where `lootAt` says, and nowhere next to it;
+  - a structure across a chunk border comes out the same with its columns generated in either order,
+    and is built on both sides;
+  - `?find` stands in front of a door; none in version 1;
+  - **loot:**
+    - the same for the same chest, from its table, counts in range, a stack an item;
+    - mostly different from chest to chest;
+    - filled once, through emptying, saving, loading, breaking and placing again;
+    - dropped once from a chest broken unopened;
+    - given to a guest by the host.
+
+**Tuning:** cells of 160 with a 60% chance gave about 70 structures in 4096 × 4096 (one every 490
+blocks). Cells of 112 at 80%, with level within 3 rather than 2, give about 220.
+
+**Measured** (`npm run bench`, `generation versions`):
+- **Generating a column:** version 1 2.16 ms, version 2 2.36 ms (+10%, within the plan's 25%).
+- **Structures** in 4096 × 4096 blocks:
+
+  | seed | ruins | camps | one every |
+  | --- | --- | --- | --- |
+  | 20261022 | 102 | 114 | 279 blocks |
+  | 7 | 95 | 126 | 276 blocks |
+  | 123 | 139 | 118 | 256 blocks |
+
+  The plan said about 200; much of the world is sea or high mountain, where there are none, so on
+  the land they're closer than that.
+
+**In the browser:**
+- `?find=ruin`: a ruin in a forest, broken brick walls, a brick floor, the chest inside.
+- `?find=camp`: a camp on a desert shore, the plank tent, its furnace and chest.
+- **A sprint flight from the ruin** (`?find=ruin&autofly=20`): no frames over 20 ms (the longest
+  17.0), main thread p50 3.1, p99 7.8, max 12.5 ms; no holes; no console errors.
+- **Not looked at in the browser:** opening a loot chest in survival (the tests cover filling,
+  emptying, saving and a guest).
 

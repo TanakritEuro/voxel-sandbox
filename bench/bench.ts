@@ -1052,6 +1052,8 @@ it('generation versions', () => {
       }
     const dryLand = biomes.reduce((a, b) => a + b, 0);
     lines.push(`  seed ${seed}: of the land, ${((river / land) * 100).toFixed(1)} % river water, ${((valley / land) * 100).toFixed(1)} % lowered by rivers' valleys`);
+    const structures = g2.structuresIn(-2048, -2048, 2047, 2047).filter((t) => t.x >= -2048 && t.x < 2048 && t.z >= -2048 && t.z < 2048);
+    lines.push(`    structures: ${structures.filter((t) => t.kind === 0).length} ruins, ${structures.filter((t) => t.kind === 1).length} camps (one every ${Math.round(4096 / Math.sqrt(structures.length))} x ${Math.round(4096 / Math.sqrt(structures.length))} blocks)`);
     lines.push(`    biomes of the dry land: ${biomes.map((n, b) => `${BIOMES[b].name} ${((n / dryLand) * 100).toFixed(1)} %`).join(', ')}`);
   }
   lines.push('');

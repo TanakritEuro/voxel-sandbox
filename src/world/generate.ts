@@ -14,6 +14,7 @@ import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL, WORLD_HEIGHT } from '.
 import { hash3 } from '../math';
 import { Noise } from './noise';
 import { Rivers } from './rivers';
+import { placeStructures, type Structure, structureBlocks, type StructureKind, structuresIn, structureTop } from './structures';
 
 export { SEA_LEVEL } from './coords';
 /** Columns this steep (blocks up or down to a neighbour) show bare stone on top. */
@@ -224,6 +225,14 @@ export class Generator {
     };
   }
 
+  /** Has a cave carved the block at (x, y, z)? (Slow: the column's height and its neighbours' each time.) */
+  caveAt(x: number, y: number, z: number): boolean {
+    if (!this.options.caves) return false;
+    const h = this.height(x, z);
+    const lowest = Math.min(h, this.height(x + 1, z), this.height(x - 1, z), this.height(x, z + 1), this.height(x, z - 1));
+    return this.caves.carvedAt(x, y, z, caveLimit(h, lowest));
+  }
+
   /** Does a tree stand in column (x, z)? */
   treeAt(x: number, z: number): boolean {
     return this.options.trees && treesIn(this.seed, x, z, x, z, this.ground()).length > 0;
@@ -270,6 +279,17 @@ export class Generator {
       }
     }
     return out;
+  }
+
+  /** Version 2's structures whose blocks may reach into [x0, x1] x [z0, z1] (none in version 1). */
+  structuresIn(x0: number, z0: number, x1: number, z1: number): Structure[] {
+    return this.options.generation === 1 ? [] : structuresIn(this.seed, x0, z0, x1, z1, this);
+  }
+
+  /** The kind of structure whose chest stands at (x, y, z), or null if none does (its loot is for that kind). */
+  lootAt(x: number, y: number, z: number): StructureKind | null {
+    for (const st of this.structuresIn(x, z, x, z)) if (st.chest[0] === x && st.chest[1] === y && st.chest[2] === z) return st.kind;
+    return null;
   }
 
   /** Fill one chunk's blocks. */
@@ -345,6 +365,10 @@ export class Generator {
     }
     for (const t of trees) top = Math.max(top, t.y + TREE_TOP);
     const reeds = this.options.generation === 1 ? null : this.reedsIn(x0, z0, heights, biomes, ground);
+    // Structures reaching into these columns, and what each writes.
+    const structures = this.options.generation === 1 ? [] : this.structuresIn(x0, z0, x0 + S - 1, z0 + S - 1);
+    const built = structures.map((st) => structureBlocks(this.seed, st, this));
+    for (const st of structures) top = Math.max(top, structureTop(st));
 
     const out: (Uint8Array | null)[] = [];
     for (let cy = cyMin; cy <= cyMax; cy++) {
@@ -370,6 +394,7 @@ export class Generator {
           if (blocks[i] === Block.Air) blocks[i] = Block.Reeds;
         }
       }
+      if (built.length) placeStructures(blocks, cx, cy, cz, built);
       out.push(blocks);
     }
     return out;

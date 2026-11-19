@@ -87,6 +87,9 @@ export enum Block {
   Reeds = 177,
   ParasolWood = 178,
   ParasolLeaves = 179,
+  /** Ruins' walls (and crafted from stone). */
+  StoneBricks = 180,
+  MossyBricks = 181,
 }
 
 type RGB = [number, number, number];
@@ -421,6 +424,8 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   { ...solid('Reeds', 0.05, faces('reeds'), 0x7f9a4a), opaque: false, passable: true, shape: 'cross', cutout: true, icon: 'reeds' },
   solid('Parasol wood', 1.5, faces('parasol_top', 'parasol_side'), 0xb0905c, 0x8a7a66),
   { ...solid('Parasol leaves', 0.3, faces('parasol_leaves'), 0x6f8f35), opaque: false, cutout: true, lightCost: 1 },
+  solid('Stone bricks', 2.5, faces('stone_bricks'), 0x83868a),
+  solid('Mossy bricks', 2.5, faces('mossy_bricks'), 0x6f8268),
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */

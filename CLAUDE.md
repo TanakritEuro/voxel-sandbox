@@ -153,7 +153,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
   `furnaceOf`; a block's `front` texture on the side it faces), chests 106–109, doors 110–125, beds
   126–133, farmland 134, wheat 135–142, slabs 143–148 and stairs 149–172 in `SHAPE_MATERIALS`, fence 173, glass pane 174 (`connects`: boxes from
-  their neighbours), dry grass 175, mud 176, reeds 177 (crossed sheets), parasol wood and leaves 178–179 (`chest`, `door`,
+  their neighbours), dry grass 175, mud 176, reeds 177 (crossed sheets), parasol wood and leaves 178–179, stone and mossy bricks 180–181 (`chest`, `door`,
   `doorSide`, `bed`, `wheat`, `slab`, `stairs` and their `…Of`; `boxes`: what a body bumps into when it
   isn't the whole block, a door's panel, a bed's half, a slab, stairs' two):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
@@ -172,7 +172,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`), `rivers.ts` (version 2: valleys cut to a bed below sea level along a
   winding noise's zero lines, filled by the sea's still water, narrowing and ending as mountains weigh in, `riverStrength` in
-  `generate.ts`), `find.ts` (`?find=river|savanna|swamp`: the nearest of a kind, searched with the generator alone; `dryNear` somewhere to stand by it),
+  `generate.ts`), `structures.ts` (version 2: ruins and camps, one chance per 112 x 112-block cell, only on dry, nearly level
+  land with no cave at the floor, decided from the generator's height function; `structureBlocks`: the volume cleared, the
+  ground filled up to the floor, the walls or tent, a chest; written after everything else, across chunk borders;
+  `Generator.lootAt` says whose chest a place is), `find.ts` (`?find=river|savanna|swamp|ruin|camp`: the nearest of a kind, searched with the generator alone; `dryNear` somewhere to stand by it),
   `features.ts` (ore veins and trees across chunk borders, parasol trees and swamp oaks too; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
   `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one
@@ -204,7 +207,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`breakWith`: what a broken block gives and the
   tool worn; `placeableIn`, `heldTool`), `furnace.ts` (`Furnace`: input, fuel and output, burning and
   smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `chest.ts` (`Chests`: 27
-  slots each by place, saved in the world record's `containers`), `farming.ts` (`tillable`, `sowable`,
+  slots each by place, saved in the world record's `containers`; a structure's chest filled from its loot the first time
+  it's opened or broken, never again, the place kept even when empty), `loot.ts` (`lootFor`: a ruin's or camp's
+  chest by its table, seeded by its place; `lootSource` for a world), `farming.ts` (`tillable`, `sowable`,
   `stageTime`, `growingLight`; `Crops`: wheat by place, a slice stepped each frame, growing a stage
   every ~70 s in light 9 or more, saved in the record's `crops`), `sleep.ts` (`canSleep`: at night, nothing
   hostile near; `bedFoot`, `bedFrom`, `wakeAt`: beside the bed where there's room), `ground.ts` (`GroundItems`: items lying on the ground, boxes
@@ -295,7 +300,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (6), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (7), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
   blocks; the world's mode in the welcome and when it changes, guests' survival states kept by name
@@ -341,7 +346,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
+  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),

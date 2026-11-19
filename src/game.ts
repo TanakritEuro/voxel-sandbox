@@ -2,6 +2,7 @@
 // `?at=`, `?autofly`): world, saving, chunk loading, the player, block editing, the HUD and
 // the pause menu.
 
+import { lootSource } from './survival/loot';
 import { dryNear, findNearest, isFindable } from './world/find';
 import { generationOf } from './world/generate';
 import * as THREE from 'three';
@@ -220,7 +221,8 @@ const ground = new GroundItems();
 /** Furnaces' contents by place (`survival/furnace.ts`), saved with the record. */
 const furnaces = Furnaces.from(record.furnaces);
 /** Chests' contents by place (`survival/chest.ts`), saved with the record. */
-const chests = Chests.from(record.containers);
+// A structure's chest is filled from its loot when first opened or broken (the world is made just below).
+const chests = Chests.from(record.containers, (x, y, z) => lootSource(world.generator)(x, y, z));
 /** Wheat growing (`survival/farming.ts`), saved with the record. */
 const crops = Crops.from(record.crops);
 let time = timeHeld ? Number(timeParam) : record.time;
