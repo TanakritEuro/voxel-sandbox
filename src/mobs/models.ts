@@ -25,12 +25,15 @@ export type MobTexture =
   | 'amblerFace'
   | 'amblerLeg'
   | 'waderSkin'
-  | 'waderFace';
+  | 'waderFace'
+  | 'delverHide'
+  | 'delverPlate'
+  | 'delverFace';
 
 /**
  * How a part moves: not at all; a leg swinging forward and back (and folding at rest); a
  * beetle's leg swinging sideways; the head; an ear laid back; the body leaning (hoppers); an arm
- * swinging, and reaching forward as it hunts (gloamers).
+ * swinging, and reaching forward as it hunts (gloamers, delvers).
  */
 export type Anim = 'none' | 'leg' | 'legYaw' | 'head' | 'ear' | 'body' | 'arm';
 
@@ -187,6 +190,50 @@ export const MODELS: Record<MobKind, Model> = {
         texture: 'waderFace',
       },
       { size: [0.15, 0.16, 0.15], at: fourLegs(0.27, 0.16, -0.2, 0.3), offset: [0, -0.08, 0], anim: 'leg', texture: 'waderSkin' },
+    ],
+  },
+  [MobKind.Delver]: {
+    headPivot: [0, 0.86, -0.36],
+    parts: [
+      // A broad, low body, leaning forward over thick arms.
+      { size: [0.92, 0.66, 0.74], at: [{ pivot: [0, 0.86, 0.04] }], offset: [0, 0, 0], anim: 'none', tilt: -0.1, texture: 'delverHide' },
+      // Stone-grey plates down its back, overlapping.
+      {
+        size: [0.78, 0.14, 0.34],
+        at: [
+          { pivot: [0, 1.22, -0.16], offset: [0, 0, 0] },
+          { pivot: [0, 1.18, 0.16], offset: [0, 0, 0] },
+          { pivot: [0, 1.1, 0.42], offset: [0, 0, 0] },
+        ],
+        offset: [0, 0, 0],
+        anim: 'none',
+        tilt: -0.22,
+        texture: 'delverPlate',
+      },
+      // A low, heavy head jutting forward.
+      { size: [0.48, 0.38, 0.36], at: [{ pivot: [0, 0.86, -0.36] }], offset: [0, -0.02, -0.16], anim: 'head', texture: 'delverHide', front: 'delverFace' },
+      // Two short, thick legs.
+      {
+        size: [0.26, 0.54, 0.28],
+        at: [
+          { pivot: [-0.24, 0.54, 0.14], phase: 1 },
+          { pivot: [0.24, 0.54, 0.14], phase: -1 },
+        ],
+        offset: [0, -0.27, 0],
+        anim: 'leg',
+        texture: 'delverHide',
+      },
+      // Long, thick arms hanging nearly to the ground, reaching out as it hunts.
+      {
+        size: [0.22, 0.84, 0.24],
+        at: [
+          { pivot: [-0.55, 1.08, -0.1], phase: -1 },
+          { pivot: [0.55, 1.08, -0.1], phase: 1 },
+        ],
+        offset: [0, -0.4, 0],
+        anim: 'arm',
+        texture: 'delverHide',
+      },
     ],
   },
   [MobKind.Gloamer]: {

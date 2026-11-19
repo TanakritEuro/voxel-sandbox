@@ -218,6 +218,8 @@ function hunt(mob: Mob, ctx: MobContext, dt: number): { speed: number; straight:
   let best = -1;
   let bestD = h.sight;
   prey.forEach((p, i) => {
+    // A deep kind leaves alone a player above its depth.
+    if (h.below !== undefined && p.y >= h.below) return;
     const d = Math.hypot(p.x - b.x, p.y - b.y, p.z - b.z);
     if (d <= bestD) [best, bestD] = [i, d];
   });
@@ -396,7 +398,10 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
     const away = lead ? Math.hypot(lead.body.x - b.x, lead.body.z - b.z) : 0;
     if (lead && away > M.breeding.follow * 2) mob.timer = Math.min(mob.timer, 0);
     if (mob.timer <= 0) {
-      const goal = lead && away > M.breeding.follow ? feet(lead) : placeToward(mob, ctx, mob.rng() * 2 * Math.PI, between(mob.rng, M.wander) * (lead ? 0.5 : 1));
+      let goal = lead && away > M.breeding.follow ? feet(lead) : placeToward(mob, ctx, mob.rng() * 2 * Math.PI, between(mob.rng, M.wander) * (lead ? 0.5 : 1));
+      // A deep kind wanders only below its depth.
+      const below = k.hostile?.below;
+      if (goal && below !== undefined && goal[1] >= below) goal = null;
       const found = goal ? goTo(mob, ctx, goal, lead && away > M.breeding.follow ? 2 : 0) : false;
       if (found) mob.state = 'wander';
       // No way there: look about a little longer, then try another place.

@@ -16,7 +16,7 @@ import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/c
 import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackState } from './playerState';
 
-export const PROTOCOL = 9;
+export const PROTOCOL = 10;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;
@@ -114,7 +114,7 @@ export type Message =
   /** Host → guest: this is yours now: picked up, taken from a furnace, or what didn't go into one. */
   | { type: 'given'; stack: Stack }
   /** Host → guest: a hostile mob hit you, for `damage` points and a `push` away from (fromX, fromZ). */
-  | { type: 'hurt'; damage: number; push: number; fromX: number; fromZ: number }
+  | { type: 'hurt'; damage: number; push: number; fromX: number; fromZ: number; kind: number }
   /** Guest → host: this player opened the furnace at (x, y, z) (see what's in it), or closed it. */
   | { type: 'copen'; x: number; y: number; z: number }
   | { type: 'cclose' }
@@ -306,8 +306,8 @@ export function parseMessage(raw: unknown): Message | null {
       return stack ? { type: 'given', stack } : null;
     }
     case 'hurt':
-      return isCount(raw.damage, 1, 20) && isNumber(raw.push) && Math.abs(raw.push) <= 30 && isNumber(raw.fromX) && isNumber(raw.fromZ)
-        ? { type: 'hurt', damage: raw.damage, push: raw.push, fromX: raw.fromX, fromZ: raw.fromZ }
+      return isCount(raw.damage, 1, 20) && isNumber(raw.push) && Math.abs(raw.push) <= 30 && isNumber(raw.fromX) && isNumber(raw.fromZ) && isCount(raw.kind, 0, 63)
+        ? { type: 'hurt', damage: raw.damage, push: raw.push, fromX: raw.fromX, fromZ: raw.fromZ, kind: raw.kind }
         : null;
     case 'copen':
       return isBlockPlace(raw.x, raw.y, raw.z) ? { type: 'copen', x: raw.x as number, y: raw.y as number, z: raw.z as number } : null;

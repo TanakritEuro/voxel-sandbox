@@ -18,10 +18,11 @@
 // a hopper lands with a soft thump, a hit one cries out, and the hit that takes the last of its
 // health sends it off in a puff.
 //
-// Hostile kinds (the gloamer; only when asked, in survival) come apart from the animals: every
+// Hostile kinds (the gloamer and the delver; only when asked, in survival) come apart from the animals: every
 // couple of seconds one may appear 24–36 blocks from a player, standing where it's dark (sunlight by
 // the daylight, or block light, at most its kind's `darkness`: the surface at night, caves at any
-// hour, never by a torch), at most `most` for each player. Out on the surface by day it fades into
+// hour, never by a torch; the delver only below its `below`, round a player who is too), at most `most` for each player; the kinds
+// take turns at being tried first. Out on the surface by day it fades into
 // a puff. It hunts the players given as prey (`brain.ts`), and its hits are kept for the game to
 // take (`takeAttacks`).
 //
@@ -53,6 +54,8 @@ export interface Before {
 /** A hostile mob's hit on a player: who (an index into the prey), how hard, and from where. */
 export interface Attack {
   target: number;
+  /** The kind that hit (for what got a player). */
+  kind: MobKind;
   damage: number;
   push: number;
   fromX: number;
@@ -86,6 +89,8 @@ export class MobManager {
   private nextId = 1;
   private untilSpawn = 0;
   private untilHostile = 0;
+  /** Which hostile kind is tried first next. */
+  private hostileTurn = 0;
   /** For `?stats`: path searches done and put off since the last read, and this frame's time (ms). */
   searches = 0;
   deferred = 0;
@@ -157,7 +162,7 @@ export class MobManager {
         prey,
         attack: (mob, target) => {
           const h = KINDS[mob.kind].hostile!;
-          this.attacks.push({ target, damage: h.damage, push: h.push, fromX: mob.body.x, fromZ: mob.body.z });
+          this.attacks.push({ target, kind: mob.kind, damage: h.damage, push: h.push, fromX: mob.body.x, fromZ: mob.body.z });
         },
         findPath: (mob, start, goal, near) => {
           if (performance.now() > deadline) {
@@ -274,10 +279,14 @@ export class MobManager {
    * dark, and not nearer than that to any of `prey`. At most `most` for each of them.
    */
   trySpawnHostile(near: Prey, prey: readonly Prey[], daylight: number): boolean {
-    for (const [k, info] of KINDS.entries()) {
-      const h = info.hostile;
-      if (!h) continue;
-      const kind = k as MobKind;
+    const hostile = KINDS.map((_, k) => k as MobKind).filter((k) => KINDS[k].hostile);
+    const first = this.hostileTurn++ % hostile.length;
+    for (let n = 0; n < hostile.length; n++) {
+      const kind = hostile[(first + n) % hostile.length];
+      const info = KINDS[kind];
+      const h = info.hostile!;
+      // A deep kind comes only for a player down at its depth (it would leave the rest alone).
+      if (h.below !== undefined && near.y >= h.below) continue;
       if (this.mobs.filter((m) => m.kind === kind).length >= h.most * prey.length) continue;
       const angle = this.rng() * 2 * Math.PI;
       const r = h.distance[0] + (h.distance[1] - h.distance[0]) * this.rng();
@@ -287,7 +296,7 @@ export class MobManager {
       if (prey.some((p) => Math.hypot(x + 0.5 - p.x, z + 0.5 - p.z) < h.distance[0])) continue;
       const room = headroom(info);
       for (let y = Math.floor(near.y) + 12; y >= Math.floor(near.y) - 24; y--) {
-        if (y < 1 || y + room >= WORLD_HEIGHT) continue;
+        if (y < 1 || y + room >= WORLD_HEIGHT || (h.below !== undefined && y >= h.below)) continue;
         if (BLOCKS[this.world.getBlock(x, y - 1, z)].passable) continue;
         let fits = true;
         for (let i = 0; i < room && fits; i++) {

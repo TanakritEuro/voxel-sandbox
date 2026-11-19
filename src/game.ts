@@ -572,7 +572,7 @@ if (guest) {
     renderHotbar();
     if (backpack.open) backpack.refresh();
   };
-  guest.onHurt = (damage, push, fromX, fromZ) => struck(damage, push, fromX, fromZ);
+  guest.onHurt = (damage, push, fromX, fromZ, kind) => struck(damage, push, fromX, fromZ, kind);
   guest.onContainer = (x, y, z, state) => {
     const open = hostContainer;
     if (!open || open.x !== x || open.y !== y || open.z !== z) return;
@@ -1197,7 +1197,7 @@ el(deathPanel, 'div', 'menu-title', 'You died');
 const deathWhy = el(deathPanel, 'p', 'menu-help');
 el(deathPanel, 'p', 'menu-help', 'Everything you carried is still with you.');
 button(el(deathPanel, 'div', 'menu-row'), 'Start again', () => startAgain(), 'menu-go');
-const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.', starving: 'You starved.', gloamer: 'A gloamer got you.' } as const;
+const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.', starving: 'You starved.', gloamer: 'A gloamer got you.', delver: 'A delver got you.' } as const;
 /** What the HUD shows now, so it's redrawn only when that changes. */
 let vitalsShown = '';
 
@@ -1386,21 +1386,23 @@ function hitMob(mob: Mob, fromX = player.body.x, fromZ = player.body.z, points =
   if (mobs.hit(mob, fromX, fromZ, points)) {
     const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow);
     particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, light);
-    // In survival an animal leaves raw meat (a mossback moss too, for beds), a gloamer an ember.
+    // In survival an animal leaves raw meat (a mossback moss too, for beds), a hostile kind its loot
+    // (a gloamer an ember, a delver raw iron).
     if (survival) {
       const some = ([least, most]: [number, number]) => least + Math.floor(Math.random() * (most - least + 1));
-      const stacks = KINDS[mob.kind].hostile ? [{ item: Item.Ember, count: 1 }] : [{ item: Item.RawMeat, count: some(TUNING.survival.meat) }];
+      const loot = KINDS[mob.kind].hostile?.loot;
+      const stacks = loot ? [{ item: loot.item, count: some([loot.count[0], loot.count[1]]) }] : [{ item: Item.RawMeat, count: some(TUNING.survival.meat) }];
       if (mob.kind === MobKind.Mossback) stacks.push({ item: Item.Moss, count: some(TUNING.survival.moss) });
       for (const stack of stacks) ground.drop(b.x, b.y + b.height / 2, b.z, stack, (Math.random() - 0.5) * 1.5, TUNING.survival.ground.hop, (Math.random() - 0.5) * 1.5);
     }
   }
 }
 
-/** A gloamer's hit on this player: the points, a push away from it, the flash and cry of being hurt. */
-function struck(damage: number, push: number, fromX: number, fromZ: number): void {
+/** A hostile mob's hit on this player (a gloamer's, a delver's): the points, a push away from it, the flash and cry of being hurt. */
+function struck(damage: number, push: number, fromX: number, fromZ: number, kind: number): void {
   if (!survival || dead) return;
   getUp();
-  health.hurt(damage, 'gloamer');
+  health.hurt(damage, kind === MobKind.Delver ? 'delver' : 'gloamer');
   const b = player.body;
   const dx = b.x - fromX;
   const dz = b.z - fromZ;
@@ -1783,8 +1785,8 @@ function frame(now: number): void {
     mobs.update(worldRuns() ? dt : 0, mobPlayers(), daylightNow, prey);
     for (const a of mobs.takeAttacks()) {
       const id = preyIds[a.target];
-      if (id === 0) struck(a.damage, a.push, a.fromX, a.fromZ);
-      else if (id !== undefined) host?.hurt(id, a.damage, a.push, a.fromX, a.fromZ);
+      if (id === 0) struck(a.damage, a.push, a.fromX, a.fromZ, a.kind);
+      else if (id !== undefined) host?.hurt(id, a.damage, a.push, a.fromX, a.fromZ, a.kind);
     }
     for (const m of mobs.takeFaded()) {
       const b = m.body;

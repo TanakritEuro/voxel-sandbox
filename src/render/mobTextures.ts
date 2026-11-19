@@ -1,6 +1,6 @@
 // The mobs' textures: 16 × 16 pixel-art patterns painted in code at startup, in the style of the
 // block textures (speckled, a few colours): fur, moss, faces with eyes, ears, wool, horn, shell, and
-// the gloamer's dark hide.
+// the gloamer's dark hide, the delver's plates.
 // Each is its own small texture; `mobRenderer.ts` maps one onto a model's box, or a pair side by
 // side (`sideAndFront`) onto a box with a face.
 
@@ -111,5 +111,12 @@ export function mobTextures(): Record<MobTexture, THREE.DataTexture> {
       return shade(rgb(spot ? 0x3c4a26 : 0x6a7a3e), 1 + (r() - 0.5) * 0.2);
     }),
     waderFace: face(20, 0x6a7a3e, 0xd8c040, 0x3c4a26, 0x141410),
+    // The delver: a dusky brown-grey hide, plates of stone grey with dark seams, small glowing orange eyes.
+    delverHide: painted(21, (x, y, r) => shade(rgb((x * 7 + y * 13) % 17 === 0 || (x * 5 + y * 3) % 19 === 0 ? 0x3a332e : 0x554b44), 1 + (r() - 0.5) * 0.22)),
+    delverPlate: painted(22, (x, y, r) => {
+      if (y % 5 === 4 || (x + Math.floor(y / 5) * 3) % 8 === 0) return rgb(0x45474a);
+      return shade(rgb(0x8a8c8e), 1 + (r() - 0.5) * 0.22);
+    }),
+    delverFace: face(23, 0x554b44, 0xff9a2a, 0x3a332e, 0xffd27a),
   };
 }

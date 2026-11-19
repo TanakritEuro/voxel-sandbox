@@ -9,7 +9,7 @@
 // level vary a little each time so repeats don't sound mechanical.
 //
 // Mobs have voices: a pitched oscillator gliding through a filter, with a wobble. A mossback
-// groans low, a hopper chirps twice, a crag goat bleats, a dune beetle chitters, a gloamer rasps; hurt, the call
+// groans low, a hopper chirps twice, a crag goat bleats, a dune beetle chitters, a gloamer rasps, a delver grinds; hurt, the call
 // comes higher and shorter over a thump. A hopper lands with a soft thump; a mob that's gone
 // leaves a rising whoosh of noise. Each is panned to the side it came from.
 //
@@ -187,6 +187,12 @@ export class Sound {
       case MobKind.Wader:
         // A croaking burble: short low rasps in a row.
         for (let i = 0; i < (hurt ? 2 : 4); i++) this.voiced('square', 96 * p * vary(0.05), 80 * p, 0.07, 900, 30, 8, gain * 0.22, t + i * 0.09, out);
+        break;
+      case MobKind.Delver:
+        // A deep grinding rumble, like stone on stone; hurt, a crack.
+        this.voiced('sawtooth', 52 * p, 40 * p, 1.3 * len, 320, 9, 6, gain * 0.6, t, out);
+        this.voiced('square', 64 * p, 48 * p, 0.9 * len, 260, 13, 5, gain * 0.25, t + 0.15, out);
+        if (hurt) this.thump(70, 0.15, gain * 0.6, out);
         break;
       case MobKind.Gloamer:
         // A low rasp, shaking fast; hurt, a hiss over it.

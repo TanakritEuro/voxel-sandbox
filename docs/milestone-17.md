@@ -137,7 +137,7 @@ Everything invented; behaviour, spawning and saving tested headless; feel left f
 2. **Kept animals.** Food, feeding (and the guest's `feed`), keeping, the cap, storing by column,
    saving; tests. Done (2026-11-19).
 3. **Breeding and the young.** Love, `court`, births, waits, growing, following; tests; `?farmyard`. Done (2026-11-19).
-4. **The delver.** Kind, model, voice, spawning below its depth, drops; tests.
+4. **The delver.** Kind, model, voice, spawning below its depth, drops; tests. Done (2026-11-19).
 5. **Measurements,** notes, playtest questions.
 
 ## Decisions to agree
@@ -291,4 +291,51 @@ That would be a new behaviour; their home ground is at the water anyway.
 - the farmyard round the spawn: amblers, mossbacks, hoppers and goats, grown and young among them;
 - 115–120 fps; no console errors.
 - **Not looked at in the browser:** a pair fed and courting to a birth (the tests cover it).
+
+## Step 4: the delver (2026-11-19)
+
+**What's in:**
+- **`MobKind.Delver` (7):**
+  - 0.5 half-width, 1.3 tall;
+  - walks 1.0, hunts at 2.6;
+  - sight 16; hits for 4 points every 2 s (a push of 7);
+  - takes 12 points (12 hits by hand, 6 with a pick, 4 with an axe);
+  - at most 2 for each player, 16–32 blocks from them, where the light is at most 4.
+- **`Hostile.below` (40 for the delver):**
+  - it appears only below that height, and only round a player who is below it too;
+  - it hunts only players below it;
+  - its wandering goals are only below it.
+- **`Hostile.loot`:** what a hostile kind leaves. The gloamer's ember (as before) moved here; the delver leaves
+  1–2 raw iron.
+- **It never fades** (`fadeSun` 16, more than full sunlight). It stays down there anyway.
+- **Hostile kinds take turns** at being tried first when one may appear. Before, the gloamer was always tried
+  first, so in a cave it would nearly always have taken the chance.
+- **A hit says which kind it was:**
+  - `Attack.kind`;
+  - the `hurt` message carries `kind`;
+  - dying to one says "A delver got you." (`Foe` in `health.ts`).
+- **`PROTOCOL` 10:** a new kind in mob states, and `kind` in `hurt`.
+- **Model:**
+  - a broad, low body leaning forward;
+  - three stone-grey plates overlapping down its back;
+  - a low, heavy head with small orange eyes;
+  - two short, thick legs;
+  - long, thick arms hanging nearly to the ground, which reach out as it hunts (the gloamer's `arm` motion).
+- **Textures:** a dusky brown-grey hide with dark flecks; plates of stone grey with dark seams.
+- **Voice:** a deep grinding rumble, two tones a little apart; hurt, with a thump.
+- **Tests (6 new, 2 updated):**
+  - its numbers, never fading, hits to go;
+  - its loot, and the gloamer's;
+  - hunting a player below its depth: slow, a hit every 2 s;
+  - leaving alone a player 1 block above its depth on a slope it could climb, and never going up it in 2 minutes;
+  - appearing only in the dark below its depth round a player in a dug-out room at y 20, at most 2, gloamers too;
+    never round a player on the surface;
+  - mob states and its attack's kind.
+  - Updated: the `hurt` message and session tests.
+
+**In the browser** (`?showcase=delver,mossback,ambler`): it stands with its plates on top and orange eyes,
+broader and lower than a mossback; no console errors. The first hide's diagonal stripes looked like a pattern, so
+they became scattered flecks.
+
+**Not looked at in the browser:** a delver hunting in a real cave (the tests cover appearing and hunting).
 

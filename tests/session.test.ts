@@ -17,6 +17,7 @@ import { Furnace, Furnaces } from '../src/survival/furnace';
 import { Chests } from '../src/survival/chest';
 import { GroundItems } from '../src/survival/ground';
 import { Item } from '../src/survival/items';
+import { MobKind } from '../src/mobs/kinds';
 import type { Stack } from '../src/survival/inventory';
 import { chest, door, doorOf, furnace, wheat } from '../src/world/blocks';
 import { useAt } from '../src/world/parts';
@@ -623,10 +624,10 @@ describe('survival over the network', () => {
     const host = await makeHost(env);
     const a = await makeGuest(env, host, 'Pim');
     const hurts: number[][] = [];
-    a.session.onHurt = (damage, push, fromX, fromZ) => hurts.push([damage, push, fromX, fromZ]);
-    host.session.hurt(a.session.you, 2, 5, 3.5, -1);
+    a.session.onHurt = (damage, push, fromX, fromZ, kind) => hurts.push([damage, push, fromX, fromZ, kind]);
+    host.session.hurt(a.session.you, 2, 5, 3.5, -1, MobKind.Delver);
     await env.pump(0.3);
-    expect(hurts).toEqual([[2, 5, 3.5, -1]]);
+    expect(hurts).toEqual([[2, 5, 3.5, -1, MobKind.Delver]]);
   });
 
   it("opens the host's chest for a guest: its slots heard, a put and a take made there, a different item never swapped", async () => {

@@ -221,15 +221,16 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   player's box, aging out, a cap), `health.ts` (`Health`: falls from where the feet last stood,
   air and drowning, cactus, hunger (faster working hard; starving down to 1; `eat`), healing only well
   fed, death; stepped a frame at a time with how the body is).
-- `src/mobs/` — `kinds.ts` (the six animals (the ambler in the savanna, the wader in the swamp) and the gloamer: size,
+- `src/mobs/` — `kinds.ts` (the six animals (the ambler in the savanna, the wader in the swamp), the gloamer and the delver (deep caves): size,
   speeds, climb and drop, biomes, ground, groups, health in points, how far the head nods walking (`headBob`), the `food`
-  that feeds it (wheat, seeds or berries); `hostile`: sight, reach, hit, darkness to appear in, sun to fade in, how many), `brain.ts` (a mob: idle, wander, flee, rest, and hunt for hostile kinds (paths to the
+  that feeds it (wheat, seeds or berries); `hostile`: sight, reach, hit, darkness to appear in, sun to fade in, how many, `below` (only under that height:
+  appearing, wandering, hunting), `loot` (a gloamer's ember, a delver's raw iron)), `brain.ts` (a mob: idle, wander, flee, rest, and hunt for hostile kinds (paths to the
   nearest prey, hitting at reach every so often), court for kept animals in love (paths to its mate); the young (`grow`)
   smaller by age (`sizeOf`, `fitBody`, the box growing where it fits), faster, going back to their `lead`; following paths, jumping, getting
   unstuck; pure, a seeded RNG each, paths through a `MobContext`), `mobs.ts` (`MobManager`:
   spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
   or with the column, a cap, stepping at the fixed rate with a per-frame path search budget;
-  hits (points against a kind's health; tools hit harder); hostile kinds appearing in the dark round
+  hits (points against a kind's health; tools hit harder); hostile kinds (taking turns) appearing in the dark round
   the prey and fading by day, their hits kept for the game (`takeAttacks`, `takeFaded`); the sounds they make; round every player when playing together, the cap
   by players; not saved), `hit.ts` (the mob under the
   crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
@@ -313,7 +314,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (9), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (10), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
   blocks; the world's mode in the welcome and when it changes, guests' survival states kept by name

@@ -11,6 +11,9 @@
 
 import { TUNING } from '../config';
 
+/** A hostile mob that can hit a player. */
+export type Foe = 'gloamer' | 'delver';
+
 /** How the body is this frame. */
 export interface Condition {
   /** Feet height. */
@@ -35,7 +38,7 @@ export class Health {
   /** Hunger points: full at `TUNING.survival.maxHunger`. */
   hunger = S.maxHunger;
   /** What hurt last. */
-  cause: 'fall' | 'drowning' | 'cactus' | 'starving' | 'gloamer' | null = null;
+  cause: 'fall' | 'drowning' | 'cactus' | 'starving' | Foe | null = null;
   /** The highest the feet were since they last stood; null while standing, in water or flying. */
   private top: number | null = null;
   /** Where the feet last stood (a fall starts there, not a frame below it). */
@@ -122,7 +125,7 @@ export class Health {
   }
 
   /** A hit from something (a gloamer) for `points`, as hurting in a step does. */
-  hurt(points: number, cause: 'gloamer'): void {
+  hurt(points: number, cause: Foe): void {
     this.health = Math.max(0, this.health - points);
     this.cause = cause;
     this.sinceHurt = 0;

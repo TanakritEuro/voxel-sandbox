@@ -1,7 +1,7 @@
 // The kinds of mob: six invented animals, all passive, each at home in a biome or two (the ambler and
 // the wader, Milestone 17, in the savanna and the swamp); and the
 // gloamer, a hostile thing of the dark (survival only), that appears where it's dark rather than
-// in a biome and hunts players. Their size, how they move and how far their paths may go, how
+// in a biome and hunts players; and the delver (Milestone 17), slow and tough, only deep under the ground. Their size, how they move and how far their paths may go, how
 // much hitting they take; their looks are in `render/mobRenderer.ts`.
 
 import { Item } from '../survival/items';
@@ -16,6 +16,7 @@ export enum MobKind {
   Gloamer = 4,
   Ambler = 5,
   Wader = 6,
+  Delver = 7,
 }
 
 /** What makes a kind hostile: it hunts players and hits them. */
@@ -34,6 +35,10 @@ export interface Hostile {
   /** At most this many for each player, this far from them (blocks: from and to). */
   most: number;
   distance: readonly [number, number];
+  /** Only below this height (its feet): it appears, wanders and hunts there, and leaves alone a player above it. */
+  below?: number;
+  /** What it leaves when it goes in a puff (survival): an item, from `count[0]` to `count[1]` of it. */
+  loot: { item: number; count: readonly [number, number] };
 }
 
 export interface KindInfo {
@@ -159,7 +164,7 @@ export const KINDS: readonly KindInfo[] = [
     // It sees further than it appears, so it comes for a player from where it appears.
     // Softened after the first try (3 points every second, 4 a player, killed a player in 9 s):
     // up to 4.8 points a second with all three round you, one alone about 12 s to kill you.
-    hostile: { sight: 32, reach: 0.9, damage: 2, push: 5, every: 1.25, darkness: 4, fadeSun: 12, most: 3, distance: [24, 36] },
+    hostile: { sight: 32, reach: 0.9, damage: 2, push: 5, every: 1.25, darkness: 4, fadeSun: 12, most: 3, distance: [24, 36], loot: { item: Item.Ember, count: [1, 1] } },
   },
   {
     // Tall and long-legged, a long neck that nods as it walks: slow about, fast away.
@@ -200,6 +205,26 @@ export const KINDS: readonly KindInfo[] = [
     group: [1, 3],
     health: 3,
     food: Item.Berries,
+  },
+  {
+    // Squat and broad, a back of stone-grey plates, long thick arms: slow, tough, hitting hard and seldom.
+    name: 'Delver',
+    halfWidth: 0.5,
+    height: 1.3,
+    walkSpeed: 1.0,
+    runSpeed: 2.6,
+    jumpHeight: 1.25,
+    step: 1,
+    drop: 3,
+    swim: false,
+    maxNodes: 1500,
+    hops: false,
+    biomes: [],
+    ground: [],
+    group: [1, 1],
+    health: 12,
+    // Never sees the sun (fadeSun beyond full sunlight), never comes up past its depth.
+    hostile: { sight: 16, reach: 0.9, damage: 4, push: 7, every: 2, darkness: 4, fadeSun: 16, most: 2, distance: [16, 32], below: 40, loot: { item: Item.RawIron, count: [1, 2] } },
   },
 ];
 

@@ -203,9 +203,9 @@ export class HostSession {
     for (const [id, [x, y, z]] of this.watching) this.sendContainer(id, x, y, z);
   }
 
-  /** A hostile mob hit guest `player` for `damage` and a push away from (fromX, fromZ). */
-  hurt(player: number, damage: number, push: number, fromX: number, fromZ: number): void {
-    this.guests.get(player)?.send({ type: 'hurt', damage, push, fromX, fromZ });
+  /** A hostile mob of `kind` hit guest `player` for `damage` and a push away from (fromX, fromZ). */
+  hurt(player: number, damage: number, push: number, fromX: number, fromZ: number, kind: number): void {
+    this.guests.get(player)?.send({ type: 'hurt', damage, push, fromX, fromZ, kind });
   }
 
   private sendContainer(id: number, x: number, y: number, z: number, always = false): void {
@@ -455,7 +455,7 @@ export class GuestSession {
   /** Something the host gave this player (picked up, from a furnace). */
   onGiven: (stack: Stack) => void = () => {};
   /** A hostile mob hit this player. */
-  onHurt: (damage: number, push: number, fromX: number, fromZ: number) => void = () => {};
+  onHurt: (damage: number, push: number, fromX: number, fromZ: number, kind: number) => void = () => {};
   /** What's in the furnace this player has open, as the host has it. */
   onContainer: (x: number, y: number, z: number, state: Record<string, unknown>) => void = () => {};
   /** Recent round trips and the offsets they gave. */
@@ -652,7 +652,7 @@ export class GuestSession {
         this.onGiven(m.stack);
         break;
       case 'hurt':
-        this.onHurt(m.damage, m.push, m.fromX, m.fromZ);
+        this.onHurt(m.damage, m.push, m.fromX, m.fromZ, m.kind);
         break;
       case 'contents':
         this.onContainer(m.x, m.y, m.z, m.state);

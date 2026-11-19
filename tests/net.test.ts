@@ -162,7 +162,7 @@ describe('messages', () => {
     { type: 'drop', stack: { item: 257, count: 5 }, x: 1.5, y: 70.5, z: -3.25, vx: 2, vy: 3, vz: -2, delay: 1 },
     { type: 'take', id: 12, count: 7 },
     { type: 'given', stack: { item: 262, count: 1, wear: 4 } },
-    { type: 'hurt', damage: 2, push: 5, fromX: 1.5, fromZ: -2 },
+    { type: 'hurt', damage: 2, push: 5, fromX: 1.5, fromZ: -2, kind: 7 },
     { type: 'copen', x: 4, y: 70, z: -9 },
     { type: 'cclose' },
     { type: 'contents', x: 4, y: 70, z: -9, state: { slots: [null, { item: 257, count: 2 }, null], burn: 3, burnTotal: 8, progress: 1.5 } },
