@@ -166,11 +166,13 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `joinsAt`, `connectedBoxes`: a fence's post and rails (1.5 high to bump into), a pane's sheet;
   `blockBoxes`: any block's boxes as drawn), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
-  (chunk size, index layout, world height), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
+  (chunk size, index layout, world height, `SEA_LEVEL`), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
   (climate, biome weights, blended heights), `generate.ts` (`Generation`: a world's generation version, 1 before Milestone 16 and 2 since, `GENERATION` the
   newest, `generationOf` cleaning a saved one; a `Generator` is version 1 unless told; column jobs: height map with a
   border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
-  search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`),
+  search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`), `rivers.ts` (version 2: valleys cut to a bed below sea level along a
+  winding noise's zero lines, filled by the sea's still water, narrowing and ending as mountains weigh in, `riverStrength` in
+  `generate.ts`), `find.ts` (`?find=river`: the nearest of a kind, searched with the generator alone),
   `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
   `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one
@@ -339,8 +341,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count, `?at=x,z` where you spawn (`?seed`, `?at`, `?autofly` and `?circuit`
-  play an unsaved world; `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
+  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river` near the nearest river to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
+  play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every

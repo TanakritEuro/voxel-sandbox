@@ -21,3 +21,6 @@ export const toLocal = (v: number): number => v & CHUNK_MASK;
 export const localIndex = (x: number, y: number, z: number): number => (y << (2 * CHUNK_BITS)) | (z << CHUNK_BITS) | x;
 
 export const chunkKey = (cx: number, cy: number, cz: number): string => `${cx},${cy},${cz}`;
+
+/** The sea's surface: water fills every column up to this y (`world/generate.ts`). */
+export const SEA_LEVEL = 62;

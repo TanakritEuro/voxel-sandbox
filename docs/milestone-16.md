@@ -151,7 +151,7 @@ generator, headless-fast), for checking in the browser and for playtesting.
 1. **Generation versions.** The record, the generator option, jobs, the welcome, PROTOCOL 6, the
    checksum test. Nothing generates differently yet. Done (2026-11-19).
 2. **Rivers.** The noise, the valleys, beds and banks, caves under them; tests and the bench (river
-   share, generation time); `?find=river`.
+   share, generation time); `?find=river`. Done (2026-11-19).
 3. **Savanna and swamp.** Climate, heights, layers, the new blocks and textures, parasol trees, swamp
    oaks, reeds, fog, animals; tests; `?find=savanna|swamp`.
 4. **Structures and loot.** Ruins, camps, placement across chunk borders, loot chests, bricks; tests;
@@ -199,4 +199,57 @@ generator, headless-fast), for checking in the browser and for playtesting.
   - welcomes with either version pass the message check.
 
 Nothing generates differently yet: version 2 is version 1 until step 2.
+
+## Step 2: rivers (2026-11-19)
+
+**What's in:**
+- **`world/rivers.ts`:**
+  - the river noise: 3 octaves, about 900 blocks a swing;
+  - `carve` brings a column's height down into a valley. Within the core (|noise| < 0.008, about
+    5 blocks either side of the line) it goes to a bed 1–4 below sea level, deepest in the middle;
+    out to the bank (0.035, about 21 blocks) it eases from sea level back up to the land. The land
+    is never raised.
+- **`Generator.height`** (version 2 only) carves after the biomes' heights. The strength is
+  `riverStrength`: all of it until the mountains weigh more than 0.1, none from 0.5. A river
+  narrows and ends before the peaks, and mountains keep their heights exactly.
+- **Everything else follows from the height map:**
+  - beds and banks are sand (gravel below 4 under);
+  - the water is the sea's, up to sea level, so nothing flows;
+  - caves keep 4 blocks under water, as they do by the sea;
+  - no trees grow in a river.
+- `SEA_LEVEL` moved to `coords.ts` (`generate.ts` re-exports it), so `rivers.ts` can use it
+  without an import loop.
+- **`?find=river`** (`world/find.ts`): the nearest column of river water where the land would be
+  dry without it, searched every 8 blocks in square rings. The player then stands on the nearest dry
+  land (`findLand`). It plays an unsaved world, as `?at` does.
+- **Tests (6):**
+  - `?find` finds river water where version 1 is dry, and finds none in version 1;
+  - rivers only lower the land, never below their bed;
+  - where mountains weigh half or more, heights are exactly version 1's;
+  - in the blocks of 3 × 3 columns round a river: water only up to sea level, never over air, the
+    surface water all along it;
+  - every body of water rivers make or join, in a 768 × 768 area, has 60 columns or more, or runs
+    out of the area: no puddles of their own;
+  - version 1 has no rivers.
+
+**Measured** (`npm run bench`, the `generation versions` section, new):
+- **Generating a column:** version 1 2.18 ms, version 2 2.23 ms (+2 %), 253 columns, median of 5.
+- **The river share of the land** in 4096 × 4096 blocks:
+
+  | seed | river water | lowered by valleys |
+  | --- | --- | --- |
+  | 20261022 | 1.9 % | 7.0 % |
+  | 7 | 2.3 % | 8.9 % |
+  | 123 | 1.9 % | 7.1 % |
+
+  The plan's "rivers on about a tenth of the land" counts the valleys. The water itself is about 2 %.
+- **Maps** (made headless while tuning, a pixel every 4 or 8 blocks):
+  - rivers wind between lakes and the sea, a few hundred blocks apart;
+  - they narrow and stop at the edges of mountains;
+  - deserts get rivers too.
+- **In the browser:**
+  - `?seed=7&find=river` from above: a river cutting through a hill into the sea, steep stone
+    sides where the land is high, sand banks;
+  - a 20 s sprint flight over version 2 land (`?autofly=20`): no frames over 20 ms (the longest
+    16.9), main thread p50 3.4, p99 9.5, max 13.3 ms; no holes; no console errors.
 

@@ -5,6 +5,8 @@
 // Totals are the figure to compare between versions: per-item means change meaning when
 // the work is split differently (columns instead of chunks, empty chunks skipped).
 
+import { Generator, type Generation } from '../src/world/generate';
+import { SEA_LEVEL } from '../src/world/coords';
 import { it } from 'vitest';
 import { wallsFor } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
@@ -1014,3 +1016,40 @@ it('visibility', () => {
   lines.push('');
   console.log(lines.join('\n'));
 });
+
+it('generation versions', () => {
+  // Generating the bench's columns (radius 9 round the origin) by each version, alternating, and
+  // what version 2 makes of the land over 4096 x 4096 blocks (a column every 8).
+  const cols = columns(RADIUS + 1);
+  const times: Record<Generation, number[]> = { 1: [], 2: [] };
+  for (let run = 0; run <= RUNS; run++) {
+    for (const generation of [1, 2] as Generation[]) {
+      const g = new Generator(SEED, { generation });
+      const t0 = performance.now();
+      for (const [cx, cz] of cols) g.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);
+      if (run > 0) times[generation].push(performance.now() - t0);
+    }
+  }
+  const per = (g: Generation) => median(times[g]) / cols.length;
+  const lines = ['', `generation by version (${cols.length} columns, median of ${RUNS}): version 1 ${per(1).toFixed(3)} ms a column, version 2 ${per(2).toFixed(3)} (${((per(2) / per(1) - 1) * 100).toFixed(0)} %)`];
+  for (const seed of [SEED, 7, 123]) {
+    const g1 = new Generator(seed, { generation: 1 });
+    const g2 = new Generator(seed, { generation: 2 });
+    let land = 0;
+    let river = 0;
+    let valley = 0;
+    for (let z = -2048; z < 2048; z += 8)
+      for (let x = -2048; x < 2048; x += 8) {
+        const h1 = g1.height(x, z);
+        if (h1 <= SEA_LEVEL + 1) continue;
+        land++;
+        const h2 = g2.height(x, z);
+        if (h2 < h1) valley++;
+        if (h2 < SEA_LEVEL) river++;
+      }
+    lines.push(`  seed ${seed}: of the land, ${((river / land) * 100).toFixed(1)} % river water, ${((valley / land) * 100).toFixed(1)} % lowered by rivers' valleys`);
+  }
+  lines.push('');
+  console.log(lines.join('\n'));
+});
+

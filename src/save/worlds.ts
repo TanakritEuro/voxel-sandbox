@@ -7,7 +7,7 @@ import type { WorldRecord } from './store';
  * URLs that look at or measure one particular world (`?seed=`, `?at=`, `?autofly`, `?circuit`): played
  * fresh each time, in memory, without the world list.
  */
-export const isUnsavedUrl = (params: URLSearchParams): boolean => params.has('seed') || params.has('at') || params.has('autofly') || params.has('circuit');
+export const isUnsavedUrl = (params: URLSearchParams): boolean => params.has('seed') || params.has('at') || params.has('find') || params.has('autofly') || params.has('circuit');
 
 /**
  * A seed from what was typed: a whole number is used as it is; other text is hashed (so a

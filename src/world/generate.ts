@@ -6,15 +6,16 @@
 // layers: what the biome puts on top and underneath, bare stone on steep slopes, sand or
 // gravel under water, and water up to sea level. Then caves, ores and trees.
 
-import { Biome, Climate } from './biomes';
+import { Biome, BIOME_COUNT, Climate } from './biomes';
 import { Caves } from './caves';
 import { type Ground, placeOres, placeTrees, TREE_REACH, TREE_TOP, treesIn } from './features';
 import { Block } from './blocks';
-import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, WORLD_HEIGHT } from './coords';
+import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL, WORLD_HEIGHT } from './coords';
 import { hash3 } from '../math';
 import { Noise } from './noise';
+import { Rivers } from './rivers';
 
-export const SEA_LEVEL = 62;
+export { SEA_LEVEL } from './coords';
 /** Columns this steep (blocks up or down to a neighbour) show bare stone on top. */
 const STEEP = 3;
 /** Height map border around a column job's 32 × 32 columns: trees just outside them, and one more for their slopes. */
@@ -140,9 +141,13 @@ export const caveLimit = (h: number, lowest: number): number => (lowest <= SEA_L
 export class Generator {
   readonly climate: Climate;
   readonly caves: Caves;
+  /** Version 2's rivers. */
+  readonly rivers: Rivers;
   readonly options: Required<GeneratorOptions>;
   private readonly detail: Noise;
-  private readonly weights = new Float64Array(4);
+  private readonly weights = new Float64Array(BIOME_COUNT);
+  /** Biome weights for `height` when it isn't given them (kept apart from `weights`, which callers pass in). */
+  private readonly ownWeights = new Float64Array(BIOME_COUNT);
 
   constructor(
     readonly seed: number,
@@ -152,11 +157,17 @@ export class Generator {
     this.climate = new Climate(seed);
     this.caves = new Caves(seed);
     this.detail = new Noise(seed ^ 0x51e7);
+    this.rivers = new Rivers(seed);
   }
 
-  /** Surface height at world column (x, z): the y of the topmost solid block. */
+  /** Surface height at world column (x, z): the y of the topmost solid block. Version 2 cuts rivers' valleys into it. */
   height(x: number, z: number, weights?: Float64Array): number {
-    const h = SEA_LEVEL + this.climate.height(x, z, weights);
+    let h: number;
+    if (this.options.generation === 1) h = SEA_LEVEL + this.climate.height(x, z, weights);
+    else {
+      const w = weights ?? this.climate.weights(x, z, this.ownWeights);
+      h = this.rivers.carve(SEA_LEVEL + this.climate.height(x, z, w), x, z, riverStrength(w));
+    }
     return Math.max(1, Math.min(WORLD_HEIGHT - 12, Math.floor(h)));
   }
 
@@ -319,6 +330,14 @@ export class Generator {
     }
     return out;
   }
+}
+
+/**
+ * How much river there can be where the biomes weigh `weights`: all of it until mountains weigh
+ * in, none where they weigh half or more, so rivers narrow and end before the peaks.
+ */
+export function riverStrength(weights: ArrayLike<number>): number {
+  return Math.max(0, Math.min(1, 1 - (weights[Biome.Mountains] - 0.1) * 2.5));
 }
 
 /** Set world y in [from, to) of one column of a chunk whose bottom is y0. `column` is the local z and x bits. */
