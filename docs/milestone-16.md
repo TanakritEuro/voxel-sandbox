@@ -153,7 +153,7 @@ generator, headless-fast), for checking in the browser and for playtesting.
 2. **Rivers.** The noise, the valleys, beds and banks, caves under them; tests and the bench (river
    share, generation time); `?find=river`. Done (2026-11-19).
 3. **Savanna and swamp.** Climate, heights, layers, the new blocks and textures, parasol trees, swamp
-   oaks, reeds, fog, animals; tests; `?find=savanna|swamp`.
+   oaks, reeds, fog, animals; tests; `?find=savanna|swamp`. Done (2026-11-19).
 4. **Structures and loot.** Ruins, camps, placement across chunk borders, loot chests, bricks; tests;
    `?find=ruin|camp`.
 5. **Measurements,** notes, playtest questions.
@@ -252,4 +252,88 @@ Nothing generates differently yet: version 2 is version 1 until step 2.
     sides where the land is high, sand banks;
   - a 20 s sprint flight over version 2 land (`?autofly=20`): no frames over 20 ms (the longest
     16.9), main thread p50 3.4, p99 9.5, max 13.3 ms; no holes; no console errors.
+
+## Step 3: savanna and swamp (2026-11-19)
+
+**What's in:**
+- **`world/biomes.ts`:** `Biome.Savanna` and `Biome.Swamp`, `BIOME_COUNT` 6.
+  - A `Climate` of version 1 weighs only the first four, so version 1's land is exactly as before
+    (the checksums still match).
+  - **Savanna:** climate (0.22, -0.1), base 3, amplitude 5 over long low swells (160 blocks).
+  - **Swamp:** climate (0.15, 0.27), base 3, amplitude 2.5 over hummocks and hollows (24 blocks). The
+    continent's rise and fall is cut by 90 % of the swamp's weight, so a swamp lies just above the
+    sea, with pools wherever the hollows dip under it.
+- **Layers** (`writeLayers`):
+  - savanna: dry grass on dirt (beaches and steep slopes as anywhere);
+  - swamp: mud at the water's level and under it (pool beds too, never sand or gravel), grass from a
+    block above it.
+- **Trees** (`features.ts`):
+  - **parasol trees** in the savanna (a 5% chance a cell, on dry grass): a trunk of 5–7 parasol wood
+    with a flat crown, a disc 3 out level with its top (its rim thinned by a coin) and a disc 2 out
+    above;
+  - **swamp oaks** in the swamp (35%, on grass): oaks with leaves hanging 1–3 blocks from the edge of
+    the lowest layer, about a third of the edge.
+  - `TREE_REACH` went from 2 to 3 for the parasols' crowns, so column jobs look a block further for
+    trees and their height maps are a block wider. Version 1's blocks don't change.
+- **Reeds** (version 2, `Generator.reedsIn`):
+  - by the water in the savanna (35%) and the swamp (60%), on ground at sea level or a block above
+    with water beside it;
+  - in the swamp, 4% anywhere;
+  - never where a cave has taken the ground;
+  - they stand on the block below, as wheat does.
+- **Blocks 175–179:** dry grass, mud, reeds, parasol wood, parasol leaves, with procedural textures,
+  sounds (grass, dirt, leaves, wood) and a place in the picker.
+  - Dry grass gives dirt; mud, reeds and parasol wood give themselves.
+  - Parasol leaves give sticks and berries as leaves do.
+  - The spade digs dry grass and mud, the axe parasol wood.
+  - 4 planks from parasol wood.
+- **Fog** `TUNING.fog.savanna` (a golden haze) and `swamp` (a close green murk). `blendFog` blends
+  over the weights it's given (version 1's worlds have four).
+- **Animals:** the hopper in the savanna (on dry grass too), the mossback in the swamp (on mud too).
+- **`?find=savanna|swamp`:** dry land where the biome weighs over 0.7. Every `?find` now stands the
+  player on the nearest dry block to what it found (`dryNear`), not `findLand`'s land well above the
+  sea, which a swamp hasn't got.
+- **`GeneratorOptions.rivers`** (on unless switched off), so river tests and the bench compare
+  version 2 with and without its rivers: version 1 differs from it by the new biomes too.
+- **Tests (5 new, 3 updated):**
+  - over 4096 × 4096 blocks, savanna more than 3% of the dry land and swamp more than 2%; none in
+    version 1;
+  - the layers;
+  - parasol trees on dry grass and swamp oaks on grass in their biomes, in the blocks: the parasol's
+    trunk, its crown 2 out always and 3 out at least one way, a disc above; swamp oaks' hanging leaves;
+  - reeds stand on mud, grass, sand or dry grass; all the savanna's by water and at least a quarter
+    of the swamp's; none in version 1;
+  - fogs, animals and finds.
+  - Updated: the biome test (version 1's four, and no others), and the river tests and bench, now
+    against version 2 without rivers.
+
+**Tuning, from maps** (made headless, a pixel every 8 blocks):
+- The swamp was first at (0.17, 0.33) with base 0.5, and covered 1–6% of the dry land. In the
+  browser it was mostly open water with mud islands, and all mud, since nearly all of it was within
+  a block of the sea.
+- Moving it to (0.15, 0.27), cutting the continent by 90% rather than 80%, base 3, and mud only at
+  the water made it what it is now: mud flats at the pools, grass hummocks, swamp oaks.
+- The savanna moved from (0.24, -0.08) to (0.22, -0.1), to cover a little more.
+
+**Measured** (`npm run bench`, `generation versions`):
+- **Generating a column:** version 1 2.13 ms, version 2 2.31 ms (+8%: rivers, the wider tree border
+  and reeds).
+- **The dry land by biome** (4096 × 4096 blocks):
+
+  | seed | plains | forest | desert | mountains | savanna | swamp |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 20261022 | 19.7 % | 19.4 % | 8.3 % | 42.7 % | 5.9 % | 4.1 % |
+  | 7 | 24.4 % | 13.7 % | 10.9 % | 35.7 % | 5.0 % | 10.4 % |
+  | 123 | 29.6 % | 25.0 % | 7.3 % | 30.0 % | 5.7 % | 2.4 % |
+
+- **Rivers:** about the same as in step 2 (1.8–2.3% water, 7–9% valleys).
+
+**In the browser:**
+- `?find=swamp`: mud flats round pools, reeds thick at the water, grass hummocks, trees on the
+  higher ground.
+- `?find=savanna`: dry grass terraces down to the water, parasol trees, reeds on the shore.
+- All five new blocks are in the creative picker with their icons.
+- **A sprint flight from the savanna** (`?find=savanna&autofly=20`): no frames over 20 ms (the
+  longest 16.9), main thread p50 2.2, p99 7.3, max 13.2 ms; no holes; no console errors. A first run
+  with the pane briefly hidden was thrown away; the flight marks such runs itself.
 

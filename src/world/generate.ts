@@ -53,7 +53,13 @@ export function writeLayers({ height: h, biome, slope, snowLine }: ColumnInfo, o
   let top: Block = Block.Grass;
   let under: Block = Block.Dirt;
   let depth = 3; // blocks of `under` below the top
-  if (h < SEA_LEVEL - 4) {
+  if (biome === Biome.Swamp && h <= SEA_LEVEL + 1) {
+    // Swamp pools and the water's edge are mud (not sand or gravel); a block above it, grass.
+    if (h <= SEA_LEVEL) {
+      top = under = Block.Mud;
+      depth = 2;
+    }
+  } else if (h < SEA_LEVEL - 4) {
     if (biome === Biome.Desert) top = under = Block.Sand;
     else {
       top = under = Block.Gravel;
@@ -64,6 +70,7 @@ export function writeLayers({ height: h, biome, slope, snowLine }: ColumnInfo, o
     top = under = Block.Stone;
     depth = 0;
   } else if (biome === Biome.Desert) top = under = Block.Sand;
+  else if (biome === Biome.Savanna) top = Block.DryGrass;
   else if (biome === Biome.Mountains) {
     if (h >= snowLine) {
       top = Block.Snow;
@@ -117,6 +124,8 @@ export interface GeneratorOptions {
   caves?: boolean;
   ores?: boolean;
   trees?: boolean;
+  /** Version 2's rivers. */
+  rivers?: boolean;
   generation?: Generation;
 }
 
@@ -153,8 +162,8 @@ export class Generator {
     readonly seed: number,
     options: GeneratorOptions = {},
   ) {
-    this.options = { caves: true, ores: true, trees: true, generation: 1, ...options };
-    this.climate = new Climate(seed);
+    this.options = { caves: true, ores: true, trees: true, rivers: true, generation: 1, ...options };
+    this.climate = new Climate(seed, this.options.generation);
     this.caves = new Caves(seed);
     this.detail = new Noise(seed ^ 0x51e7);
     this.rivers = new Rivers(seed);
@@ -163,7 +172,7 @@ export class Generator {
   /** Surface height at world column (x, z): the y of the topmost solid block. Version 2 cuts rivers' valleys into it. */
   height(x: number, z: number, weights?: Float64Array): number {
     let h: number;
-    if (this.options.generation === 1) h = SEA_LEVEL + this.climate.height(x, z, weights);
+    if (this.options.generation === 1 || !this.options.rivers) h = SEA_LEVEL + this.climate.height(x, z, weights);
     else {
       const w = weights ?? this.climate.weights(x, z, this.ownWeights);
       h = this.rivers.carve(SEA_LEVEL + this.climate.height(x, z, w), x, z, riverStrength(w));
@@ -235,6 +244,32 @@ export class Generator {
       }
     }
     return { x, z };
+  }
+
+  /**
+   * Where reeds stand in the 32 x 32 columns from (x0, z0) (version 2): the y above the ground, by
+   * column (z * 32 + x), or -1. In the savanna and the swamp, on ground at or a block above the water
+   * with water beside it, by a seeded chance; in the swamp, now and then away from it too. Never where
+   * a cave has taken the ground. `heights` and `biomes` are a column job's, with its border.
+   */
+  private reedsIn(x0: number, z0: number, heights: Int32Array, biomes: Uint8Array, ground: Ground): Int16Array {
+    const out = new Int16Array(COLUMNS).fill(-1);
+    for (let lz = 0; lz < S; lz++) {
+      for (let lx = 0; lx < S; lx++) {
+        const at = (lz + BORDER) * SPAN + lx + BORDER;
+        const biome = biomes[at];
+        if (biome !== Biome.Savanna && biome !== Biome.Swamp) continue;
+        const h = heights[at];
+        if (h < SEA_LEVEL) continue;
+        const x = x0 + lx;
+        const z = z0 + lz;
+        const wet = heights[at + 1] < SEA_LEVEL || heights[at - 1] < SEA_LEVEL || heights[at + SPAN] < SEA_LEVEL || heights[at - SPAN] < SEA_LEVEL;
+        const chance = wet && h <= SEA_LEVEL + 1 ? (biome === Biome.Swamp ? REEDS_BY_WATER.swamp : REEDS_BY_WATER.savanna) : biome === Biome.Swamp ? REEDS_INLAND : 0;
+        if (hash3(this.seed, x, 211, z) >= chance || ground.carved(x, h, z)) continue;
+        out[lz * S + lx] = h + 1;
+      }
+    }
+    return out;
   }
 
   /** Fill one chunk's blocks. */
@@ -309,6 +344,7 @@ export class Generator {
       }
     }
     for (const t of trees) top = Math.max(top, t.y + TREE_TOP);
+    const reeds = this.options.generation === 1 ? null : this.reedsIn(x0, z0, heights, biomes, ground);
 
     const out: (Uint8Array | null)[] = [];
     for (let cy = cyMin; cy <= cyMax; cy++) {
@@ -326,6 +362,14 @@ export class Generator {
       if (this.options.caves) this.caves.carve(blocks, cx, cy, cz, limits);
       if (this.options.ores) placeOres(blocks, cx, cy, cz, this.seed);
       if (trees.length) placeTrees(blocks, cx, cy, cz, trees, this.seed);
+      if (reeds) {
+        for (let c = 0; c < COLUMNS; c++) {
+          const ly: number = reeds[c] - y0;
+          if (ly < 0 || ly >= S) continue;
+          const i = (ly << Y_SHIFT) | c;
+          if (blocks[i] === Block.Air) blocks[i] = Block.Reeds;
+        }
+      }
       out.push(blocks);
     }
     return out;
@@ -339,6 +383,10 @@ export class Generator {
 export function riverStrength(weights: ArrayLike<number>): number {
   return Math.max(0, Math.min(1, 1 - (weights[Biome.Mountains] - 0.1) * 2.5));
 }
+
+/** Reeds' chance in a column at the water's edge, in the savanna and in the swamp; and in the swamp away from it. */
+const REEDS_BY_WATER = { savanna: 0.35, swamp: 0.6 };
+const REEDS_INLAND = 0.04;
 
 /** Set world y in [from, to) of one column of a chunk whose bottom is y0. `column` is the local z and x bits. */
 function fillRun(blocks: Uint8Array, column: number, y0: number, from: number, to: number, block: Block): void {

@@ -91,6 +91,10 @@ export enum TreeKind {
   Oak = 0,
   Spruce = 1,
   Cactus = 2,
+  /** Savanna (generation version 2): a tall bare trunk under a wide flat crown. */
+  Parasol = 3,
+  /** Swamp: an oak with leaves hanging from the edge of its canopy. */
+  SwampOak = 4,
 }
 
 export interface Tree {
@@ -116,20 +120,22 @@ export interface Ground {
 }
 
 const CELL = 5;
-/** Furthest a tree's blocks reach from its trunk, sideways. */
-export const TREE_REACH = 2;
+/** Furthest a tree's blocks reach from its trunk, sideways (a parasol's crown). */
+export const TREE_REACH = 3;
 /** Tallest a tree reaches above its lowest trunk block (spruce: 9 trunk, a leaf on top). */
 export const TREE_TOP = 10;
 
-/** Per biome (plains, forest, desert, mountains): the chance a cell has a tree, which tree, on what ground. */
-const TREE_CHANCE = [0.1, 0.7, 0.08, 0.3];
-const TREE_KIND = [TreeKind.Oak, TreeKind.Oak, TreeKind.Cactus, TreeKind.Spruce];
-const TREE_GROUND: readonly (readonly Block[])[] = [[Block.Grass], [Block.Grass], [Block.Sand], [Block.SnowyGrass, Block.Snow]];
+/** Per biome (plains, forest, desert, mountains, savanna, swamp): the chance a cell has a tree, which tree, on what ground. */
+const TREE_CHANCE = [0.1, 0.7, 0.08, 0.3, 0.05, 0.35];
+const TREE_KIND = [TreeKind.Oak, TreeKind.Oak, TreeKind.Cactus, TreeKind.Spruce, TreeKind.Parasol, TreeKind.SwampOak];
+const TREE_GROUND: readonly (readonly Block[])[] = [[Block.Grass], [Block.Grass], [Block.Sand], [Block.SnowyGrass, Block.Snow], [Block.DryGrass], [Block.Grass]];
 const MOST_CHANCE = Math.max(...TREE_CHANCE);
 const TREE_HEIGHTS: Record<TreeKind, [number, number]> = {
   [TreeKind.Oak]: [4, 6],
   [TreeKind.Spruce]: [6, 9],
   [TreeKind.Cactus]: [2, 4],
+  [TreeKind.Parasol]: [5, 7],
+  [TreeKind.SwampOak]: [4, 6],
 };
 
 /** The trees whose trunks stand in [x0, x1] × [z0, z1], in world order (z, then x). */
@@ -174,8 +180,8 @@ export function placeTrees(blocks: Uint8Array, cx: number, cy: number, cz: numbe
   };
   for (const t of trees) {
     if (t.y - 1 >= y0 + S || t.y + TREE_TOP < y0) continue; // nothing of it in this chunk
-    const wood = t.kind === TreeKind.Oak ? Block.Wood : t.kind === TreeKind.Spruce ? Block.SpruceWood : Block.Cactus;
-    const leaves = t.kind === TreeKind.Oak ? Block.Leaves : Block.SpruceLeaves;
+    const wood = t.kind === TreeKind.Spruce ? Block.SpruceWood : t.kind === TreeKind.Cactus ? Block.Cactus : t.kind === TreeKind.Parasol ? Block.ParasolWood : Block.Wood;
+    const leaves = t.kind === TreeKind.Spruce ? Block.SpruceLeaves : t.kind === TreeKind.Parasol ? Block.ParasolLeaves : Block.Leaves;
     // Trunk: through air and other trees' leaves.
     for (let i = 0; i < t.height; i++) {
       const at = index(t.x, t.y + i, t.z);
@@ -184,9 +190,17 @@ export function placeTrees(blocks: Uint8Array, cx: number, cy: number, cz: numbe
     if (t.kind === TreeKind.Cactus) continue;
     // Grass doesn't grow under a trunk.
     const ground = index(t.x, t.y - 1, t.z);
-    if (ground >= 0 && (blocks[ground] === Block.Grass || blocks[ground] === Block.SnowyGrass)) blocks[ground] = Block.Dirt;
+    if (ground >= 0 && (blocks[ground] === Block.Grass || blocks[ground] === Block.SnowyGrass || blocks[ground] === Block.DryGrass)) blocks[ground] = Block.Dirt;
     const top = t.y + t.height - 1;
-    if (t.kind === TreeKind.Oak) {
+    if (t.kind === TreeKind.Parasol) {
+      // A wide flat disc level with the top of the trunk, a narrower one on it.
+      for (let dz = -3; dz <= 3; dz++)
+        for (let dx = -3; dx <= 3; dx++) {
+          const d2 = dx * dx + dz * dz;
+          if (d2 <= 10 && !(d2 >= 9 && hash3(seed, t.x + dx, top, t.z + dz) < 0.5)) leaf(t.x + dx, top, t.z + dz, leaves);
+          if (d2 <= 4) leaf(t.x + dx, top + 1, t.z + dz, leaves);
+        }
+    } else if (t.kind === TreeKind.Oak || t.kind === TreeKind.SwampOak) {
       // Two wide layers round the top of the trunk, a narrow one level with it, a cross above.
       for (let y = top - 2; y <= top + 1; y++) {
         const r = y < top ? 2 : 1;
@@ -199,6 +213,16 @@ export function placeTrees(blocks: Uint8Array, cx: number, cy: number, cz: numbe
             leaf(t.x + dx, y, t.z + dz, leaves);
           }
       }
+      // A swamp oak's leaves hang from the edge of its lowest layer, 1 to 3 blocks.
+      if (t.kind === TreeKind.SwampOak)
+        for (let dz = -2; dz <= 2; dz++)
+          for (let dx = -2; dx <= 2; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dz)) !== 2) continue;
+            const roll = hash3(seed, t.x + dx, top + 40, t.z + dz);
+            if (roll >= 0.45) continue;
+            const length = 1 + Math.floor((roll / 0.45) * 3);
+            for (let k = 1; k <= length; k++) leaf(t.x + dx, top - 2 - k, t.z + dz, leaves);
+          }
     } else {
       // A cone: a tip above the trunk, then layers alternately narrow and wide downwards,
       // leaving the lowest two trunk blocks bare.

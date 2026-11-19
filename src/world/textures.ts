@@ -86,6 +86,13 @@ export const TEXTURE_NAMES = [
   'wheat_5',
   'wheat_6',
   'wheat_7',
+  'dry_grass_top',
+  'dry_grass_side',
+  'mud',
+  'reeds',
+  'parasol_top',
+  'parasol_side',
+  'parasol_leaves',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -147,6 +154,9 @@ const COPPER_DARK = hex(0x6e3f1c);
 const BOARD = hex(0x3a2c24);
 const LIT = hex(0xffa848);
 const LIT_CORE = hex(0xfff0c0);
+const DRY_GRASS = hex(0xb5a65a);
+const REED = hex(0x7f9a4a);
+const PARASOL_BARK = hex(0x8a7a66);
 
 /** A gate's plate: copper with a darker rim, an arrow up the middle (towards row 0: the way the gate faces), lit when on. */
 function gatePlate(c: Canvas, on: boolean): void {
@@ -554,6 +564,66 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   wheat_5: (c) => wheatStage(c, 5),
   wheat_6: (c) => wheatStage(c, 6),
   wheat_7: (c) => wheatStage(c, 7),
+  dry_grass_top(c) {
+    // Straw-coloured, with greener and paler tufts.
+    c.speckle(DRY_GRASS, 0.24);
+    c.spots(9, hex(0x9c9147));
+    c.spots(7, hex(0xcdbd78));
+  },
+  dry_grass_side(c) {
+    PAINTERS.dirt(c);
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      const depth = 2 + (c.rng() < 0.5 ? 1 : 0) + (c.rng() < 0.2 ? 1 : 0);
+      for (let y = 0; y < depth; y++) c.set(x, y, DRY_GRASS, 1 + (c.rng() - 0.5) * 0.24);
+    }
+  },
+  mud(c) {
+    // Dark and wet: a sheen of lighter streaks, darker pools.
+    c.speckle(hex(0x4e3b2a), 0.16);
+    c.spots(7, hex(0x3a2b1e));
+    for (let n = 0; n < 5; n++) {
+      const x = Math.floor(c.rng() * TEXTURE_SIZE);
+      const y = Math.floor(c.rng() * TEXTURE_SIZE);
+      for (let k = 0; k < 3; k++) c.set(x + k, y, hex(0x6b5640));
+    }
+  },
+  reeds(c) {
+    // Tall thin stalks, some with a brown head; the rest see-through.
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, REED, 1, 0);
+    for (const x of [1, 3, 6, 8, 11, 13]) {
+      const h = 9 + Math.floor(c.rng() * 7);
+      for (let k = 0; k < h; k++) c.set(x + (k > 10 && x % 2 ? 1 : 0), 15 - k, REED, 1 + (c.rng() - 0.5) * 0.2);
+      if (c.rng() < 0.5) for (let k = 0; k < 3; k++) c.set(x, 16 - h + k, hex(0x6a4a2a), 1 + (c.rng() - 0.5) * 0.15);
+    }
+  },
+  parasol_side(c) {
+    // Pale grey-brown bark in flat plates.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const plate = ((x >> 2) + (y >> 3)) % 2 ? 0.92 : 1.04;
+        c.set(x, y, PARASOL_BARK, plate * (1 + (c.rng() - 0.5) * 0.12));
+      }
+    for (let n = 0; n < 4; n++) {
+      const y = Math.floor(c.rng() * TEXTURE_SIZE);
+      for (let x = 0; x < TEXTURE_SIZE; x++) if (c.rng() < 0.7) c.set(x, y, PARASOL_BARK, 0.75);
+    }
+  },
+  parasol_top(c) {
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const edge = x === 0 || y === 0 || x === TEXTURE_SIZE - 1 || y === TEXTURE_SIZE - 1;
+        const ring = Math.floor(Math.hypot(x - 7.5, y - 7.5) * 0.9) % 2;
+        c.set(x, y, edge ? PARASOL_BARK : hex(0xb0905c), (edge ? 1 : ring ? 0.88 : 1.03) * (1 + (c.rng() - 0.5) * 0.08));
+      }
+  },
+  parasol_leaves(c) {
+    // Small olive leaves, sparse: more holes than oak.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        if (c.rng() < 0.4) c.set(x, y, hex(0x6f8f35), 0.5, 0);
+        else c.set(x, y, hex(0x6f8f35), 1 + (c.rng() - 0.5) * 0.4);
+      }
+  },
   glass(c) {
     // Nearly clear, a light frame and a few highlights.
     const pane = hex(0xcfe8f2);

@@ -12,11 +12,11 @@ const RIGHT_TOOL = new Map<Block, ToolKind>();
 for (const b of [Block.Stone, Block.Sandstone, Block.CoalOre, Block.CopperOre, Block.IronOre, Block.CrystalOre, Block.Lamp, Block.ChargedBlock, Block.SignalLamp, Block.SignalLampOn])
   RIGHT_TOOL.set(b, 'pick');
 for (let f = 0; f < 4; f++) for (const lit of [false, true]) RIGHT_TOOL.set(furnace(f, lit), 'pick');
-for (const b of [Block.Wood, Block.SpruceWood, Block.Planks]) RIGHT_TOOL.set(b, 'axe');
+for (const b of [Block.Wood, Block.SpruceWood, Block.ParasolWood, Block.Planks]) RIGHT_TOOL.set(b, 'axe');
 // Chests, doors and beds: wood.
 for (let b = Block.Chest; b < Block.Farmland; b++) RIGHT_TOOL.set(b as Block, 'axe');
 RIGHT_TOOL.set(Block.Fence, 'axe');
-for (const b of [Block.Dirt, Block.Grass, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass, Block.Farmland]) RIGHT_TOOL.set(b, 'spade');
+for (const b of [Block.Dirt, Block.Grass, Block.DryGrass, Block.Mud, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass, Block.Farmland]) RIGHT_TOOL.set(b, 'spade');
 
 // Slabs and stairs dig as their material does.
 for (let b = Block.Slab; b < Block.Stairs + 24; b++) {
@@ -44,6 +44,7 @@ for (let b = Block.Slab; b < Block.Stairs + 24; b++) {
 const GIVES = new Map<Block, number>([
   [Block.Grass, Block.Dirt],
   [Block.SnowyGrass, Block.Dirt],
+  [Block.DryGrass, Block.Dirt],
   [Block.Farmland, Block.Dirt],
   [Block.CoalOre, Item.Coal],
   [Block.CopperOre, Item.RawCopper],
@@ -84,7 +85,7 @@ export function digTime(block: Block, tool: Tool | undefined): number {
  */
 export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cost {
   if (!canHarvest(block, tool)) return [];
-  if (block === Block.Leaves || block === Block.SpruceLeaves) {
+  if (block === Block.Leaves || block === Block.SpruceLeaves || block === Block.ParasolLeaves) {
     const stick = 1 / TUNING.survival.leafStick;
     return roll < stick ? [[Item.Stick, 1]] : roll < stick + 1 / TUNING.survival.leafBerries ? [[Item.Berries, 1]] : [];
   }

@@ -8,8 +8,8 @@ import { World } from '../src/world/world';
 
 const SEED = 20261022;
 const S = CHUNK_SIZE;
-const WOOD: Record<TreeKind, Block> = { [TreeKind.Oak]: Block.Wood, [TreeKind.Spruce]: Block.SpruceWood, [TreeKind.Cactus]: Block.Cactus };
-const LEAVES: Record<TreeKind, Block> = { [TreeKind.Oak]: Block.Leaves, [TreeKind.Spruce]: Block.SpruceLeaves, [TreeKind.Cactus]: Block.Air };
+const WOOD: Record<TreeKind, Block> = { [TreeKind.Oak]: Block.Wood, [TreeKind.Spruce]: Block.SpruceWood, [TreeKind.Cactus]: Block.Cactus, [TreeKind.Parasol]: Block.ParasolWood, [TreeKind.SwampOak]: Block.Wood };
+const LEAVES: Record<TreeKind, Block> = { [TreeKind.Oak]: Block.Leaves, [TreeKind.Spruce]: Block.SpruceLeaves, [TreeKind.Cactus]: Block.Air, [TreeKind.Parasol]: Block.ParasolLeaves, [TreeKind.SwampOak]: Block.Leaves };
 
 /** A world of the chunk columns around (cx, cz), and the trees standing in their middle part. */
 function forest(cx: number, cz: number, r = 1) {

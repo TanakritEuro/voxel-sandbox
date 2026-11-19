@@ -9,13 +9,15 @@ import { World } from '../src/world/world';
 const SEED = 20261022;
 const v1 = new Generator(SEED, { generation: 1 });
 const v2 = new Generator(SEED, { generation: 2 });
+/** Version 2's land without its rivers. */
+const dry = new Generator(SEED, { generation: 2, rivers: false });
 
 describe('rivers (generation 2)', () => {
   it('are found where the land would be dry, as water', () => {
     const at = findNearest(v2, 'river', 0, 0)!;
     expect(at).not.toBeNull();
     expect(v2.height(at.x, at.z)).toBeLessThan(SEA_LEVEL);
-    expect(v1.height(at.x, at.z)).toBeGreaterThan(SEA_LEVEL);
+    expect(dry.height(at.x, at.z)).toBeGreaterThan(SEA_LEVEL);
     expect(findNearest(v1, 'river', 0, 0, 1024)).toBeNull();
   });
 
@@ -23,7 +25,7 @@ describe('rivers (generation 2)', () => {
     let carved = 0;
     for (let z = -1024; z < 1024; z += 4)
       for (let x = -1024; x < 1024; x += 4) {
-        const h1 = v1.height(x, z);
+        const h1 = dry.height(x, z);
         const h2 = v2.height(x, z);
         expect(h2).toBeLessThanOrEqual(h1);
         if (h2 < h1) {
@@ -40,7 +42,7 @@ describe('rivers (generation 2)', () => {
       for (let x = -2048; x < 2048; x += 16) {
         if (v2.climate.weights(x, z)[Biome.Mountains] < 0.5) continue;
         mountain++;
-        expect(v2.height(x, z)).toBe(v1.height(x, z));
+        expect(v2.height(x, z)).toBe(dry.height(x, z));
       }
     expect(mountain).toBeGreaterThan(100);
   });
@@ -55,7 +57,7 @@ describe('rivers (generation 2)', () => {
         world.ensureColumn(cx, cz);
         for (let z = cz * CHUNK_SIZE; z < (cz + 1) * CHUNK_SIZE; z++)
           for (let x = cx * CHUNK_SIZE; x < (cx + 1) * CHUNK_SIZE; x++) {
-            const river = v2.height(x, z) < SEA_LEVEL && v1.height(x, z) >= SEA_LEVEL;
+            const river = v2.height(x, z) < SEA_LEVEL && dry.height(x, z) >= SEA_LEVEL;
             for (let y = MIN_CHUNK_Y * CHUNK_SIZE + 1; y < (MAX_CHUNK_Y + 1) * CHUNK_SIZE; y++) {
               if (world.getBlock(x, y, z) !== Block.Water) continue;
               expect(y, `water at ${x},${y},${z}`).toBeLessThanOrEqual(SEA_LEVEL);
@@ -79,7 +81,7 @@ describe('rivers (generation 2)', () => {
       for (let i = 0; i < N; i++) {
         const h2 = v2.height(i - R, j - R);
         wet[j * N + i] = h2 < SEA_LEVEL ? 1 : 0;
-        made[j * N + i] = h2 < SEA_LEVEL && v1.height(i - R, j - R) >= SEA_LEVEL ? 1 : 0;
+        made[j * N + i] = h2 < SEA_LEVEL && dry.height(i - R, j - R) >= SEA_LEVEL ? 1 : 0;
       }
     const seen = new Uint8Array(N * N);
     let bodies = 0;

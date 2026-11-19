@@ -20,10 +20,10 @@ export interface BiomeFog {
 
 const rgb = (h: number): RGB => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
 
-/** Each biome's fog, in `Biome` order (plains, forest, desert, mountains). */
+/** Each biome's fog, in `Biome` order (plains, forest, desert, mountains, savanna, swamp). */
 export function biomeFogs(): BiomeFog[] {
   const F = TUNING.fog;
-  return [F.plains, F.forest, F.desert, F.mountains].map((f) => ({ tint: rgb(f.tint), amount: f.amount, start: f.start }));
+  return [F.plains, F.forest, F.desert, F.mountains, F.savanna, F.swamp].map((f) => ({ tint: rgb(f.tint), amount: f.amount, start: f.start }));
 }
 
 /**
@@ -35,7 +35,8 @@ export function blendFog(weights: ArrayLike<number>, fogs: readonly BiomeFog[] =
   let amount = 0;
   let start = 0;
   let sum = 0;
-  for (let b = 0; b < BIOME_COUNT; b++) {
+  // The weights given, at most every biome's (generation version 1's worlds have four).
+  for (let b = 0; b < Math.min(weights.length, BIOME_COUNT); b++) {
     const w = weights[b];
     sum += w;
     start += w * fogs[b].start;

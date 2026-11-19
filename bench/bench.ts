@@ -5,6 +5,7 @@
 // Totals are the figure to compare between versions: per-item means change meaning when
 // the work is split differently (columns instead of chunks, empty chunks skipped).
 
+import { BIOME_COUNT, BIOMES } from '../src/world/biomes';
 import { Generator, type Generation } from '../src/world/generate';
 import { SEA_LEVEL } from '../src/world/coords';
 import { it } from 'vitest';
@@ -1033,8 +1034,9 @@ it('generation versions', () => {
   const per = (g: Generation) => median(times[g]) / cols.length;
   const lines = ['', `generation by version (${cols.length} columns, median of ${RUNS}): version 1 ${per(1).toFixed(3)} ms a column, version 2 ${per(2).toFixed(3)} (${((per(2) / per(1) - 1) * 100).toFixed(0)} %)`];
   for (const seed of [SEED, 7, 123]) {
-    const g1 = new Generator(seed, { generation: 1 });
+    const g1 = new Generator(seed, { generation: 2, rivers: false });
     const g2 = new Generator(seed, { generation: 2 });
+    const biomes = new Array(BIOME_COUNT).fill(0);
     let land = 0;
     let river = 0;
     let valley = 0;
@@ -1046,8 +1048,11 @@ it('generation versions', () => {
         const h2 = g2.height(x, z);
         if (h2 < h1) valley++;
         if (h2 < SEA_LEVEL) river++;
+        else biomes[g2.biome(x, z)]++;
       }
+    const dryLand = biomes.reduce((a, b) => a + b, 0);
     lines.push(`  seed ${seed}: of the land, ${((river / land) * 100).toFixed(1)} % river water, ${((valley / land) * 100).toFixed(1)} % lowered by rivers' valleys`);
+    lines.push(`    biomes of the dry land: ${biomes.map((n, b) => `${BIOMES[b].name} ${((n / dryLand) * 100).toFixed(1)} %`).join(', ')}`);
   }
   lines.push('');
   console.log(lines.join('\n'));

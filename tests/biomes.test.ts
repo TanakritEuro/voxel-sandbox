@@ -13,7 +13,7 @@ function* grid(step = STEP): Iterable<[number, number]> {
 }
 
 describe('biomes', () => {
-  it('all four occur, each over at least 5 % of the land', () => {
+  it('all four occur in generation version 1, each over at least 5 % of the land, and no others', () => {
     const climate = new Climate(SEED);
     const counts = new Array(BIOME_COUNT).fill(0);
     let n = 0;
@@ -21,7 +21,8 @@ describe('biomes', () => {
       counts[climate.dominant(x, z)]++;
       n++;
     }
-    for (let b = 0; b < BIOME_COUNT; b++) expect(counts[b] / n, Biome[b]).toBeGreaterThan(0.05);
+    for (let b = 0; b < 4; b++) expect(counts[b] / n, Biome[b]).toBeGreaterThan(0.05);
+    expect(counts[Biome.Savanna] + counts[Biome.Swamp]).toBe(0);
   });
 
   it('are the same for the same seed and differ for another', () => {

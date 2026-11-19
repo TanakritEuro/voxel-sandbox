@@ -153,7 +153,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
   `furnaceOf`; a block's `front` texture on the side it faces), chests 106–109, doors 110–125, beds
   126–133, farmland 134, wheat 135–142, slabs 143–148 and stairs 149–172 in `SHAPE_MATERIALS`, fence 173, glass pane 174 (`connects`: boxes from
-  their neighbours) (`chest`, `door`,
+  their neighbours), dry grass 175, mud 176, reeds 177 (crossed sheets), parasol wood and leaves 178–179 (`chest`, `door`,
   `doorSide`, `bed`, `wheat`, `slab`, `stairs` and their `…Of`; `boxes`: what a body bumps into when it
   isn't the whole block, a door's panel, a bed's half, a slab, stairs' two):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
@@ -167,13 +167,13 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `blockBoxes`: any block's boxes as drawn), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height, `SEA_LEVEL`), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
-  (climate, biome weights, blended heights), `generate.ts` (`Generation`: a world's generation version, 1 before Milestone 16 and 2 since, `GENERATION` the
+  (climate, biome weights, blended heights; savanna and swamp only from generation version 2, a swamp's continent flattened), `generate.ts` (`Generation`: a world's generation version, 1 before Milestone 16 and 2 since, `GENERATION` the
   newest, `generationOf` cleaning a saved one; a `Generator` is version 1 unless told; column jobs: height map with a
   border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`), `rivers.ts` (version 2: valleys cut to a bed below sea level along a
   winding noise's zero lines, filled by the sea's still water, narrowing and ending as mountains weigh in, `riverStrength` in
-  `generate.ts`), `find.ts` (`?find=river`: the nearest of a kind, searched with the generator alone),
-  `features.ts` (ore veins and trees across chunk borders; `Ground`, what tree placement asks), `light.ts` (sunlight and block
+  `generate.ts`), `find.ts` (`?find=river|savanna|swamp`: the nearest of a kind, searched with the generator alone; `dryNear` somewhere to stand by it),
+  `features.ts` (ore veins and trees across chunk borders, parasol trees and swamp oaks too; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
   `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one
   and the blocks written kept in reused arrays;
@@ -341,7 +341,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river` near the nearest river to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
+  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),

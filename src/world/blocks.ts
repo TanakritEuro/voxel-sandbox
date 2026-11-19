@@ -80,6 +80,13 @@ export enum Block {
   /** A wooden fence and a glass pane: their boxes from what's beside them (`connects`, `world/shapes.ts`). */
   Fence = 173,
   Pane = 174,
+  /** Savanna and swamp (Milestone 16, generation version 2). */
+  DryGrass = 175,
+  Mud = 176,
+  /** Two crossed sheets, as wheat, standing on the block below. */
+  Reeds = 177,
+  ParasolWood = 178,
+  ParasolLeaves = 179,
 }
 
 type RGB = [number, number, number];
@@ -409,6 +416,11 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   ),
   { ...solid('Fence', 2, faces('planks'), 0xb88c55), opaque: false, shape: 'slab', connects: 'fence' },
   { ...solid('Glass pane', 0.4, faces('glass'), 0xcfe8f2), opaque: false, transparent: true, shape: 'slab', connects: 'pane' },
+  solid('Dry grass', 0.7, faces('dry_grass_top', 'dry_grass_side', 'dirt'), 0xb5a65a, 0x9a8650, 0x86603e),
+  solid('Mud', 0.7, faces('mud'), 0x4e3b2a),
+  { ...solid('Reeds', 0.05, faces('reeds'), 0x7f9a4a), opaque: false, passable: true, shape: 'cross', cutout: true, icon: 'reeds' },
+  solid('Parasol wood', 1.5, faces('parasol_top', 'parasol_side'), 0xb0905c, 0x8a7a66),
+  { ...solid('Parasol leaves', 0.3, faces('parasol_leaves'), 0x6f8f35), opaque: false, cutout: true, lightCost: 1 },
 ];
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
@@ -451,6 +463,11 @@ const SOUNDS: Partial<Record<Block, BlockSound>> = {
 };
 for (let b = Block.Chest; b < Block.Farmland; b++) SOUNDS[b as Block] = 'wood';
 SOUNDS[Block.Fence] = 'wood';
+SOUNDS[Block.DryGrass] = 'grass';
+SOUNDS[Block.Mud] = 'dirt';
+SOUNDS[Block.Reeds] = 'leaves';
+SOUNDS[Block.ParasolWood] = 'wood';
+SOUNDS[Block.ParasolLeaves] = 'leaves';
 SOUNDS[Block.Pane] = 'glass';
 // Plank slabs and stairs sound of wood.
 for (let b = Block.Slab; b < Block.Fence; b++) if ((slabOf(b as Block) ?? stairsOf(b as Block))!.material === 1) SOUNDS[b as Block] = 'wood';

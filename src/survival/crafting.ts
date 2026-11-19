@@ -18,6 +18,7 @@ const r = (makes: number, count: number, ...cost: [number, number][]): Recipe =>
 export const RECIPES: readonly Recipe[] = [
   r(Block.Planks, 4, [Block.Wood, 1]),
   r(Block.Planks, 4, [Block.SpruceWood, 1]),
+  r(Block.Planks, 4, [Block.ParasolWood, 1]),
   r(Item.Stick, 4, [Block.Planks, 2]),
   r(Block.Torch, 4, [Item.Stick, 1], [Item.Coal, 1]),
   r(Block.Torch, 4, [Item.Stick, 1], [Item.Ember, 1]),

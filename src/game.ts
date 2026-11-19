@@ -2,7 +2,7 @@
 // `?at=`, `?autofly`): world, saving, chunk loading, the player, block editing, the HUD and
 // the pause menu.
 
-import { findNearest, isFindable } from './world/find';
+import { dryNear, findNearest, isFindable } from './world/find';
 import { generationOf } from './world/generate';
 import * as THREE from 'three';
 import { heard, SoundCues, underfoot } from './audio/cues';
@@ -515,7 +515,7 @@ const [atX, atZ] = (params.get('at') ?? '0,0').split(',').map((v) => Math.floor(
 const findKind = params.get('find');
 const foundPlace = isFindable(findKind) ? findNearest(world.generator, findKind, atX, atZ ?? 0) : null;
 if (findKind !== null) console.log(foundPlace ? `[find] ${findKind} at ${foundPlace.x}, ${foundPlace.z}` : `[find] no ${findKind} within reach`);
-const spawn = world.generator.findLand(foundPlace?.x ?? atX, foundPlace?.z ?? atZ ?? 0);
+const spawn = foundPlace ? dryNear(world.generator, foundPlace.x, foundPlace.z) : world.generator.findLand(atX, atZ ?? 0);
 /** Where a new player stands, and a survival player starts again. */
 const spawnFeet = { x: spawn.x + 0.5, y: world.generator.height(spawn.x, spawn.z) + 1, z: spawn.z + 0.5 };
 const player = new Player(

@@ -250,6 +250,9 @@ export const TUNING = {
     forest: { tint: 0x9cc8a4, amount: 0.3, start: 0.5 },
     desert: { tint: 0xe8d3a2, amount: 0.6, start: 0.35 },
     mountains: { tint: 0xe2ebf3, amount: 0.45, start: 0.65 },
+    /** A dry golden haze; a damp green murk, close in. */
+    savanna: { tint: 0xe6d49a, amount: 0.35, start: 0.5 },
+    swamp: { tint: 0x8fa88a, amount: 0.55, start: 0.35 },
     /** Seconds to ease most of the way to a new biome's fog. */
     ease: 3,
   },
