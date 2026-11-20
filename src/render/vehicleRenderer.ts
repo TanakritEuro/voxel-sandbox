@@ -1,7 +1,8 @@
 // Drawing vehicles (Milestone 18), as the mobs are drawn: each kind a few boxes, each box one
 // InstancedMesh with an instance per vehicle, shaded by direction as the chunks are, with painted
 // textures, lit by the world's light where it stands and the day's light, and fogged. Each is drawn
-// between its last two steps, facing along its rail and tipped up or down a slope.
+// between its last two steps, facing along its rail and tipped up or down a slope; a boat afloat bobs
+// a little.
 
 import * as THREE from 'three';
 import type { Vehicle } from '../vehicles/vehicle';
@@ -18,7 +19,7 @@ export interface VehicleView {
   drawnAt(v: Vehicle): VehicleBefore;
 }
 
-type VehicleTexture = 'iron' | 'floor' | 'wheel' | 'chest';
+type VehicleTexture = 'iron' | 'floor' | 'wheel' | 'chest' | 'planks';
 
 interface Box {
   size: [number, number, number];
@@ -39,9 +40,20 @@ const CART: Box[] = [
 /** A chest cart: the cart with a chest sitting in it. */
 const CHEST_CART: Box[] = [...CART, { size: [0.7, 0.66, 0.84], at: [0, 0.57, 0], texture: 'chest' }];
 
+/** A boat: a plank hull longer than it's wide, low sides, a seat across it. */
+const BOAT: Box[] = [
+  { size: [1.0, 0.1, 1.5], at: [0, 0.08, 0], texture: 'planks' },
+  { size: [0.1, 0.36, 1.5], at: [-0.5, 0.28, 0], texture: 'planks' },
+  { size: [0.1, 0.36, 1.5], at: [0.5, 0.28, 0], texture: 'planks' },
+  { size: [0.9, 0.36, 0.1], at: [0, 0.28, -0.7], texture: 'planks' },
+  { size: [0.9, 0.36, 0.1], at: [0, 0.28, 0.7], texture: 'planks' },
+  { size: [0.9, 0.06, 0.26], at: [0, 0.3, 0.15], texture: 'planks' },
+];
+
 const MODELS: Record<VehicleKind, Box[]> = {
   [VehicleKind.Cart]: CART,
   [VehicleKind.ChestCart]: CHEST_CART,
+  [VehicleKind.Boat]: BOAT,
 };
 
 function textures(): Record<VehicleTexture, THREE.DataTexture> {
@@ -57,6 +69,8 @@ function textures(): Record<VehicleTexture, THREE.DataTexture> {
     floor: fur(42, 0x6b6f74, 0.2),
     wheel: painted(43, (x, y, r) => shade(rgb(Math.hypot(x - 7.5, y - 7.5) < 3 ? 0x8a8e93 : 0x2a2a2c), 1 + (r() - 0.5) * 0.15)),
     // Boards and dark edges, as a chest.
+    // Planks along the hull.
+    planks: painted(45, (x, y, r) => shade(rgb(y % 4 === 3 ? 0x7d5a32 : 0xb88c55), 1 + (r() - 0.5) * 0.14 + (x === 5 && y % 8 < 4 ? -0.15 : 0))),
     chest: painted(44, (x, y, r) => {
       const edge = x === 0 || x === 15 || y === 0 || y === 15 || y === 5;
       return shade(rgb(edge ? 0x5a3a1e : 0x9a6a3a), (y % 4 === 3 ? 0.88 : 1) * (1 + (r() - 0.5) * 0.12));
@@ -82,7 +96,7 @@ export class VehicleRenderer {
   constructor(capacity: number) {
     const maps = textures();
     const materials = new Map<VehicleTexture, THREE.MeshBasicMaterial>();
-    for (const kind of [VehicleKind.Cart, VehicleKind.ChestCart]) {
+    for (const kind of [VehicleKind.Cart, VehicleKind.ChestCart, VehicleKind.Boat]) {
       for (const box of MODELS[kind]) {
         let mat = materials.get(box.texture);
         if (!mat) materials.set(box.texture, (mat = new THREE.MeshBasicMaterial({ map: maps[box.texture], vertexColors: true, fog: true })));
@@ -97,11 +111,12 @@ export class VehicleRenderer {
     }
   }
 
-  /** Once a frame, after the vehicles moved. */
-  update(view: VehicleView, world: World, daylight: number): void {
+  /** Once a frame, after the vehicles moved. `t` is any steady clock (seconds), for a boat's bobbing. */
+  update(view: VehicleView, world: World, daylight: number, t: number): void {
     for (const p of this.parts) p.mesh.count = 0;
     for (const v of view.vehicles) {
       const at = view.drawnAt(v);
+      if (v.kind === VehicleKind.Boat && v.body.inWater) at.y += Math.sin(t * 2.1 + v.id) * 0.025;
       const light = brightness(world.getLight(Math.floor(at.x), Math.floor(at.y + 0.5), Math.floor(at.z)), daylight);
       colour.setRGB(light, light, light, THREE.SRGBColorSpace);
       for (const p of this.parts) {

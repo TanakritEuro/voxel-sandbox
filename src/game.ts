@@ -51,9 +51,9 @@ import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import type { Mob } from './mobs/brain';
 import { mobOnRay, rayBox } from './mobs/hit';
-import { type Push } from './vehicles/cart';
-import { VehicleManager } from './vehicles/manager';
-import { rideable, type Vehicle, VehicleKind } from './vehicles/vehicle';
+import { surfaceAt, waterOnRay } from './vehicles/boat';
+import { type RiderInput, VehicleManager } from './vehicles/manager';
+import { rideable, seatHeight, type Vehicle, VehicleKind } from './vehicles/vehicle';
 import { VehicleRenderer } from './render/vehicleRenderer';
 import { KINDS, MobKind } from './mobs/kinds';
 import { type MobSound, MobManager } from './mobs/mobs';
@@ -281,7 +281,7 @@ function ride(v: Vehicle): void {
     const now = vehicles.ridden(0);
     if (!now) return null;
     const at = vehicles.drawnAt(now);
-    return { x: at.x, y: at.y + TUNING.vehicles.seat, z: at.z };
+    return { x: at.x, y: at.y + seatHeight(now), z: at.z };
   };
   sound.play({ name: 'place', material: 'stone', gain: 0.5 });
 }
@@ -450,6 +450,29 @@ function buildRailway(x: number, z: number): void {
     cart.speed = 3;
     ride(cart);
   }
+}
+
+/** `?boat`: the player in a boat on the nearest water once the ground is there (with `?find=river` for a river). */
+let boatParam = params.has('boat');
+
+/** The nearest column within 48 blocks of (x, z) whose top is water, a boat put on it there, and the player in it. */
+function launchBoat(x: number, z: number): void {
+  for (let r = 0; r <= 48; r++)
+    for (let dz = -r; dz <= r; dz++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const gx = Math.floor(x) + dx;
+        const gz = Math.floor(z) + dz;
+        if (!world.hasColumn(toChunk(gx), toChunk(gz))) continue;
+        let y = 200;
+        while (y > 1 && world.getBlock(gx, y, gz) === Block.Air) y--;
+        if (!BLOCKS[world.getBlock(gx, y, gz)].liquid) continue;
+        const s = surfaceAt(world, gx + 0.5, y, gz + 0.5);
+        const boat = s === null ? null : vehicles?.placeBoat(gx + 0.5, s - TUNING.vehicles.boat.draft, gz + 0.5, input.yaw);
+        if (boat) ride(boat);
+        return;
+      }
+  say('No water near enough for ?boat.');
 }
 
 /** `?farm`: a field of wheat round the player once the ground is there (for measuring). */
@@ -1872,11 +1895,17 @@ function frame(now: number): void {
   fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
 
   // Paused: the player and the clock stand still; the world goes on loading.
-  // Vehicles first: a rider's seat follows theirs. W pushes a cart from a standstill the way the rider looks.
+  // Vehicles first: a rider's seat follows theirs. W pushes a cart from a standstill the way the rider
+  // looks; W, S, A and D row a boat.
   if (vehicles) {
-    const pushes = new Map<number, Push>();
-    if (riding() && !paused() && input.isHeld('KeyW')) pushes.set(0, [-Math.sin(input.yaw), -Math.cos(input.yaw)]);
-    vehicles.update(worldRuns() ? dt : 0, pushes);
+    const inputs = new Map<number, RiderInput>();
+    if (riding() && !paused())
+      inputs.set(0, { forward: input.axis('KeyW') - input.axis('KeyS'), turn: input.axis('KeyD') - input.axis('KeyA'), look: [-Math.sin(input.yaw), -Math.cos(input.yaw)] });
+    // A boat rowed round turns its rower's view with it.
+    const boat = riding()?.kind === VehicleKind.Boat ? riding()! : null;
+    const boatYaw = boat?.yaw ?? 0;
+    vehicles.update(worldRuns() ? dt : 0, inputs);
+    if (boat && boat.rider === 0) input.yaw += boat.yaw - boatYaw;
     // Crouching gets out.
     if (riding() && !paused() && (input.isHeld('ShiftLeft') || input.isHeld('ShiftRight'))) getOut();
   }
@@ -1948,6 +1977,10 @@ function frame(now: number): void {
     plantField(player.body.x, player.body.z);
     farmParam = false;
   }
+  if (boatParam && !player.waiting && !guest) {
+    launchBoat(player.body.x, player.body.z);
+    boatParam = false;
+  }
   if (railwayParam && !player.waiting && !guest) {
     buildRailway(player.body.x, player.body.z);
     railwayParam = false;
@@ -1970,6 +2003,17 @@ function frame(now: number): void {
   lastAimed = aimed?.mob ?? null;
   // Right click on an animal holding its food: fed (before eating it, or using it on a block).
   if (aimed && survival && !dead && KINDS[aimed.mob.kind].food === pack.slots[selected]?.item && input.take('Mouse2')) feed(aimed.mob);
+  // A boat held in survival: a right click on water within reach puts it there.
+  if (vehicles && survival && !dead && !paused() && pack.slots[selected]?.item === Item.Boat) {
+    const p = camera.position;
+    const spot = waterOnRay(world, [p.x, p.y, p.z], [dir.x, dir.y, dir.z], TUNING.edit.reach);
+    if (spot && input.take('Mouse2') && vehicles.placeBoat(spot[0], spot[1], spot[2], input.yaw)) {
+      pack.takeOne(selected);
+      renderHotbar();
+      sound.play({ name: 'place', material: 'wood', gain: 1 });
+      swing();
+    }
+  }
   const aimedVehicle = !paused() ? vehicleOnRay(camera.position, dir, aimed ? aimed.distance : target ? target.distance : TUNING.edit.reach) : null;
   if (aimedVehicle) {
     target = null;
@@ -2042,7 +2086,7 @@ function frame(now: number): void {
     guest.mobs.update(guest.clock());
     mobView.update(guest.mobs, world, daylightNow, now / 1000);
   }
-  if (vehicles) vehicleView.update(vehicles, world, daylightNow);
+  if (vehicles) vehicleView.update(vehicles, world, daylightNow, now / 1000);
   // Animals courting show it: hearts over them now and then.
   if (worldRuns() && (untilLoveHearts -= dt) <= 0) {
     untilLoveHearts = 1.2;

@@ -1,8 +1,8 @@
-// The world's vehicles (Milestone 18): stepped at a fixed rate, drawn between steps, stored when
+// The world's vehicles (Milestone 18): carts and boats, stepped at a fixed rate, drawn between steps, stored when
 // their column unloads and given back when it loads (as kept animals are), saved in the world
 // record's `vehicles`. At most `TUNING.vehicles.most`.
 //
-// A vehicle is placed on a rail (a cart); a player rides it (`ride`, `leave`); hits break it
+// A cart is placed on a rail, a boat on water; a player rides one (`ride`, `leave`); hits break it
 // (`hit`). What a broken one gives (and a chest cart's slots) is the caller's to drop.
 
 import { TUNING } from '../config';
@@ -12,7 +12,8 @@ import { Inventory } from '../survival/inventory';
 import { Item } from '../survival/items';
 import { toChunk } from '../world/coords';
 import type { BlockSource } from '../world/physics';
-import { putOnRail, type Push, stepCart } from './cart';
+import { stepBoat } from './boat';
+import { putOnRail, stepCart } from './cart';
 import { CART_SLOTS, createVehicle, rideable, type Vehicle, VehicleKind } from './vehicle';
 
 /** The blocks, and which columns are loaded. */
@@ -32,6 +33,13 @@ export interface VehicleRecord {
   speed: number;
   /** A chest cart's slots. */
   slots?: (Stack | null)[];
+}
+
+/** What a rider does: W and S, A and D (each -1 to 1), and the way they look on x and z (a unit vector). */
+export interface RiderInput {
+  forward: number;
+  turn: number;
+  look: readonly [number, number];
 }
 
 /** Where a vehicle was before this frame's steps (drawn between that and now). */
@@ -81,11 +89,20 @@ export class VehicleManager {
     return v;
   }
 
+  /** A boat at (x, y, z) facing along `yaw`; null if there are as many vehicles as there may be. */
+  placeBoat(x: number, y: number, z: number, yaw: number): Vehicle | null {
+    if (this.count >= TUNING.vehicles.most) return null;
+    const v = createVehicle(this.nextId++, VehicleKind.Boat, x, y, z, yaw);
+    this.vehicles.push(v);
+    return v;
+  }
+
   /**
    * Once a frame (dt 0 while paused): store those whose land unloaded, then the steps due, each ridden
-   * cart pushed by its rider's `pushes` (by player number).
+   * one moved by its rider's `inputs` (by player number): a cart pushed from a standstill the way they
+   * look while W is held, a boat rowed.
    */
-  update(dt: number, pushes: ReadonlyMap<number, Push> = new Map()): void {
+  update(dt: number, inputs: ReadonlyMap<number, RiderInput> = new Map()): void {
     const t0 = performance.now();
     for (let i = this.vehicles.length - 1; i >= 0; i--) {
       const v = this.vehicles[i];
@@ -99,7 +116,12 @@ export class VehicleManager {
     const steps = this.clock.advance(dt);
     if (steps > 0) {
       for (const v of this.vehicles) this.before.set(v, { x: v.body.x, y: v.body.y, z: v.body.z, yaw: v.yaw, pitch: v.pitch });
-      for (let s = 0; s < steps; s++) for (const v of this.vehicles) stepCart(v, this.world, TUNING.vehicles.step, v.rider >= 0 ? (pushes.get(v.rider) ?? null) : null);
+      for (let s = 0; s < steps; s++)
+        for (const v of this.vehicles) {
+          const input = v.rider >= 0 ? inputs.get(v.rider) : undefined;
+          if (v.kind === VehicleKind.Boat) stepBoat(v, this.world, TUNING.vehicles.step, input ? { forward: input.forward, turn: input.turn } : null);
+          else stepCart(v, this.world, TUNING.vehicles.step, input && input.forward > 0 ? input.look : null);
+        }
     }
     for (const v of this.vehicles) v.sinceHit += dt;
     this.ms = performance.now() - t0;
@@ -144,7 +166,7 @@ export class VehicleManager {
     v.sinceHit = 0;
     if (!creative && v.hits < V.hits) return null;
     this.remove(v);
-    const gives: Stack[] = [{ item: v.kind === VehicleKind.ChestCart ? Item.ChestCart : Item.Cart, count: 1 }];
+    const gives: Stack[] = [{ item: v.kind === VehicleKind.ChestCart ? Item.ChestCart : v.kind === VehicleKind.Boat ? Item.Boat : Item.Cart, count: 1 }];
     if (v.slots) for (const s of v.slots.slots) if (s) gives.push(s);
     return gives;
   }
@@ -226,7 +248,7 @@ const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFi
 function cleanRecord(raw: unknown): VehicleRecord | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const o = raw as Record<string, unknown>;
-  if (o.kind !== VehicleKind.Cart && o.kind !== VehicleKind.ChestCart) return null;
+  if (o.kind !== VehicleKind.Cart && o.kind !== VehicleKind.ChestCart && o.kind !== VehicleKind.Boat) return null;
   if (![o.x, o.y, o.z].every(finite) || Math.abs(o.x as number) > 2 ** 21 || Math.abs(o.z as number) > 2 ** 21 || Math.abs(o.y as number) > 1024) return null;
   const rail = Array.isArray(o.rail) && o.rail.length === 4 && o.rail.every(finite) && (o.rail as number[]).slice(0, 3).every(Number.isInteger) ? (o.rail as [number, number, number, number]) : null;
   const C = TUNING.vehicles.cart;

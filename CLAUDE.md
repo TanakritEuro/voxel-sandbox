@@ -27,7 +27,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestone 18 (getting about: boats, rails and carts with powered rails, a map) in progress, plan approved
-(`docs/milestone-18.md`); steps 1 (rails) and 2 (carts) built.
+(`docs/milestone-18.md`); steps 1 (rails), 2 (carts) and 3 (boats) built.
 Milestones 1–17 built (`docs/milestone-1.md` to `docs/milestone-17.md`), waiting for playtests
 (Milestone 17, creatures, part two: the ambler on the savanna and the wader in the swamp; an animal fed its food
 (wheat, seeds or berries) is kept, saved with the world and never despawned, up to 128; kept animals fed again fall
@@ -153,7 +153,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, stepping up, light, day length, sleep, sky, mobs (kept animals, breeding), vehicles (carts), water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
+  reach, stepping up, light, day length, sleep, sky, mobs (kept animals, breeding), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
   wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
   eating, meat from animals, smelting time, items on the ground, farming), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
@@ -252,12 +252,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `World.getBlock`), `models.ts` (each kind's boxes, pivots, textures and how each part moves; pure
   data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
   and ears; pure).
-- `src/vehicles/` — vehicles (Milestone 18): `vehicle.ts` (`Vehicle`: a kind (cart, chest cart), a body, facing and
+- `src/vehicles/` — vehicles (Milestone 18): `vehicle.ts` (`Vehicle`: a kind (cart, chest cart, boat), a body, facing and
   pitch, `OnRail` (a rail's block and how far along its path), speed along it, the rider, hits, a chest cart's 27 slots;
-  `rideable`), `cart.ts` (a rail's path through its block, `railPoint`, `railTangent`, `railLength`: straight, sloped,
+  `rideable`, `seatHeight`), `boat.ts` (`stepBoat`: floating sprung to the water's surface (`surfaceAt`), rowed
+  (W/S, A/D turning) at 4.5 blocks a second, carried by currents, stopped by shores, falling and dragging on land;
+  `waterOnRay`: where a boat goes on water looked at; pure), `cart.ts` (a rail's path through its block, `railPoint`, `railTangent`, `railLength`: straight, sloped,
   a quarter circle; `stepCart`: gravity down slopes, powered rails pushing to 8 blocks a second or braking, rolling drag,
   a rider's push from a standstill, on through each end into the rail joined there, stopping at a dead end; off rails a
-  sliding box landing back on one; `putOnRail`; pure), `manager.ts` (`VehicleManager`: carts put on rails, stepped at
+  sliding box landing back on one; `putOnRail`; pure), `manager.ts` (`VehicleManager`: carts put on rails, boats on water (`placeBoat`), each stepped by its rider's
+  `RiderInput`, stepped at
   60 Hz and drawn between steps (`drawnAt`), riding (`ride`, `leave`, `ridden`), three hits to break (one in creative),
   stored with their column and given back, saved in the record's `vehicles` and cleaned on load, at most
   `TUNING.vehicles.most`).
@@ -299,7 +302,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   kind's model posed, one InstancedMesh per box (an instance per copy per mob, so at most 19 draw
   calls), lit by the world's light and fogged, drawn between physics steps; its shader compiled
   at startup. `mobTextures.ts` — their 16 × 16 textures painted at startup, a face and its box's
-  sides side by side in one so a head is one draw call. `vehicleRenderer.ts` — carts and chest carts, as the mobs are drawn: a few boxes each,
+  sides side by side in one so a head is one draw call. `vehicleRenderer.ts` — carts, chest carts and boats (bobbing afloat), as the mobs are drawn: a few boxes each,
   an InstancedMesh per box, facing along the rail and tipped on slopes. `playerRenderer.ts` — other players: a
   blocky figure per player in their colour, legs and arms swinging, head looking, name above.
 - `src/chunkLoader.ts` — load / mesh / unload scheduling: starts jobs by `columnPriority`
@@ -385,7 +388,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   pointer lock (for driving the game from outside),
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?railway` lays a loop of rails 40 x 20 round you
   on a stone bed (a hump with slopes and powered rails before it each way, ten powered rails with a wire and a switch) and
-  puts you in a cart on it (`?railway=60` reports frame times after a minute riding), `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  puts you in a cart on it (`?railway=60` reports frame times after a minute riding), `?boat` puts you in a boat on
+  the nearest water (`?find=river&boat`), `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

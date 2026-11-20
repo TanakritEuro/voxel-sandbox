@@ -223,6 +223,25 @@ const CHEST_CART = [
   '...dd......dd...',
   '................',
 ];
+/** A boat from the side: a long low hull, its ends raised, an oar across it. */
+const BOAT = [
+  '................',
+  '................',
+  '................',
+  '..........hh....',
+  '.........hh.....',
+  '........hh......',
+  '.l.....hh.....l.',
+  '.ml...hh.....lm.',
+  '.mllllllllllllm.',
+  '.mmmmmmmmmmmmmd.',
+  '..mmmmmmmmmmmd..',
+  '...ddmmmmmmdd...',
+  '.....dddddd.....',
+  '................',
+  '................',
+  '................',
+];
 /** A soft tuft, ragged at the edges. */
 const TUFT = [
   '................',
@@ -332,6 +351,7 @@ const ART: Record<number, [string[], Palette]> = {
   [Item.Moss]: [TUFT, MOSS],
   [Item.Cart]: [CART, CART_IRON],
   [Item.ChestCart]: [CHEST_CART, CHEST_WOOD],
+  [Item.Boat]: [BOAT, WOOD],
 };
 
 /** Item `item`'s picture: 16 × 16 RGBA, row 0 at the top, transparent where empty; null for a block (it has its own icon). */

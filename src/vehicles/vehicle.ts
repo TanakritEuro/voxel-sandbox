@@ -8,6 +8,7 @@ import { type Body, createBody } from '../world/physics';
 export enum VehicleKind {
   Cart = 0,
   ChestCart = 1,
+  Boat = 2,
 }
 
 /** Slots a chest cart carries. */
@@ -42,7 +43,7 @@ export interface Vehicle {
 }
 
 export function createVehicle(id: number, kind: VehicleKind, x: number, y: number, z: number, yaw = 0): Vehicle {
-  const C = TUNING.vehicles.cart;
+  const C = kind === VehicleKind.Boat ? TUNING.vehicles.boat : TUNING.vehicles.cart;
   return {
     id,
     kind,
@@ -57,6 +58,9 @@ export function createVehicle(id: number, kind: VehicleKind, x: number, y: numbe
     slots: kind === VehicleKind.ChestCart ? new Inventory(CART_SLOTS) : null,
   };
 }
+
+/** The rider's feet above the vehicle's. */
+export const seatHeight = (v: Vehicle): number => (v.kind === VehicleKind.Boat ? TUNING.vehicles.boat.seat : TUNING.vehicles.seat);
 
 /** Can it be ridden (a chest cart can't: it's full of chest)? */
 export const rideable = (v: Vehicle): boolean => v.kind !== VehicleKind.ChestCart;

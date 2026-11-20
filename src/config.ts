@@ -402,5 +402,24 @@ export const TUNING = {
       push: 3,
       pushUpTo: 1.5,
     },
+    /**
+     * Boats (`vehicles/boat.ts`), in blocks and seconds: their box (square: boxes don't turn); how deep
+     * the bottom sits in the water; the rower's seat above the bottom; speed rowed on water and on land;
+     * turning (radians a second); how fast the speed eases to what's rowed, on water and on land; the
+     * spring to the surface and its damping.
+     */
+    boat: {
+      halfWidth: 0.7,
+      height: 0.6,
+      draft: 0.06,
+      seat: 0.2,
+      speed: 4.5,
+      landSpeed: 0.6,
+      turn: 2.2,
+      waterDrag: 2.5,
+      landDrag: 6,
+      spring: 40,
+      damping: 10,
+    },
   },
 };

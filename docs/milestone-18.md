@@ -1,6 +1,6 @@
 # Milestone 18: getting about
 
-**Status:** plan approved (2026-11-20); steps 1 and 2 built.
+**Status:** plan approved (2026-11-20); steps 1–3 built.
 
 ## Goal
 
@@ -205,7 +205,7 @@ saving and the map are tested headless; how riding feels is left for playtests.
    with logic; tests. Done (2026-11-20).
 2. **Carts.** Vehicles, their manager, rail physics, riding, chest carts, drawing, saving; `?railway`;
    tests. Done (2026-11-20).
-3. **Boats.** Water physics, rowing, placing on water, drawing; `?boat`; tests.
+3. **Boats.** Water physics, rowing, placing on water, drawing; `?boat`; tests. Done (2026-11-20).
 4. **The map.** Paper and maps, explored tiles, the panel and full-screen map, saving; tests.
 5. **Together.** Vehicles to guests, riders moving their own, `mount` and `dismount`, chest carts,
    riders drawn; PROTOCOL 11; tests.
@@ -380,4 +380,55 @@ the machine is faster today.
   `?railway`'s cart for now; carts in the creative picker are a question for the playtest.
 - **The rider's W** only starts a cart from a near standstill (up to 1.5 blocks a second), as planned, and
   carts don't steer at junctions (there are none).
+
+## Step 3: boats (2026-11-20)
+
+**What's in:**
+- **`VehicleKind.Boat`:** a square box 1.4 wide (boxes don't turn) and 0.6 high.
+- **`vehicles/boat.ts`** (pure):
+  - `surfaceAt`: the water's surface in the column under the boat's middle (a full block under more
+    water, else its depth);
+  - **`stepBoat`:**
+    - afloat, its bottom sprung to 0.06 under the surface and damped;
+    - rowed: W forwards at 4.5 blocks a second (twice swimming's 2.2), S back at half, A and D turning
+      2.2 radians a second, its speed easing to what's rowed (and gliding to a stop);
+    - flowing water's current added (`currentAt`, `TUNING.water.push`);
+    - shores stop it (it moves as a box);
+    - out of the water it falls, and on land drags to a stop, rowed only at 0.6;
+  - `waterOnRay`: the first water surface along the view within reach, not through anything solid.
+- **The manager** puts boats on water (`placeBoat`) and steps each vehicle by its rider's `RiderInput`
+  (W/S, A/D and the way they look): boats are rowed; carts pushed from a standstill while W is held, as
+  before. Records take boats.
+- **Item and recipe:** a boat from 5 planks; its picture a hull with an oar.
+- **In the game:**
+  - right-clicking water with a boat (survival) puts it there;
+  - right-clicking a boat gets in, sat 0.2 over its bottom;
+  - rowing turns the rower's view with the boat;
+  - Shift gets out onto the shore if one's beside it, else into the water.
+- **Drawing:** a plank hull longer than it's wide (1 × 1.5), low sides, a seat across it; bobbing a
+  little afloat.
+- **`?boat`:** the nearest water within 48 blocks, a boat on it, and the player in it
+  (`?find=river&boat` for a river).
+- **Tests (8 new, 1 updated):**
+  - the surface, still and flowing;
+  - settling afloat from a drop;
+  - rowing faster than swimming, turning, gliding to a stop;
+  - stopping at a shore;
+  - carried down flowing water;
+  - falling onto land and dragging there;
+  - put on water along a ray, not through stone, not out of reach;
+  - the recipe, the seat, rowing through the manager, saving and loading, breaking.
+  - Updated: the item test's last item.
+
+**In the browser** (`?seed=20261022&find=river&boat&nolock`):
+- in a boat on the river, the hull round you;
+- W rowed about 10 blocks in 2.5 s;
+- D turned the boat and the view with it;
+- got out in mid-river into the water, swam up, saw the boat floating, got back in with a right click;
+- no console errors.
+- **Found there:** with the bottom 0.2 under the surface, water showed inside the hull over its floor. The
+  draft is 0.06 now, the floor just above the water.
+
+**Changed from the plan:** getting out with no shore beside the boat puts you in the water (to swim). The
+plan didn't say.
 
