@@ -15,7 +15,7 @@ import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL, WORLD_HEIGHT } from '.
 import { hash3 } from '../math';
 import { Noise } from './noise';
 import { Rivers } from './rivers';
-import { placeStructures, type Structure, structureBlocks, type StructureKind, structuresIn, structureTop } from './structures';
+import { dungeonsIn, placeStructures, type Structure, structureBlocks, type StructureKind, structuresIn, structureTop } from './structures';
 
 export { SEA_LEVEL } from './coords';
 /** Columns this steep (blocks up or down to a neighbour) show bare stone on top. */
@@ -292,9 +292,26 @@ export class Generator {
     return out;
   }
 
-  /** Version 2's structures whose blocks may reach into [x0, x1] x [z0, z1] (none in version 1). */
+  /** The structures whose blocks may reach into [x0, x1] x [z0, z1]: version 2's on the surface, version 3's dungeons too (none in version 1). */
   structuresIn(x0: number, z0: number, x1: number, z1: number): Structure[] {
-    return this.options.generation === 1 ? [] : structuresIn(this.seed, x0, z0, x1, z1, this);
+    if (this.options.generation === 1) return [];
+    const out = structuresIn(this.seed, x0, z0, x1, z1, this);
+    return this.options.generation >= 3 ? out.concat(this.dungeonsIn(x0, z0, x1, z1)) : out;
+  }
+
+  /** Version 3's dungeons whose blocks may reach into [x0, x1] x [z0, z1]. */
+  dungeonsIn(x0: number, z0: number, x1: number, z1: number): Structure[] {
+    return this.options.generation >= 3 ? dungeonsIn(this.seed, x0, z0, x1, z1, this) : [];
+  }
+
+  /** Is the middle of a dungeon within `r` blocks of (x, y, z)? */
+  dungeonNear(x: number, y: number, z: number, r: number): boolean {
+    return this.dungeonsIn(x - r, z - r, x + r, z + r).some((d) => Math.hypot(d.x - x, d.y + 2 - y, d.z - z) <= r);
+  }
+
+  /** Which blocks of column (x, z) from y0 to y1 a cave carved (`StructureGround`). */
+  caveColumn(x: number, z: number, y0: number, y1: number): Uint8Array {
+    return this.options.caves ? this.caves.carvedColumn(x, z, this.caveLimitAt(x, z), y0, y1) : new Uint8Array(y1 - y0 + 1);
   }
 
   /** The kind of structure whose chest stands at (x, y, z), or null if none does (its loot is for that kind). */

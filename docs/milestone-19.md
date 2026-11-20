@@ -1,6 +1,6 @@
 # Milestone 19: underground
 
-**Status:** plan approved (2026-11-21); steps 1 and 2 built.
+**Status:** plan approved (2026-11-21); steps 1–3 built.
 
 ## Goal
 
@@ -135,7 +135,7 @@ are tested headless; how lava and the caves feel is left for playtests.
    mushrooms; checksums for versions 1 and 2; tests. Done (2026-11-21).
 2. **Lava:** `LiquidFlow`, lava's blocks, meshing, lakes in generation, lava meeting water, swimming in it,
    burning, items and mobs; tests. Done (2026-11-21).
-3. **Dungeons:** the structure, loot, delvers near them; tests.
+3. **Dungeons:** the structure, loot, delvers near them; tests. Done (2026-11-21).
 4. **The lantern and `?find`;** together (`PROTOCOL` 12); tests.
 5. **Measurements,** notes, playtest questions.
 
@@ -260,4 +260,36 @@ arrive is 11 % more in version 3 (1.19 against 1.07 ms a column), from 333 lava 
 - **Lava touching water from below** (lava falling onto water) turns too, not only beside or above.
 - **Lava is in the creative picker** (as water is); neither can be carried in survival.
 - **`?find=lava` in this step.**
+
+## Step 3: dungeons (2026-11-21)
+
+**What's in:**
+- **`StructureKind.Dungeon`** (version 3 only, `dungeonInCell`, `dungeonsIn`): one chance in four of none per 96 x 96-block
+  cell, its middle 8 blocks or more inside the cell, its floor at y 12–31 (so its ceiling at 35 at most), only where the
+  ground is at least 4 blocks over its ceiling at the middle and corners.
+- **The room:** 9 x 5 x 9 outside, 7 x 3 x 7 inside, cleared; walls, floor and ceiling of mossy brick (two in three) and
+  stone brick, **except where a cave runs through them**, which stays open (the caves looked up a column at a time,
+  `StructureGround.caveColumn`, the same as `carvedAt`); a chest in a back corner. Written after everything else,
+  across chunk borders, as ruins and camps are; `Generator.structuresIn` gives them with the others, so `lootAt` and
+  the chests need nothing new.
+- **Loot** (`DUNGEON`): iron always (3–8; one chest in 344 rolled empty before), raw iron, crystal (60 %), coal,
+  torches, bread, cooked meat, rails, and an iron pick (30 %), spade or axe (15 % each). Lanterns join in step 4.
+- **Delvers:** with a player within 32 blocks of a dungeon's middle (`Generator.dungeonNear`, `TUNING.mobs.dungeonReach`),
+  a delver gets a try of its own on the hostile turns that weren't its, and twice as many may be about.
+- **`?find=dungeon`:** stood on the floor in the middle of the nearest.
+- **Tests (5 new, 1 updated):** how many and where, buried, none in version 2; the room whole (cleared, brick but where
+  cave, the chest) for the four nearest the origin, some cave meeting one; loot better than a ruin's, never empty, given
+  once; the find; delvers' extra turns near one and none far off. The deep caves' comparison leaves dungeons' rooms out.
+
+**Measured** (bench `generation versions`): 1331–1364 dungeons over 4096 x 4096 blocks for three seeds (one every
+111 x 111 blocks); working out one's blocks 0.57–0.63 ms (81 columns' caves), in the workers, for the columns it
+reaches (about one column in eight). Version 3 against 2 was 17 % that run, inside the 5–19 % it swings by.
+
+**In the browser** (`?seed=20261022&find=dungeon`): stood inside a room of mossy and stone brick, dark until a torch
+went down; the chest in its back corner; no console errors. Opening it in survival from the browser didn't work out
+(turning the camera by script is unreliable), so the loot is checked headless only.
+
+**Changed from the plan:**
+- **Dungeons' iron is certain,** so no chest is empty.
+- **Rails and cooked meat** in the loot too; lanterns wait for step 4.
 

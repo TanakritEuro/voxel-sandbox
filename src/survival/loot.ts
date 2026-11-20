@@ -38,7 +38,23 @@ const CAMP: readonly Line[] = [
   [Item.IronAxe, 1, 1, 0.05],
 ];
 
-export const LOOT: Record<StructureKind, readonly Line[]> = { [StructureKind.Ruin]: RUIN, [StructureKind.Camp]: CAMP };
+/** Dungeons (version 3): better than a ruin's: iron, crystal, an iron tool now and then, things to see by. */
+const DUNGEON: readonly Line[] = [
+  // Always some iron: a dungeon's chest is never empty.
+  [Item.Iron, 3, 8, 1],
+  [Item.RawIron, 2, 6, 0.5],
+  [Item.Crystal, 1, 4, 0.6],
+  [Item.Coal, 4, 12, 0.6],
+  [Block.Torch, 4, 12, 0.6],
+  [Item.Bread, 2, 4, 0.5],
+  [Item.CookedMeat, 1, 3, 0.3],
+  [Block.Rail, 6, 16, 0.25],
+  [Item.IronPick, 1, 1, 0.3],
+  [Item.IronSpade, 1, 1, 0.15],
+  [Item.IronAxe, 1, 1, 0.15],
+];
+
+export const LOOT: Record<StructureKind, readonly Line[]> = { [StructureKind.Ruin]: RUIN, [StructureKind.Camp]: CAMP, [StructureKind.Dungeon]: DUNGEON };
 
 /** The slots of the chest of a structure of `kind` at (x, y, z): each line's stack, if it comes up, in a slot of its own. */
 export function lootFor(seed: number, kind: StructureKind, x: number, y: number, z: number): (Stack | null)[] {

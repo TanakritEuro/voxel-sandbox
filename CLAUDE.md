@@ -27,7 +27,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestone 19 (underground: lava, deep cave biomes, dungeons, a lantern; generation version 3) in progress, plan
-approved (`docs/milestone-19.md`); steps 1 (version 3 and the deep caves) and 2 (lava) built.
+approved (`docs/milestone-19.md`); steps 1 (version 3 and the deep caves), 2 (lava) and 3 (dungeons) built.
 Milestones 1–18 built (`docs/milestone-1.md` to `docs/milestone-18.md`), waiting for playtests
 (Milestone 18, getting about: rails laid by hand that join up as they're laid (straight, sloped, curved) and powered
 rails worked by signals; carts that roll along them, ridden, chest carts; boats rowed on rivers and the sea; a map
@@ -196,8 +196,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `generate.ts`), `structures.ts` (version 2: ruins and camps, one chance per 112 x 112-block cell, only on dry, nearly level
   land with no cave at the floor, decided from the generator's height function; `structureBlocks`: the volume cleared, the
   ground filled up to the floor, the walls or tent, a chest; written after everything else, across chunk borders;
-  `Generator.lootAt` says whose chest a place is), `find.ts` (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava`: the nearest of a kind (the deep ones a roomy cave floor
-  to stand in, lava a rock shore just above a lake), searched with the generator alone; `dryNear` somewhere to stand by it),
+  version 3's dungeons: one chance per 96 x 96-block cell, a buried room 9 x 5 x 9 of mossy brick with its floor at y 12–31,
+  open where caves cross its walls (`caveColumn`), a chest of better loot; `Generator.dungeonsIn`, `dungeonNear`;
+  `Generator.lootAt` says whose chest a place is), `find.ts` (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava|dungeon`: the nearest of a kind (the deep ones a roomy cave floor
+  to stand in, lava a rock shore just above a lake, a dungeon its floor inside), searched with the generator alone; `dryNear` somewhere to stand by it),
   `features.ts` (ore veins and trees across chunk borders, parasol trees and swamp oaks too; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
   `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one
@@ -232,7 +234,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   tool worn; `placeableIn`, `heldTool`), `furnace.ts` (`Furnace`: input, fuel and output, burning and
   smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `chest.ts` (`Chests`: 27
   slots each by place, saved in the world record's `containers`; a structure's chest filled from its loot the first time
-  it's opened or broken, never again, the place kept even when empty), `loot.ts` (`lootFor`: a ruin's or camp's
+  it's opened or broken, never again, the place kept even when empty), `loot.ts` (`lootFor`: a ruin's, camp's or dungeon's
   chest by its table, seeded by its place; `lootSource` for a world), `map.ts` (`WorldMap`: the world's map, a 16 × 16 tile per
   explored column, each pixel 2 × 2 blocks' top block and a shade (land against the land north, water by depth),
   `tileOf`; `explore` round a player (4 chunks, two tiles a frame), `touch` after an edit, `paint` any window at any
@@ -254,7 +256,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   spawning groups on their kind's ground in its biome 24–64 blocks away, despawning beyond 96
   or with the column, a cap, stepping at the fixed rate with a per-frame path search budget;
   hits (points against a kind's health; tools hit harder); hostile kinds (taking turns) appearing in the dark round
-  the prey and fading by day, their hits kept for the game (`takeAttacks`, `takeFaded`); the sounds they make; round every player when playing together, the cap
+  the prey and fading by day, delvers twice as often (and twice as many) within 32 blocks of a dungeon, their hits kept for the game (`takeAttacks`, `takeFaded`); the sounds they make; round every player when playing together, the cap
   by players; not saved), `hit.ts` (the mob under the
   crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand, never in lava: steps, drops, no corner
   cutting, swimming at the surface, through open doors and not closed ones, never over a fence, node and range limits; typed arrays reused between
@@ -403,7 +405,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
+  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava|dungeon` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with, rails, carts, a boat and a map), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),

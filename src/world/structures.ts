@@ -3,7 +3,8 @@
 // bigger. A structure stands only on dry, nearly level land, decided from the generator's height
 // function (not a chunk's height map), so every chunk decides the same; each column job asks for
 // the structures within reach of its chunks and writes the parts inside them, after everything else.
-// Pure.
+// Version 3 adds dungeons: buried rooms of mossy brick, one chance per 96 x 96-block cell, deep under
+// the ground (floor at y 12–31), open wherever a cave runs through their walls. Pure.
 
 import { hash3 } from '../math';
 import { Biome } from './biomes';
@@ -15,6 +16,8 @@ export enum StructureKind {
   Ruin = 0,
   /** A plank tent, a cold hearth (a furnace) and a chest. */
   Camp = 1,
+  /** Version 3: a buried room of mossy brick, 9 x 5 x 9, a chest of better loot inside. */
+  Dungeon = 2,
 }
 
 /** What placing structures asks of the generator. */
@@ -23,6 +26,8 @@ export interface StructureGround {
   biome(x: number, z: number): Biome;
   /** Has a cave carved the block at (x, y, z)? */
   caveAt(x: number, y: number, z: number): boolean;
+  /** Which blocks of column (x, z) from y0 to y1 a cave carved (1), at once. */
+  caveColumn(x: number, z: number, y0: number, y1: number): Uint8Array;
 }
 
 export interface Structure {
@@ -47,9 +52,19 @@ const MARGIN = 12;
 /** The chance a cell has one (before the land rules it out). */
 const CHANCE = 0.8;
 /** Half widths by kind. */
-const HALF = [4, 3];
-/** Blocks cleared above the floor, by kind. */
-const HEIGHT = [6, 5];
+const HALF = [4, 3, 4];
+/** Blocks cleared above the floor, by kind (a dungeon's: up to its ceiling). */
+const HEIGHT = [6, 5, 4];
+
+/** Dungeons' cells, the chance one has one, how far inside it its middle is. */
+export const DUNGEON_CELL = 96;
+const DUNGEON_CHANCE = 0.75;
+const DUNGEON_MARGIN = 8;
+/** Its floor's height: from `DUNGEON_LOW` up to `DUNGEON_HIGH` (its ceiling 4 above, at most y 35). */
+const DUNGEON_LOW = 12;
+const DUNGEON_HIGH = 31;
+/** Rock over its ceiling, at the least, everywhere above it. */
+const DUNGEON_COVER = 4;
 /** Furthest a structure's blocks reach from its middle, sideways. */
 export const STRUCTURE_REACH = 4;
 /** The most its ground may differ from the floor, anywhere under it. */
@@ -119,6 +134,40 @@ export function structureInCell(seed: number, gx: number, gz: number, ground: St
   return { ...s, chest: [cx, y + 1, cz] };
 }
 
+/**
+ * The dungeon of cell (gx, gz) (`DUNGEON_CELL` wide), if it has one: buried, its middle and corners under
+ * `DUNGEON_COVER` of ground at least.
+ */
+export function dungeonInCell(seed: number, gx: number, gz: number, ground: StructureGround): Structure | null {
+  const C = DUNGEON_CELL;
+  if (hash3(seed ^ 0xd06e, gx, 401, gz) >= DUNGEON_CHANCE) return null;
+  const x = gx * C + DUNGEON_MARGIN + Math.floor(hash3(seed ^ 0xd06e, gx, 402, gz) * (C - 2 * DUNGEON_MARGIN));
+  const z = gz * C + DUNGEON_MARGIN + Math.floor(hash3(seed ^ 0xd06e, gx, 403, gz) * (C - 2 * DUNGEON_MARGIN));
+  const y = DUNGEON_LOW + Math.floor(hash3(seed ^ 0xd06e, gx, 404, gz) * (DUNGEON_HIGH - DUNGEON_LOW + 1));
+  const half = HALF[StructureKind.Dungeon];
+  const ceiling = y + HEIGHT[StructureKind.Dungeon];
+  for (const [dx, dz] of [[0, 0], [-half, -half], [half, -half], [-half, half], [half, half]]) if (ground.height(x + dx, z + dz) < ceiling + DUNGEON_COVER) return null;
+  const facing = Math.floor(hash3(seed ^ 0xd06e, gx, 405, gz) * 4);
+  const s = { kind: StructureKind.Dungeon, x, z, y, facing, half };
+  // The chest in a back corner, inside the walls.
+  const [cx, cz] = place(s, -(half - 1), -(half - 1));
+  return { ...s, chest: [cx, y + 1, cz] };
+}
+
+/** The dungeons whose blocks may reach into [x0, x1] x [z0, z1] (version 3), in world order. */
+export function dungeonsIn(seed: number, x0: number, z0: number, x1: number, z1: number, ground: StructureGround): Structure[] {
+  const out: Structure[] = [];
+  const C = DUNGEON_CELL;
+  for (let gz = Math.floor((z0 - STRUCTURE_REACH) / C); gz <= Math.floor((z1 + STRUCTURE_REACH) / C); gz++)
+    for (let gx = Math.floor((x0 - STRUCTURE_REACH) / C); gx <= Math.floor((x1 + STRUCTURE_REACH) / C); gx++) {
+      const s = dungeonInCell(seed, gx, gz, ground);
+      if (!s) continue;
+      if (s.x + s.half < x0 || s.x - s.half > x1 || s.z + s.half < z0 || s.z - s.half > z1) continue;
+      out.push(s);
+    }
+  return out;
+}
+
 /** The structures whose blocks may reach into [x0, x1] x [z0, z1], in world order (cells by z, then x). */
 export function structuresIn(seed: number, x0: number, z0: number, x1: number, z1: number, ground: StructureGround): Structure[] {
   const out: Structure[] = [];
@@ -141,6 +190,7 @@ export type Placed = [x: number, y: number, z: number, block: Block];
  * then what it's built of.
  */
 export function structureBlocks(seed: number, s: Structure, ground: StructureGround): Placed[] {
+  if (s.kind === StructureKind.Dungeon) return dungeonBlocks(seed, s, ground);
   const out: Placed[] = [];
   const { y, half } = s;
   const desert = ground.biome(s.x, s.z) === Biome.Desert;
@@ -188,6 +238,30 @@ export function structureBlocks(seed: number, s: Structure, ground: StructureGro
     const [hx, hz] = place(s, 2, 3);
     out.push([hx, y + 1, hz, furnace(s.facing, false)]);
   }
+  const [cx, cy, cz] = s.chest;
+  out.push([cx, cy, cz, chest(s.facing)]);
+  return out;
+}
+
+/**
+ * A dungeon's blocks: the room inside cleared; its walls, floor and ceiling of mossy brick (and some stone
+ * brick), except where a cave runs through them, which stays open; its chest.
+ */
+function dungeonBlocks(seed: number, s: Structure, ground: StructureGround): Placed[] {
+  const out: Placed[] = [];
+  const { y, half } = s;
+  const top = y + HEIGHT[StructureKind.Dungeon];
+  for (let dz = -half; dz <= half; dz++)
+    for (let dx = -half; dx <= half; dx++) {
+      const x = s.x + dx;
+      const z = s.z + dz;
+      const wall = Math.abs(dx) === half || Math.abs(dz) === half;
+      const cave = ground.caveColumn(x, z, y, top);
+      for (let k = y; k <= top; k++) {
+        if (!wall && k > y && k < top) out.push([x, k, z, Block.Air]);
+        else if (!cave[k - y]) out.push([x, k, z, hash3(seed, x, k + 410, z) < 0.65 ? Block.MossyBricks : Block.StoneBricks]);
+      }
+    }
   const [cx, cy, cz] = s.chest;
   out.push([cx, cy, cz, chest(s.facing)]);
   return out;

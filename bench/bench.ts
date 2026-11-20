@@ -43,6 +43,7 @@ import { ALL_ITEMS, Item } from '../src/survival/items';
 import { furnace, furnaceOf, slab, stairs, wheat, wheatStage } from '../src/world/blocks';
 import { CHUNK_VOLUME } from '../src/world/coords';
 import { Chunk } from '../src/world/world';
+import { structureBlocks } from '../src/world/structures';
 import { World } from '../src/world/world';
 
 const SEED = 20261022;
@@ -1301,6 +1302,13 @@ it('generation versions', () => {
     const structures = g2.structuresIn(-2048, -2048, 2047, 2047).filter((t) => t.x >= -2048 && t.x < 2048 && t.z >= -2048 && t.z < 2048);
     lines.push(`    structures: ${structures.filter((t) => t.kind === 0).length} ruins, ${structures.filter((t) => t.kind === 1).length} camps (one every ${Math.round(4096 / Math.sqrt(structures.length))} x ${Math.round(4096 / Math.sqrt(structures.length))} blocks)`);
     lines.push(`    biomes of the dry land: ${biomes.map((n, b) => `${BIOMES[b].name} ${((n / dryLand) * 100).toFixed(1)} %`).join(', ')}`);
+    // Version 3's dungeons: how many, and what writing one's blocks costs (its walls' caves looked up a column at a time).
+    const g3 = new Generator(seed, { generation: 3 });
+    const dungeons = g3.dungeonsIn(-2048, -2048, 2047, 2047).filter((t) => t.x >= -2048 && t.x < 2048 && t.z >= -2048 && t.z < 2048);
+    const t0 = performance.now();
+    for (const d of dungeons.slice(0, 100)) structureBlocks(seed, d, g3);
+    const each = (performance.now() - t0) / Math.min(100, dungeons.length);
+    lines.push(`    version 3: ${dungeons.length} dungeons (one every ${Math.round(4096 / Math.sqrt(dungeons.length))} x ${Math.round(4096 / Math.sqrt(dungeons.length))} blocks), ${each.toFixed(3)} ms to work out one's blocks`);
   }
   lines.push('');
   console.log(lines.join('\n'));

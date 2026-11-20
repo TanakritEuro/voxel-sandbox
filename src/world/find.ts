@@ -4,10 +4,10 @@
 import { Biome } from './biomes';
 import { SEA_LEVEL } from './coords';
 import type { Generator } from './generate';
-import { STRUCTURE_CELL, StructureKind, structureInCell } from './structures';
+import { DUNGEON_CELL, STRUCTURE_CELL, StructureKind, structureInCell } from './structures';
 import { DEEP_TOP, DeepBiome, LAVA_LEVEL } from './deep';
 
-export const FINDABLE = ['river', 'savanna', 'swamp', 'ruin', 'camp', 'crystal', 'grotto', 'lava'] as const;
+export const FINDABLE = ['river', 'savanna', 'swamp', 'ruin', 'camp', 'crystal', 'grotto', 'lava', 'dungeon'] as const;
 export type Findable = (typeof FINDABLE)[number];
 
 export const isFindable = (s: string | null): s is Findable => (FINDABLE as readonly string[]).includes(s ?? '');
@@ -23,6 +23,7 @@ function matches(g: Generator, kind: Findable, x: number, z: number): boolean {
     case 'crystal':
     case 'grotto':
     case 'lava':
+    case 'dungeon':
       return false; // searched by cell, or underground, in `findNearest`
     case 'savanna':
     case 'swamp':
@@ -46,6 +47,7 @@ export function findNearest(g: Generator, kind: Findable, x: number, z: number, 
   if (kind === 'ruin' || kind === 'camp') return nearestStructure(g, kind === 'ruin' ? StructureKind.Ruin : StructureKind.Camp, x, z, radius);
   if (kind === 'crystal' || kind === 'grotto') return nearestDeep(g, kind === 'crystal' ? DeepBiome.Crystal : DeepBiome.Grotto, x, z, Math.min(radius, 1024), step);
   if (kind === 'lava') return nearestLava(g, x, z, Math.min(radius, 1024), step);
+  if (kind === 'dungeon') return nearestDungeon(g, x, z, Math.min(radius, 2048));
   for (let r = 0; r <= radius; r += step) {
     for (let dz = -r; dz <= r; dz += step) {
       for (let dx = -r; dx <= r; dx += step) {
@@ -122,6 +124,17 @@ function nearestLava(g: Generator, x: number, z: number, radius: number, step: n
           }
       }
   return null;
+}
+
+/** The nearest dungeon to (x, z) (version 3): inside it, standing on its floor in the middle. */
+function nearestDungeon(g: Generator, x: number, z: number, radius: number): { x: number; z: number; y: number } | null {
+  let best: { x: number; z: number; y: number; d: number } | null = null;
+  for (let r = DUNGEON_CELL / 2; r <= radius && !best; r += DUNGEON_CELL)
+    for (const d of g.dungeonsIn(x - r, z - r, x + r, z + r)) {
+      const dist = Math.hypot(d.x - x, d.z - z);
+      if (dist <= r && (!best || dist < best.d)) best = { x: d.x, z: d.z, y: d.y + 1, d: dist };
+    }
+  return best && { x: best.x, z: best.z, y: best.y };
 }
 
 /** Structure cells' width (`structures.ts`). */

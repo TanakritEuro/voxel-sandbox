@@ -32,14 +32,17 @@ describe('deep caves (generation version 3)', () => {
     let highest = 0;
     let highestLava = 0;
     let differ = 0;
+    // Dungeons' rooms are theirs (dungeons.test.ts).
+    const dungeons = g3.dungeonsIn(-96, -96, 127, 127);
+    const inDungeon = (x: number, y: number, z: number) => dungeons.some((d) => Math.abs(x - d.x) <= d.half && Math.abs(z - d.z) <= d.half && y >= d.y && y <= d.y + 4);
     for (const [cx, cz] of columns) {
       const a = v3.get(`${cx},${cz}`)!;
       const b = g2.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);
       const old = [...blocksOf(b, cx, cz)];
       let k = 0;
-      for (const [, y, , block] of blocksOf(a, cx, cz)) {
+      for (const [x, y, z, block] of blocksOf(a, cx, cz)) {
         const was = old[k++][3];
-        if (block === was) continue;
+        if (block === was || inDungeon(x, y, z)) continue;
         differ++;
         highest = Math.max(highest, y);
         if (block === Block.Lava) {

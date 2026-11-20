@@ -39,7 +39,7 @@ import type { World } from '../world/world';
 import { BlockCache } from './blockCache';
 import { createMob, fitBody, hurt, type Mob, type MobContext, pathOptions, type Prey, stepBrain } from './brain';
 import { type KeptRecord, KeptAnimals } from './kept';
-import { headroom, KINDS, type MobKind } from './kinds';
+import { headroom, KINDS, MobKind } from './kinds';
 import { findPath } from './pathfind';
 
 /** A mob as it was before this frame's steps, to draw it between steps. */
@@ -84,6 +84,12 @@ export class MobManager {
   private readonly voices: Rng;
   /** Seconds until each mob calls next. */
   private readonly calls = new Map<Mob, number>();
+  /** The hostile kinds, taking turns to appear. */
+  private readonly hostileKinds = KINDS.map((_, k) => k as MobKind).filter((k) => KINDS[k].hostile);
+  /** Is a dungeon within `TUNING.mobs.dungeonReach` of a player (version 3)? */
+  private nearDungeon(p: Prey): boolean {
+    return this.world.generator.dungeonNear(p.x, p.y, p.z, TUNING.mobs.dungeonReach);
+  }
   /** Seconds since each mob in lava was last burnt. */
   private readonly burning = new Map<Mob, number>();
   private readonly sounds: MobSound[] = [];
@@ -147,7 +153,11 @@ export class MobManager {
     this.untilHostile -= dt;
     if (this.untilHostile <= 0 && prey.length) {
       this.untilHostile = TUNING.mobs.hostileInterval;
-      this.trySpawnHostile(prey[Math.floor(this.rng() * prey.length)], prey, daylight);
+      const near = prey[Math.floor(this.rng() * prey.length)];
+      const delverTurn = this.hostileKinds[this.hostileTurn % this.hostileKinds.length] === MobKind.Delver;
+      this.trySpawnHostile(near, prey, daylight);
+      // Near a dungeon, delvers come twice as often: a try of their own on the turns that weren't theirs, and twice as many.
+      if (!delverTurn && this.nearDungeon(near)) this.trySpawnHostile(near, prey, daylight, MobKind.Delver);
     }
     if (dt > 0) {
       this.fade(daylight);
@@ -303,16 +313,17 @@ export class MobManager {
    * from it, the first place from 12 blocks above its feet to 24 below where one could stand in the
    * dark, and not nearer than that to any of `prey`. At most `most` for each of them.
    */
-  trySpawnHostile(near: Prey, prey: readonly Prey[], daylight: number): boolean {
-    const hostile = KINDS.map((_, k) => k as MobKind).filter((k) => KINDS[k].hostile);
-    const first = this.hostileTurn++ % hostile.length;
+  trySpawnHostile(near: Prey, prey: readonly Prey[], daylight: number, only: MobKind | null = null): boolean {
+    const hostile = only === null ? this.hostileKinds : [only];
+    const first = only === null ? this.hostileTurn++ % hostile.length : 0;
     for (let n = 0; n < hostile.length; n++) {
       const kind = hostile[(first + n) % hostile.length];
       const info = KINDS[kind];
       const h = info.hostile!;
       // A deep kind comes only for a player down at its depth (it would leave the rest alone).
       if (h.below !== undefined && near.y >= h.below) continue;
-      if (this.mobs.filter((m) => m.kind === kind).length >= h.most * prey.length) continue;
+      const most = h.most * prey.length * (kind === MobKind.Delver && this.nearDungeon(near) ? 2 : 1);
+      if (this.mobs.filter((m) => m.kind === kind).length >= most) continue;
       const angle = this.rng() * 2 * Math.PI;
       const r = h.distance[0] + (h.distance[1] - h.distance[0]) * this.rng();
       const x = Math.floor(near.x + Math.sin(angle) * r);

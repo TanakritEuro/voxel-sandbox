@@ -382,6 +382,8 @@ export const TUNING = {
     spawnInterval: 0.25,
     /** A try at a hostile mob this often (seconds): they gather slowly. */
     hostileInterval: 2,
+    /** Delvers come twice as often within this many blocks of a dungeon's middle. */
+    dungeonReach: 32,
     /** A hunter that found no way to its prey asks again after this (seconds), going straight meanwhile. */
     huntRetry: 4,
     spawnDistance: [24, 64] as [number, number],
