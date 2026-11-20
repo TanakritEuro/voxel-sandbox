@@ -26,10 +26,12 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 18 (getting about: boats, rails and carts with powered rails, a map) in progress, plan approved
-(`docs/milestone-18.md`); steps 1 (rails), 2 (carts), 3 (boats), 4 (the map) and 5 (together) built.
-Milestones 1–17 built (`docs/milestone-1.md` to `docs/milestone-17.md`), waiting for playtests
-(Milestone 17, creatures, part two: the ambler on the savanna and the wader in the swamp; an animal fed its food
+Milestones 1–18 built (`docs/milestone-1.md` to `docs/milestone-18.md`), waiting for playtests
+(Milestone 18, getting about: rails laid by hand that join up as they're laid (straight, sloped, curved) and powered
+rails worked by signals; carts that roll along them, ridden, chest carts; boats rowed on rivers and the sea; a map
+of where you've been, held or full screen (N); together, the host's vehicles ridden by guests who move what they
+ride; `?railway`, `?boat`;
+Milestone 17, creatures, part two: the ambler on the savanna and the wader in the swamp; an animal fed its food
 (wheat, seeds or berries) is kept, saved with the world and never despawned, up to 128; kept animals fed again fall
 in love, court and have young that grow up in 10 minutes following a grown one; the delver, slow, tough and hitting
 hard, only in the dark below y 40, leaving raw iron; `?farmyard`, `?showcase=delver`;

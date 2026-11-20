@@ -1,6 +1,6 @@
 # Milestone 18: getting about
 
-**Status:** plan approved (2026-11-20); steps 1–5 built.
+**Status:** built (2026-11-21), waiting for playtests.
 
 ## Goal
 
@@ -209,7 +209,7 @@ saving and the map are tested headless; how riding feels is left for playtests.
 4. **The map.** Paper and maps, explored tiles, the panel and full-screen map, saving; tests. Done (2026-11-20).
 5. **Together.** Vehicles to guests, riders moving their own, `mount` and `dismount`, chest carts,
    riders drawn; PROTOCOL 11; tests. Done (2026-11-20).
-6. **Measurements,** notes, playtest questions.
+6. **Measurements,** notes, playtest questions. Done (2026-11-21).
 
 ## Decisions to agree
 
@@ -538,4 +538,87 @@ plan didn't say.
 - **Not tried:** two browsers playing together, a guest riding (the loopback tests cover it).
 
 **Changed from the plan:** none.
+
+## Step 6: measurements (2026-11-21)
+
+**Bench** (`npm run bench`, the server stopped; a slow day, generation 1147 against 710 at step 1, so compare
+ratios):
+
+| | |
+| --- | --- |
+| `carts` (new) | 50 on a loop of 500 rails in the air, 6 in 20 along the long sides powered, 60 s: all 50 still moving, 6.7 blocks a second each; 0.083 ms a frame median, p95 0.244, max 1.38 |
+| `boats` (new) | 50 rowed round in circles on the sea, 60 s: 45 afloat at the end (5 rowed ashore); 1.15 ms a frame median, p95 2.16, max 4.4 (about 23 µs a boat: each step finds the surface and the current and moves the box) |
+| Vehicles saved | 256 (50 boats, 206 chest carts full): 144 KB, saved in 0.76 ms, loaded in 1.98 ms |
+| `map` | 0.46 ms a tile; 229 bytes a tile saved (224 KB for 1000 columns) |
+| Map painted | full screen 1024 × 1024: 12–20 ms at any zoom (was 73–95 before this step); the panel 128 × 128: 0.16 ms |
+| Meshing | the same 1924k triangles; mobs, gloamers, delvers, kept animals about as before against generation |
+
+- **The first `carts` run stopped most of its carts:** its powered rails reached the loop's corners, and
+  powered rails don't curve, so each corner was a dead end. The bench keeps them 3 from the corners now. A
+  player laying powered rails round a corner gets the same, which is a playtest question.
+- **Painting the map was slow:** 73–95 ms for the full-screen map at 1024 pixels a side. It's 4–6 times
+  faster now:
+  - a table of every block's colour at each shade instead of working each pixel out;
+  - the row of columns' tiles looked up once each time the row changes.
+  - The full-screen map now repaints at most four times a second when only the player moves (riding with
+    it open); zooming and dragging still repaint at once.
+- **Exploring is one tile a frame** (was two): about 0.4 ms at the most, still 120 a second.
+
+**In the browser:**
+- **Sprint flights** (`?autofly=40`), four on a day the bench ran 1.6 times slower than the day before:
+  - frames p50 8.3, p99 16.5–16.6 ms;
+  - 0–3 frames over 20 ms (max 25), none over 33;
+  - main thread p50 3.4–3.6, p99 8.8–9.5, max 13.8–15.7 ms;
+  - **missing chunks in one second of each run** (1, 6, 9 and 1). Milestone 16's flights had none.
+  - One of the four ran with the map's exploring switched off, with the same result, so it isn't this
+    milestone's map. The 25 s flight before opening the map had none.
+- **`?railway=40` with the full-screen map open,** repainting as the cart went: 4791 frames, p50 8.3, p99 8.5,
+  max 25.0 ms, 1 over 20.
+- **`?railway=60`** (step 2): p50 8.3, p99 8.5, max 17.2, none over 20.
+- **`?find=river&boat`, rowing 20 s:** 88 blocks (4.4 a second), no frames over 20 ms after loading, main thread
+  2.5 ms on average.
+- No console errors anywhere.
+
+**Not measured:** a laptop; two browsers, a guest riding; a map of 1000 explored columns in the browser (the
+bench's painting covers the cost).
+
+**Changed from the plan, over the milestone:**
+- **Rails:**
+  - breaking a rail leaves its neighbours as they are;
+  - "the same in any order" holds for lines and loops;
+  - rails are clicked as a whole block, as wire is.
+- **`?railway`** came in step 1 (without its cart), and has powered rails before its hump each way.
+- **Carts:**
+  - creative players have no cart item: the creative hotbar holds only blocks;
+  - `?kit` gives rails, carts, a boat and a map in survival.
+- **Boats:** getting out with no shore beside puts you in the water.
+- **The map:**
+  - N opens it (M already mutes);
+  - a guest's map lasts the visit;
+  - exploring is one tile a frame.
+- **`PROTOCOL`** went to 11 in step 5 as planned.
+
+## Playtest questions
+
+Try `?railway` (a loop with a cart, in creative), `?find=river&boat`, and a survival world with `?survival&kit`
+(rails, carts, a boat and a map in the inventory).
+
+1. **Laying rails:** do they join up the way you expect: straight lines, corners, slopes up a block? Is a corner of
+   powered rails (which stays a dead end: powered rails don't curve) a surprise?
+2. **Carts:**
+   - does riding feel right: the speed (8 blocks a second at most), coasting about a hundred blocks, climbing and
+     rolling down slopes?
+   - are powered rails worth their copper: how far apart do you need them?
+   - getting in and out (right click, Shift): anything awkward?
+3. **Chest carts:** useful for moving things?
+4. **Boats:** does rowing feel right: speed, turning, the view turning with the boat? Is getting out into the water
+   (with no shore beside) fine?
+5. **The map:**
+   - does the panel while holding a map help, and is N for the full map easy to find?
+   - do the colours and shading read well (hills, water depth, trees)?
+   - is 4 chunks round you the right distance to fill in?
+6. **Creative:** should carts and boats be in the creative picker?
+7. **Together:**
+   - does a guest's ride feel as smooth as the host's?
+   - can two of you share a railway without trouble (carts pass through each other)?
 

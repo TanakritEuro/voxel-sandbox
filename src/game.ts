@@ -2177,8 +2177,8 @@ function frame(now: number): void {
     mobView.update(guest.mobs, world, daylightNow, now / 1000);
   }
   vehicleView.update(vehicleShown, world, daylightNow, now / 1000);
-  // The map fills in round the player (a couple of columns a frame), and shows while held or opened.
-  if (!player.waiting) worldMap.explore(world, player.body.x, player.body.z);
+  // The map fills in round the player (a column a frame: about 0.4 ms), and shows while held or opened.
+  if (!player.waiting) worldMap.explore(world, player.body.x, player.body.z, 4, 1);
   mapView.update(dt, survival && !dead && pack.slots[selected]?.item === Item.Map, player.body.x, player.body.z, input.yaw);
   // Animals courting show it: hearts over them now and then.
   if (worldRuns() && (untilLoveHearts -= dt) <= 0) {

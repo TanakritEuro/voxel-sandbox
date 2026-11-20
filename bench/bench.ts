@@ -24,7 +24,10 @@ import { BORDER_GROUP, GROUPS, PARTS } from '../src/mesh/builder';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
 import { decodeRle, encodeRle } from '../src/save/rle';
-import { Block, BLOCKS, delay, inverter } from '../src/world/blocks';
+import { Block, BLOCKS, delay, inverter, poweredRail, railOf } from '../src/world/blocks';
+import { railPlacement } from '../src/world/rails';
+import { type RiderInput, VehicleManager } from '../src/vehicles/manager';
+import { VehicleKind } from '../src/vehicles/vehicle';
 import { chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from '../src/world/coords';
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, chunkRegions, connectivityOf, MAX_REGIONS, NO_REGION, reachableChunks, regionBytes, regionMap, seeThrough, walkRegions } from '../src/world/visibility';
@@ -817,6 +820,104 @@ it('delvers', () => {
   );
 });
 
+it('carts', () => {
+  // 50 carts on a loop of rails 200 x 50 blocks laid on a stone bed in the air (y 150), 6 rails in
+  // every 20 along the long sides powered and on, stepped as the game does a frame at a time for 60 s: ms a frame.
+  const world = new World(SEED);
+  for (let cz = -2; cz <= 1; cz++) for (let cx = -4; cx <= 3; cx++) world.ensureColumn(cx, cz);
+  const ring: [number, number][] = [];
+  for (let x = -100; x < 100; x++) ring.push([x, -25]);
+  for (let z = -25; z < 25; z++) ring.push([100, z]);
+  for (let x = 100; x > -100; x--) ring.push([x, 25]);
+  for (let z = 25; z > -25; z--) ring.push([-100, z]);
+  const set = new Map<string, Block>();
+  const overlay = { getBlock: (x: number, y: number, z: number) => set.get(`${x},${y},${z}`) ?? world.getBlock(x, y, z) };
+  for (const [x, z] of ring) set.set(`${x},150,${z}`, Block.Stone);
+  for (const [i, [x, z]] of ring.entries()) {
+    // Powered stretches, 6 rails in every 20 along the long sides, kept 3 from the corners (powered rails don't curve).
+    const powered = Math.abs(x) < 97 && i % 20 < 6;
+    for (const [px, py, pz, pb] of railPlacement(overlay, x, 151, z, powered ? Block.PoweredRail : Block.Rail, 0)) set.set(`${px},${py},${pz}`, pb);
+  }
+  // Powered rails on (no logic here to turn them on).
+  const changes: [number, number, number, Block][] = [];
+  for (const [k, b] of set) {
+    const [x, y, z] = k.split(',').map(Number);
+    const r = railOf(b);
+    changes.push([x, y, z, r?.powered ? poweredRail(r.shape, true) : b]);
+  }
+  world.setBlocks(changes);
+  const m = new VehicleManager(world);
+  for (let i = 0; i < 50; i++) {
+    const [x, z] = ring[Math.floor((i * ring.length) / 50)];
+    const v = m.placeCart(VehicleKind.Cart, x, 151, z, 0)!;
+    v.speed = 6;
+  }
+  const times: number[] = [];
+  let travelled = 0;
+  for (let f = 0; f < 3600; f++) {
+    const at = m.vehicles.map((v) => [v.body.x, v.body.z]);
+    m.update(1 / 60);
+    times.push(m.ms);
+    m.vehicles.forEach((v, i) => (travelled += Math.hypot(v.body.x - at[i][0], v.body.z - at[i][1])));
+  }
+  const moving = m.vehicles.filter((v) => Math.abs(v.speed) > 1).length;
+  console.log(
+    `\ncarts: ${m.vehicles.length} on a loop of ${ring.length} rails, 60 s: ${moving} still moving, ${(travelled / m.vehicles.length / 60).toFixed(1)} blocks a second each on average; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}\n`,
+  );
+});
+
+it('boats', () => {
+  // 50 boats on the sea north of the spawn, each rowed round in a circle by a rider of its own, 60 s:
+  // ms a frame. Then 256 vehicles saved as the record does and loaded back.
+  const world = new World(SEED);
+  for (let cz = -4; cz <= 1; cz++) for (let cx = -4; cx <= 1; cx++) world.ensureColumn(cx, cz);
+  const m = new VehicleManager(world);
+  const rng = createRng(4);
+  const inputs = new Map<number, RiderInput>();
+  for (let tries = 0; tries < 5000 && m.vehicles.length < 50; tries++) {
+    const x = Math.floor(-120 + rng() * 150);
+    const z = Math.floor(-120 + rng() * 150);
+    let y = 120;
+    while (y > 1 && world.getBlock(x, y, z) === Block.Air) y--;
+    if (world.getBlock(x, y, z) !== Block.Water || world.getBlock(x, y - 2, z) !== Block.Water) continue;
+    const v = m.placeBoat(x + 0.5, y + 1 - TUNING.vehicles.boat.draft, z + 0.5, rng() * 6)!;
+    const rider = m.vehicles.length;
+    m.ride(v, rider);
+    inputs.set(rider, { forward: 1, turn: 0.3, look: [0, -1] });
+  }
+  const times: number[] = [];
+  for (let f = 0; f < 3600; f++) {
+    m.update(1 / 60, inputs);
+    times.push(m.ms);
+  }
+  const afloat = m.vehicles.filter((v) => v.body.inWater).length;
+  console.log(
+    `\nboats: ${m.vehicles.length} rowed round on the sea, 60 s: ${afloat} afloat at the end; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}\n`,
+  );
+  // Saving and loading 256: these boats, and chest carts full of things.
+  const records = m.records();
+  for (let i = records.length; i < 256; i++) {
+    const slots = Array.from({ length: 27 }, (_, k) => ({ item: ALL_ITEMS[(i * 27 + k) % ALL_ITEMS.length], count: 1 }));
+    records.push({ kind: VehicleKind.ChestCart, x: i, y: 70, z: 0, yaw: 0, rail: [i, 70, 0, 0.5], speed: 2, slots });
+  }
+  const out: number[] = [];
+  const back: number[] = [];
+  let bytes = 0;
+  for (let run = 0; run <= RUNS; run++) {
+    const t0 = performance.now();
+    const json = JSON.stringify(records);
+    const t1 = performance.now();
+    new VehicleManager(world).load(JSON.parse(json));
+    const t2 = performance.now();
+    bytes = json.length;
+    if (run > 0) {
+      out.push(t1 - t0);
+      back.push(t2 - t1);
+    }
+  }
+  console.log(`\nvehicles saved: 256 (${m.vehicles.length} boats and ${256 - m.vehicles.length} chest carts full), ${(bytes / 1024).toFixed(1)} KB, saved in ${median(out).toFixed(2)} ms, loaded in ${median(back).toFixed(2)} ms\n`);
+});
+
 it('map', () => {
   // The world's map (Milestone 18): a tile for each of the 17 x 17 columns round the origin, as
   // exploring takes them (ms a tile), then saved as the record does and loaded back (ms, and the size
@@ -850,6 +951,24 @@ it('map', () => {
     `\nmap: ${map.size} tiles, ${median(times).toFixed(3)} ms a tile; saved ${(bytes / 1024).toFixed(1)} KB (${(bytes / map.size).toFixed(0)} bytes a tile, ` +
       `${((bytes / map.size) * 1000 / 1024).toFixed(0)} KB for 1000) in ${median(out).toFixed(2)} ms, loaded in ${median(back).toFixed(2)} ms\n`,
   );
+  // Painting it, as the full-screen map does (1024 x 1024 pixels) at each zoom, and the panel (128 x 128).
+  const painted: string[] = [];
+  for (const [size, scale] of [
+    [1024, 0.5],
+    [1024, 1],
+    [1024, 8],
+    [128, 2],
+  ]) {
+    const pixels = new Uint8ClampedArray(size * size * 4);
+    const t: number[] = [];
+    for (let run = 0; run <= RUNS; run++) {
+      const t0 = performance.now();
+      map.paint(pixels, size, size, 0, 0, scale);
+      if (run > 0) t.push(performance.now() - t0);
+    }
+    painted.push(`${size} x ${size} at ${scale} blocks a pixel ${median(t).toFixed(2)} ms`);
+  }
+  console.log(`\nmap painted: ${painted.join(', ')}\n`);
 });
 
 it('chests', () => {

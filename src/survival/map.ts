@@ -8,7 +8,7 @@
 // encoded, as text). `paint` draws any window of it at any scale, unexplored land blank parchment.
 
 import { Block, BLOCKS } from '../world/blocks';
-import { CHUNK_SIZE, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
+import { CHUNK_BITS, CHUNK_SIZE, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
 import { decodeRle, encodeRle } from '../save/rle';
 import { EMPTY_BLOCKS, type World } from '../world/world';
 
@@ -21,6 +21,15 @@ export const TILE_BYTES = AREA * 2;
 /** Shades: land lower than the pixel north, level, higher; water deep, middling, shallow. */
 const LAND = [0.8, 1, 1.12];
 const WATER = [0.68, 0.84, 1];
+/** Each block's colour at each of its three shades (land or water), RGB: PALETTE[(block * 3 + shade) * 3]. */
+const PALETTE = new Uint8Array(256 * 3 * 3);
+BLOCKS.forEach((info, b) => {
+  for (let shade = 0; shade < 3; shade++) {
+    const k = (info.liquid ? WATER : LAND)[shade];
+    for (let c = 0; c < 3; c++) PALETTE[(b * 3 + shade) * 3 + c] = Math.min(255, Math.round(info.top[c] * 255 * k));
+  }
+});
+
 /** Unexplored: parchment. */
 export const PARCHMENT: readonly [number, number, number] = [216, 201, 163];
 
@@ -126,35 +135,42 @@ export class WorldMap {
    * blocks a pixel, north (-z) up. Unexplored land is parchment.
    */
   paint(out: Uint8ClampedArray, w: number, h: number, x: number, z: number, scale: number): void {
-    let lastKey = '';
-    let tile: Uint8Array | undefined;
+    // Locals for the loop (each pixel reads a table, not a block's info), the tile looked up only when
+    // the pixel's column changes.
+    const pal = PALETTE;
+    const bits = CHUNK_BITS;
+    const mask = CHUNK_SIZE - 1;
+    const [pr, pg, pb] = PARCHMENT;
+    // The tiles along the row of columns the pixels are in, looked up once each time that row changes.
+    const cx0 = Math.floor(x - (w / 2) * scale) >> bits;
+    const across = (Math.floor(x + (w / 2) * scale) >> bits) - cx0 + 1;
+    const rowTiles: (Uint8Array | undefined)[] = new Array(across);
+    let lastCz = Number.NaN;
+    let o = 0;
     for (let py = 0; py < h; py++) {
       const bz = Math.floor(z + (py - h / 2 + 0.5) * scale);
-      const cz = toChunk(bz);
-      const j = (bz - cz * CHUNK_SIZE) >> 1;
-      for (let px = 0; px < w; px++) {
+      const cz = bz >> bits;
+      const row = ((bz & mask) >> 1) * TILE;
+      if (cz !== lastCz) {
+        lastCz = cz;
+        for (let i = 0; i < across; i++) rowTiles[i] = this.tiles.get(key(cx0 + i, cz));
+      }
+      for (let px = 0; px < w; px++, o += 4) {
         const bx = Math.floor(x + (px - w / 2 + 0.5) * scale);
-        const cx = toChunk(bx);
-        const k = `${cx},${cz}`;
-        if (k !== lastKey) {
-          lastKey = k;
-          tile = this.tiles.get(k);
-        }
-        const o = (py * w + px) * 4;
+        const tile = rowTiles[(bx >> bits) - cx0];
         out[o + 3] = 255;
-        const p = j * TILE + ((bx - cx * CHUNK_SIZE) >> 1);
-        const b = tile ? tile[p] : 0;
-        if (!tile || b === Block.Air) {
-          out[o] = PARCHMENT[0];
-          out[o + 1] = PARCHMENT[1];
-          out[o + 2] = PARCHMENT[2];
+        const q = row + ((bx & mask) >> 1);
+        const b = tile ? tile[q] : 0;
+        if (b === 0) {
+          out[o] = pr;
+          out[o + 1] = pg;
+          out[o + 2] = pb;
           continue;
         }
-        const info = BLOCKS[b];
-        const k2 = (info.liquid ? WATER : LAND)[tile[AREA + p]] ?? 1;
-        out[o] = Math.min(255, info.top[0] * 255 * k2);
-        out[o + 1] = Math.min(255, info.top[1] * 255 * k2);
-        out[o + 2] = Math.min(255, info.top[2] * 255 * k2);
+        const c = (b * 3 + tile![AREA + q]) * 3;
+        out[o] = pal[c];
+        out[o + 1] = pal[c + 1];
+        out[o + 2] = pal[c + 2];
       }
     }
   }

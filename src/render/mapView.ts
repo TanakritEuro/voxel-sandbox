@@ -24,7 +24,10 @@ export class MapView {
   private dragging: { x: number; y: number } | null = null;
   /** What the full-screen map shows round, painted again when it moves or zooms. */
   private player: [number, number, number] = [0, 0, 0];
+  /** Painted again at once (zoomed, dragged, opened), or when the player has moved, at most every `PANEL_EVERY`. */
   private dirty = true;
+  private moved = false;
+  private sinceFull = 0;
 
   constructor(
     parent: HTMLElement,
@@ -88,16 +91,19 @@ export class MapView {
       this.paint(this.panel, x, z, 2, yaw, x, z);
     }
     if (!this.open) return;
-    if (Math.abs(this.player[0] - x) > 0.5 || Math.abs(this.player[1] - z) > 0.5 || Math.abs(this.player[2] - yaw) > 0.05) this.dirty = true;
-    this.player = [x, z, yaw];
+    this.sinceFull += dt;
+    // Moved since it was last painted.
+    if (Math.abs(this.player[0] - x) > 0.5 || Math.abs(this.player[1] - z) > 0.5 || Math.abs(this.player[2] - yaw) > 0.05) this.moved = true;
     // The canvas a pixel for each screen pixel (at most 1024), so a zoom of a block a pixel is sharp.
     const size = Math.min(1024, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.85));
     if (this.full.width !== size) {
       this.full.width = this.full.height = size;
       this.dirty = true;
     }
-    if (!this.dirty) return;
-    this.dirty = false;
+    if (!this.dirty && !(this.moved && this.sinceFull >= PANEL_EVERY)) return;
+    this.dirty = this.moved = false;
+    this.sinceFull = 0;
+    this.player = [x, z, yaw];
     const [cx, cz] = this.centre ?? [x, z];
     this.paint(this.full, cx, cz, ZOOMS[this.zoom], yaw, x, z);
     const blocks = Math.round(size * ZOOMS[this.zoom]);
