@@ -27,7 +27,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestone 19 (underground: lava, deep cave biomes, dungeons, a lantern; generation version 3) in progress, plan
-approved (`docs/milestone-19.md`); steps 1 (version 3 and the deep caves), 2 (lava) and 3 (dungeons) built.
+approved (`docs/milestone-19.md`); steps 1–4 (version 3 and the deep caves, lava, dungeons, the lantern) built.
 Milestones 1–18 built (`docs/milestone-1.md` to `docs/milestone-18.md`), waiting for playtests
 (Milestone 18, getting about: rails laid by hand that join up as they're laid (straight, sloped, curved) and powered
 rails worked by signals; carts that roll along them, ridden, chest carts; boats rowed on rivers and the sea; a map
@@ -168,14 +168,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   their neighbours), dry grass 175, mud 176, reeds 177 (crossed sheets), parasol wood and leaves 178–179, stone and mossy bricks 180–181, rails 182–191 by shape and powered rails 192–203 by
   shape, off and on (`rail`, `poweredRail`, `railOf`, `RAIL_SHAPES`), crystal clusters (crossed sheets, light 12), grotto
   floor, mushroom stems and caps (light 12) 204–207, lava 208–212 (a source, flowing levels 1–3, falling; `lava`: light 15,
-  drawn in the opaque pass) and basalt 213, `isWater` (a liquid not lava), `chest`, `door`,
+  drawn in the opaque pass) and basalt 213, lanterns 214–215 (standing and hanging, light 15, small boxes; `lanternFor`),
+  `isWater` (a liquid not lava), `chest`, `door`,
   `doorSide`, `bed`, `wheat`, `slab`, `stairs` and their `…Of`; `boxes`: what a body bumps into when it
   isn't the whole block, a door's panel, a bed's half, a slab, stairs' two):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
   `useBlock`, `isThinLogic`), textures and sound per face, the default
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches,
   thin logic blocks, wheat and a door's lower half)),
-  `torches.ts` (`torchesHeldBy`: the torches, thin logic blocks, wheat, doors and rails a block holds up), `rails.ts`
+  `torches.ts` (`torchesHeldBy`: the torches, thin logic blocks, wheat, doors, rails and lanterns (on it or hanging under it) a block holds up), `rails.ts`
   (rail shapes' ends and slopes, `RAIL_ENDS`, `RAIL_RISE`, `shapeWith`; `joinedEnds`; `railPlacement`: a rail laid
   joining the rails beside it, those open turning to it, a slope up to one a block higher; breaking leaves the rest), `parts.ts` (blocks in pairs: a door's
   halves, a bed's; `pairPlacement`, `partnerOf`, `useAt`: a click's blocks, a door's two halves), `shapes.ts`
@@ -407,7 +408,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava|dungeon` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
-  tier and things to craft with, rails, carts, a boat and a map), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
+  tier and things to craft with, rails, carts, a boat, a map and lanterns), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?railway` lays a loop of rails 40 x 20 round you
   on a stone bed (a hump with slopes and powered rails before it each way, ten powered rails with a wire and a switch) and

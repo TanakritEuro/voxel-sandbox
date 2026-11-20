@@ -9,6 +9,7 @@ import { MemoryStore, newWorldRecord, type WorldMode } from '../src/save/store';
 import { handleJob } from '../src/workers/jobs';
 import { Block, gateOf } from '../src/world/blocks';
 import { LogicFlow } from '../src/world/logic';
+import { LAVA, LiquidFlow } from '../src/world/liquids';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../src/world/coords';
 import { World } from '../src/world/world';
 import { hostSurvival } from '../src/net/hostSurvival';
@@ -199,7 +200,7 @@ describe('joining', () => {
   });
 
   it("gives a guest the world's generation version", async () => {
-    for (const generation of [1, 2] as Generation[]) {
+    for (const generation of [1, 2, 3] as Generation[]) {
       const env = setup();
       const host = await makeHost(env, generation);
       const { welcome, world } = await makeGuest(env, host, 'Ann');
@@ -389,6 +390,43 @@ describe('logic over the network', () => {
     await run(3);
     expect(host.world.getBlock(6, Y, 0)).toBe(Block.SignalLamp);
     for (const w of [a.world, b.world]) expect(difference(host.world, w)).toBe(null);
+  });
+
+  it("flows the host's lava (version 3) for every guest, basalt where it meets water, and takes a guest's hanging lantern", async () => {
+    const env = setup();
+    const host = await makeHost(env, 3);
+    const a = await makeGuest(env, host, 'A');
+    for (const [cx, cz] of COLUMNS) await a.load(cx, cz);
+    // A stone floor high up, lava poured on it, the lava's ticks made and shared as the game does.
+    for (let x = 0; x <= 10; x++) for (let z = 0; z <= 10; z++) host.hostEdit(x, Y - 1, z, Block.Stone);
+    const lava = new LiquidFlow(LAVA);
+    host.hostEdit(5, Y, 5, Block.Lava);
+    lava.wake(5, Y, 5);
+    const run = async (ticks: number) => {
+      for (let t = 0; t < ticks; t++) {
+        const changes = lava.tick(host.world);
+        host.world.setBlocks(changes);
+        host.session.shareEdits(changes, 0, 0, true);
+        await env.pump(0.1);
+      }
+      await env.pump(0.3);
+    };
+    await run(6);
+    expect(host.world.getBlock(8, Y, 5)).toBe(Block.LavaFlow1);
+    expect(difference(host.world, a.world)).toBe(null);
+    // Water poured beside the source by the host: the source turns to basalt everywhere.
+    host.hostEdit(5, Y, 6, Block.Water);
+    lava.wake(5, Y, 6);
+    await run(6);
+    expect(host.world.getBlock(5, Y, 5)).toBe(Block.Basalt);
+    expect(difference(host.world, a.world)).toBe(null);
+    // A guest hangs a lantern under a block: the host takes it.
+    host.hostEdit(2, Y + 4, 2, Block.Stone);
+    await env.pump(0.3);
+    a.guestEdit(2, Y + 3, 2, Block.LanternHanging);
+    await env.pump(0.3);
+    expect(host.world.getBlock(2, Y + 3, 2)).toBe(Block.LanternHanging);
+    expect(difference(host.world, a.world)).toBe(null);
   });
 
   it("opens and shuts both halves of the host's door for a guest's click, the same everywhere", async () => {

@@ -1,12 +1,13 @@
-// Which torches a block holds up: the floor torch on top of it, and wall torches hanging on its
-// sides. Breaking the block takes them too. Pure.
+// Which torches a block holds up: the floor torch on top of it, wall torches hanging on its sides,
+// and a lantern on it or hanging under it. Breaking the block takes them too. Pure.
 
 import { torchSupport } from './blocks';
 import type { World } from './world';
 
-/** The steps from a block to where a torch it holds could be: above, and beside on four sides. */
+/** The steps from a block to where a torch it holds could be: above, beside on four sides, and below (a hanging lantern). */
 const AROUND: readonly [number, number, number][] = [
   [0, 1, 0],
+  [0, -1, 0],
   [1, 0, 0],
   [-1, 0, 0],
   [0, 0, 1],

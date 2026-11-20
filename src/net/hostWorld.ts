@@ -84,6 +84,7 @@ export const settable = (block: number): boolean =>
   (BLOCKS[block] !== undefined && isTorch(block as Block)) ||
   PLACED_GATES.has(block) ||
   block === Block.Farmland ||
+  block === Block.LanternHanging ||
   block === wheat(0) ||
   // Rails as laid (any shape: laying one turns its neighbours); a powered one only off (signals turn it on).
   (railOf(block as Block) !== null && !railOf(block as Block)!.on);

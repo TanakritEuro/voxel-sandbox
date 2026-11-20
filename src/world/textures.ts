@@ -108,6 +108,8 @@ export const TEXTURE_NAMES = [
   'lava',
   'basalt',
   'basalt_top',
+  'lantern',
+  'lantern_top',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -677,6 +679,24 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
       const length = 2 + Math.floor(c.rng() * 4);
       for (let k = 0; k < length; k++) c.set(x + k, y + (k > 1 && c.rng() < 0.4 ? 1 : 0), hex(0xffc04a), 1 + (c.rng() - 0.5) * 0.1);
     }
+  },
+  lantern(c) {
+    // Dark iron round glowing glass: the lantern's boxes take their middle columns (5–10), each face cropped to it.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const iron = x <= 5 || x >= 10 || y % 4 === 0;
+        c.set(x, y, iron ? hex(0x3c3a3e) : hex(0xffcc5a), iron ? 1 + (c.rng() - 0.5) * 0.15 : 0.9 + c.rng() * 0.2);
+      }
+    // A hotter middle.
+    for (let y = 1; y < TEXTURE_SIZE; y += 4) for (const x of [7, 8]) c.set(x, y + 1, hex(0xfff0b0));
+  },
+  lantern_top(c) {
+    // Iron, a little light showing through in the middle.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const middle = x >= 7 && x <= 8 && y >= 7 && y <= 8;
+        c.set(x, y, middle ? hex(0xffcc5a) : hex(0x46434a), 1 + (c.rng() - 0.5) * 0.15);
+      }
   },
   basalt(c) {
     // Dark grey columns: vertical seams, a little rough.

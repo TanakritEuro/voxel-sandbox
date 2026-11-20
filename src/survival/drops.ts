@@ -56,6 +56,7 @@ const GIVES = new Map<Block, number>([
   [Block.SnowyGrass, Block.Dirt],
   [Block.DryGrass, Block.Dirt],
   [Block.Farmland, Block.Dirt],
+  [Block.LanternHanging, Block.Lantern],
   [Block.CoalOre, Item.Coal],
   [Block.CopperOre, Item.RawCopper],
   [Block.IronOre, Item.RawIron],

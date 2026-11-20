@@ -1,6 +1,6 @@
 # Milestone 19: underground
 
-**Status:** plan approved (2026-11-21); steps 1–3 built.
+**Status:** plan approved (2026-11-21); steps 1–4 built.
 
 ## Goal
 
@@ -136,7 +136,7 @@ are tested headless; how lava and the caves feel is left for playtests.
 2. **Lava:** `LiquidFlow`, lava's blocks, meshing, lakes in generation, lava meeting water, swimming in it,
    burning, items and mobs; tests. Done (2026-11-21).
 3. **Dungeons:** the structure, loot, delvers near them; tests. Done (2026-11-21).
-4. **The lantern and `?find`;** together (`PROTOCOL` 12); tests.
+4. **The lantern and `?find`;** together (`PROTOCOL` 12); tests. Done (2026-11-21).
 5. **Measurements,** notes, playtest questions.
 
 ## Decisions to agree
@@ -292,4 +292,31 @@ went down; the chest in its back corner; no console errors. Opening it in surviv
 **Changed from the plan:**
 - **Dungeons' iron is certain,** so no chest is empty.
 - **Rails and cooked meat** in the loot too; lanterns wait for step 4.
+
+## Step 4: the lantern, and together (2026-11-21)
+
+**What's in:**
+- **Lanterns, blocks 214–215:** a small box of dark iron and glowing glass, light 15, standing on a block (a body and a
+  cap) or hanging under one (a body, a cap and a short chain). Drawn, raycast and bumped into as their boxes, as slabs
+  are (in the solid pass); a body steps up onto a standing one.
+- **Placing** (`lanternFor`): clicked from above, it stands; from below, it hangs; against a wall, it stands if the
+  block under the place is solid, else hangs if the one over it is. Only an opaque block holds one up.
+- **Held up as torches are:** `torchSupport` gives the block under a standing one, over a hanging one; `torchesHeldBy`
+  now looks below a block too, so breaking a ceiling takes the lantern hanging from it. A hanging one gives a lantern.
+- **Made** from an iron and a torch; **in dungeons' chests** (1–3, 40 %); in `?kit`'s hotbar (16).
+- **Together:** the host lets a guest set a hanging lantern (`settable`); lava's ticks go to guests as water's do (no
+  change was needed: the game shares every liquid's changes the same way).
+- **`?find`:** `lava` and `dungeon` came in steps 2 and 3; all four deep kinds are there.
+- **Tests (5 new, 2 updated):** placing on floors, ceilings and walls; held up and going with its block, the drop;
+  light 15; the recipe and the loot; its boxes drawn, hit and bumped into. Together: lava poured on a version 3 host
+  flowing the same for a guest, light and all, basalt where the host's water meets it, a guest's hanging lantern taken;
+  the welcome carries version 3. The picker leaves out the hanging lantern.
+
+**In the browser** (`?seed=20261022&find=dungeon&survival&kit`): lanterns put down in the dark dungeon lit it; one standing
+on the floor (iron frame, glowing panes, cap), one hanging from the ceiling; the held lantern drawn as its boxes; no
+console errors.
+
+**Changed from the plan:**
+- **Lanterns are bumped into** (small boxes, not walked through as torches are).
+- **`?find=lava` and `?find=dungeon`** came with their steps.
 

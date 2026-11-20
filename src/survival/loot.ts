@@ -46,6 +46,7 @@ const DUNGEON: readonly Line[] = [
   [Item.Crystal, 1, 4, 0.6],
   [Item.Coal, 4, 12, 0.6],
   [Block.Torch, 4, 12, 0.6],
+  [Block.Lantern, 1, 3, 0.4],
   [Item.Bread, 2, 4, 0.5],
   [Item.CookedMeat, 1, 3, 0.3],
   [Block.Rail, 6, 16, 0.25],

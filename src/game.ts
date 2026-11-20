@@ -74,7 +74,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { bedOf, Block, BLOCKS, chestOf, FACINGS, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, isWater, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, FACINGS, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, isWater, lanternFor, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { railPlacement } from './world/rails';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
@@ -217,11 +217,11 @@ let wakeAtBed: BedPlace | null = null;
 /** Died, and not started again yet (the death screen is up). */
 let dead = false;
 // `?kit` (an unsaved world only): something of everything to try, a tool of each kind and tier,
-// the metals, food and what crafting starts from.
+// the metals, food and what crafting starts from, lanterns.
 if (unsaved && !guest && params.has('kit')) {
-  for (const item of [Item.StonePick, Item.WoodAxe, Item.IronSpade, Block.Torch, Block.Planks, Item.WoodPick, Item.IronPick, Item.StoneAxe, Item.WoodSpade])
+  for (const item of [Item.StonePick, Item.WoodAxe, Item.IronSpade, Block.Torch, Block.Lantern, Item.WoodPick, Item.IronPick, Item.StoneAxe, Item.WoodSpade])
     pack.add(item, isBlockItem(item) ? 16 : 1);
-  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6], [Item.Seeds, 16], [Item.Wheat, 6], [Item.Moss, 3], [Block.Bed, 1], [Block.Rail, 32], [Block.PoweredRail, 6], [Item.Cart, 1], [Item.ChestCart, 1], [Item.Boat, 1], [Block.Reeds, 9], [Item.Map, 1]] as const) pack.add(item, n);
+  for (const [item, n] of [[Block.Wood, 12], [Block.Planks, 16], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6], [Item.Seeds, 16], [Item.Wheat, 6], [Item.Moss, 3], [Block.Bed, 1], [Block.Rail, 32], [Block.PoweredRail, 6], [Item.Cart, 1], [Item.ChestCart, 1], [Item.Boat, 1], [Block.Reeds, 9], [Item.Map, 1]] as const) pack.add(item, n);
   // A little hungry, to try eating at once.
   health.hunger = 12;
 }
@@ -1856,6 +1856,19 @@ function place(target: RayHit): void {
     if (!placed || overlapsBlock(player.body, placed[0], placed[1], placed[2], placed[3])) return;
     edit(placed[0], placed[1], placed[2], placed[3]);
     sound.play({ name: 'place', material: BLOCKS[selectedBlock].sound, gain: 1 });
+    swing();
+    if (survival) {
+      pack.takeOne(selected);
+      renderHotbar();
+    }
+    return;
+  }
+  if (selectedBlock === Block.Lantern) {
+    // A lantern stands on a floor or hangs under a ceiling (`lanternFor`), bumped into as its boxes.
+    const lantern = lanternFor(target.ny, world.getBlock(x, y - 1, z), world.getBlock(x, y + 1, z));
+    if (lantern === null || world.getBlock(x, y, z) !== Block.Air || overlapsBlock(player.body, x, y, z, lantern)) return;
+    edit(x, y, z, lantern);
+    sound.play({ name: 'place', material: BLOCKS[lantern].sound, gain: 1 });
     swing();
     if (survival) {
       pack.takeOne(selected);

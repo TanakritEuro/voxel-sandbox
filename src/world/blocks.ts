@@ -110,6 +110,9 @@ export enum Block {
   LavaFlow3 = 211,
   LavaFalling = 212,
   Basalt = 213,
+  /** A lantern standing on a block, and one hanging under a block (light 15). */
+  Lantern = 214,
+  LanternHanging = 215,
 }
 
 type RGB = [number, number, number];
@@ -482,6 +485,29 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   ...[1, 2, 3].map((level) => ({ ...LAVA, pickable: false, liquidHeight: level / 4 })),
   { ...LAVA, pickable: false },
   solid('Basalt', 3, faces('basalt_top', 'basalt'), 0x3a3638),
+  // Lanterns: a small iron and glass box, glowing; standing (with a cap), or hanging (on a short chain).
+  {
+    ...solid('Lantern', 0.5, faces('lantern_top', 'lantern'), 0x4a4640),
+    opaque: false,
+    shape: 'slab',
+    light: 15,
+    boxes: [
+      [5 / 16, 0, 5 / 16, 11 / 16, 7 / 16, 11 / 16],
+      [6 / 16, 7 / 16, 6 / 16, 10 / 16, 9 / 16, 10 / 16],
+    ] as readonly Box[],
+  },
+  {
+    ...solid('Hanging lantern', 0.5, faces('lantern_top', 'lantern'), 0x4a4640),
+    opaque: false,
+    shape: 'slab',
+    light: 15,
+    pickable: false,
+    boxes: [
+      [5 / 16, 4 / 16, 5 / 16, 11 / 16, 11 / 16, 11 / 16],
+      [6 / 16, 11 / 16, 6 / 16, 10 / 16, 13 / 16, 10 / 16],
+      [7 / 16, 13 / 16, 7 / 16, 9 / 16, 1, 9 / 16],
+    ] as readonly Box[],
+  },
 ];
 
 /** A rail block of either kind: thin, walked through, in the cutout pass, broken quickly. */
@@ -539,6 +565,7 @@ SOUNDS[Block.CrystalCluster] = 'glass';
 SOUNDS[Block.GrottoFloor] = 'dirt';
 SOUNDS[Block.MushroomStem] = 'wood';
 SOUNDS[Block.MushroomCap] = 'leaves';
+SOUNDS[Block.Lantern] = SOUNDS[Block.LanternHanging] = 'glass';
 for (let b = Block.Lava; b <= Block.LavaFalling; b++) SOUNDS[b as Block] = 'water';
 // Plank slabs and stairs sound of wood.
 for (let b = Block.Slab; b < Block.Fence; b++) if ((slabOf(b as Block) ?? stairsOf(b as Block))!.material === 1) SOUNDS[b as Block] = 'wood';
@@ -568,10 +595,25 @@ export function torchFor(nx: number, ny: number, nz: number): Block | null {
  * door's upper half goes with its lower).
  */
 export function torchSupport(block: Block): [number, number, number] | null {
+  if (block === Block.Lantern) return [0, -1, 0];
+  if (block === Block.LanternHanging) return [0, 1, 0];
   const info = BLOCKS[block];
   if (info.shape === 'cube' || info.shape === 'slab') return null;
   if (info.shape === 'panel') return doorOf(block)!.upper ? null : [0, -1, 0];
   return info.wall ? [info.wall.x, 0, info.wall.z] : [0, -1, 0];
+}
+
+/**
+ * The lantern to place in the block beside the face with normal (nx, ny, nz) that was clicked: hanging
+ * under a ceiling clicked from below, standing on a floor clicked from above; against a wall, standing if
+ * the block under the place is solid (`solid`: an opaque block holds it up), else hanging if the one
+ * over it is, else none.
+ */
+export function lanternFor(ny: number, below: Block, above: Block): Block | null {
+  const holds = (b: Block) => BLOCKS[b].opaque;
+  if (ny < 0) return holds(above) ? Block.LanternHanging : null;
+  if (ny > 0) return holds(below) ? Block.Lantern : null;
+  return holds(below) ? Block.Lantern : holds(above) ? Block.LanternHanging : null;
 }
 
 /** Is `block` a torch, on a floor or a wall? */
