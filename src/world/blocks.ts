@@ -97,6 +97,12 @@ export enum Block {
   Rail = 182,
   /** Powered rails by shape (straight and sloped only), off and on (192–203): `poweredRail`, `railOf`. */
   PoweredRail = 192,
+  /** Deep caves (Milestone 19, generation version 3): crystal clusters (crossed sheets, glowing) in crystal caverns. */
+  CrystalCluster = 204,
+  /** Mushroom grottoes: their soft floor, and giant mushrooms' stems and glowing caps. */
+  GrottoFloor = 205,
+  MushroomStem = 206,
+  MushroomCap = 207,
 }
 
 type RGB = [number, number, number];
@@ -443,6 +449,12 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   ...Array.from({ length: POWERED_SHAPES }, (_, shape) =>
     [false, true].map((on) => railBlock('Powered rail', on ? 'powered_rail_on' : 'powered_rail', 0xb87333, shape === 0 && !on, 'powered_rail')),
   ).flat(),
+  // Deep caves: crystal clusters growing from cave floors, glowing; a grotto's spongy floor; giant
+  // mushrooms' pale stems and broad caps, glowing a little.
+  { ...solid('Crystal cluster', 0.6, faces('crystal_cluster'), 0x7fdcec), opaque: false, passable: true, shape: 'cross', cutout: true, light: 12, icon: 'crystal_cluster' },
+  solid('Grotto floor', 0.8, faces('grotto_floor', 'stone'), 0x5a4466, 0x8a8d91),
+  solid('Mushroom stem', 1.2, faces('mushroom_stem_top', 'mushroom_stem'), 0xd8d0c0),
+  { ...solid('Mushroom cap', 0.8, faces('mushroom_cap', 'mushroom_cap', 'mushroom_gills'), 0x3fa8a0, 0x3fa8a0, 0xc8b8a0), light: 12 },
 ];
 
 /** A rail block of either kind: thin, walked through, in the cutout pass, broken quickly. */
@@ -496,6 +508,10 @@ SOUNDS[Block.Reeds] = 'leaves';
 SOUNDS[Block.ParasolWood] = 'wood';
 SOUNDS[Block.ParasolLeaves] = 'leaves';
 SOUNDS[Block.Pane] = 'glass';
+SOUNDS[Block.CrystalCluster] = 'glass';
+SOUNDS[Block.GrottoFloor] = 'dirt';
+SOUNDS[Block.MushroomStem] = 'wood';
+SOUNDS[Block.MushroomCap] = 'leaves';
 // Plank slabs and stairs sound of wood.
 for (let b = Block.Slab; b < Block.Fence; b++) if ((slabOf(b as Block) ?? stairsOf(b as Block))!.material === 1) SOUNDS[b as Block] = 'wood';
 for (let b = Block.Wheat; b < Block.Wheat + 8; b++) SOUNDS[b as Block] = 'leaves';

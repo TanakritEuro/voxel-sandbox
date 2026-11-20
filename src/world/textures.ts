@@ -99,6 +99,12 @@ export const TEXTURE_NAMES = [
   'rail_curve',
   'powered_rail',
   'powered_rail_on',
+  'crystal_cluster',
+  'grotto_floor',
+  'mushroom_stem',
+  'mushroom_stem_top',
+  'mushroom_cap',
+  'mushroom_gills',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -624,6 +630,39 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   },
   stone_bricks: (c) => bricks(c),
   rail: (c) => rails(c, IRON_RAIL, null),
+  crystal_cluster(c) {
+    // Shards of crystal growing up from the bottom, pale tips, the rest see-through.
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, CRYSTAL_SHARD, 1, 0);
+    for (const [x, h] of [[2, 7], [5, 12], [8, 9], [10, 14], [13, 8]]) {
+      for (let k = 0; k < h; k++) {
+        const w = k < h - 3 ? 1 : 0;
+        for (let dx = -w; dx <= w; dx++) c.set(x + dx, 15 - k, k > h - 3 ? CRYSTAL_TIP : CRYSTAL_SHARD, 1 + (dx === 0 ? 0.12 : -0.1) + (c.rng() - 0.5) * 0.1);
+      }
+    }
+  },
+  grotto_floor(c) {
+    // Dark violet-brown, soft, with pale spores.
+    c.speckle(hex(0x5a4466), 0.3);
+    c.spots(10, hex(0xb8a8d0), 0.2);
+    c.spots(6, hex(0x3a2c44), 0.1);
+  },
+  mushroom_stem(c) {
+    // Pale and fibrous, faint lines up it.
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, hex(0xd8d0c0), (x % 4 === 1 ? 0.92 : 1) * (1 + (c.rng() - 0.5) * 0.08));
+  },
+  mushroom_stem_top(c) {
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, hex(0xd8d0c0), (Math.floor(Math.hypot(x - 7.5, y - 7.5)) % 3 === 0 ? 0.9 : 1) * (1 + (c.rng() - 0.5) * 0.08));
+  },
+  mushroom_cap(c) {
+    // Teal, glowing a little, with pale spots.
+    c.speckle(hex(0x3fa8a0), 0.18);
+    c.spots(7, hex(0xc8f0e0), 0.1);
+  },
+  mushroom_gills(c) {
+    // Under the cap: gills in lines.
+    for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, hex(0xc8b8a0), (x % 2 ? 0.85 : 1.05) * (1 + (c.rng() - 0.5) * 0.08));
+  },
   rail_curve: (c) => curvedRails(c),
   powered_rail: (c) => rails(c, COPPER, hex(0x5a2a1a)),
   powered_rail_on: (c) => rails(c, COPPER, hex(0xff5a2a)),
@@ -720,6 +759,8 @@ function wheatStage(c: Canvas, stage: number): void {
 }
 
 const IRON_RAIL = hex(0x9a9ea4);
+const CRYSTAL_SHARD = hex(0x7fdcec);
+const CRYSTAL_TIP = hex(0xe2fcff);
 const SLEEPER = hex(0x6b4a2b);
 
 /**

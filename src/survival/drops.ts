@@ -16,6 +16,11 @@ for (const b of [Block.Wood, Block.SpruceWood, Block.ParasolWood, Block.Planks])
 // Chests, doors and beds: wood.
 for (let b = Block.Chest; b < Block.Farmland; b++) RIGHT_TOOL.set(b as Block, 'axe');
 RIGHT_TOOL.set(Block.Fence, 'axe');
+// Deep caves: a cluster a pick's, the grotto's floor a spade's, a giant mushroom an axe's.
+RIGHT_TOOL.set(Block.CrystalCluster, 'pick');
+RIGHT_TOOL.set(Block.GrottoFloor, 'spade');
+RIGHT_TOOL.set(Block.MushroomStem, 'axe');
+RIGHT_TOOL.set(Block.MushroomCap, 'axe');
 // Rails: a pick, any tier (no pick tier needed to get them back).
 for (let b = Block.Rail; b < Block.PoweredRail + POWERED_SHAPES * 2; b++) RIGHT_TOOL.set(b as Block, 'pick');
 for (const b of [Block.Dirt, Block.Grass, Block.DryGrass, Block.Mud, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass, Block.Farmland]) RIGHT_TOOL.set(b, 'spade');
@@ -93,6 +98,8 @@ export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cos
     const stick = 1 / TUNING.survival.leafStick;
     return roll < stick ? [[Item.Stick, 1]] : roll < stick + 1 / TUNING.survival.leafBerries ? [[Item.Berries, 1]] : [];
   }
+  // A crystal cluster gives a crystal.
+  if (block === Block.CrystalCluster) return [[Item.Crystal, 1]];
   // Glass breaks to nothing, a pane as well.
   if (block === Block.Glass || block === Block.Pane) return [];
   // Grass gives its dirt, and seeds one time in `farming.seedsFromGrass`; wheat ripe gives wheat and

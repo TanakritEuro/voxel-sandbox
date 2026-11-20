@@ -17,7 +17,7 @@ import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackVehicles } from './vehicleState';
 import { unpackState } from './playerState';
 
-export const PROTOCOL = 11;
+export const PROTOCOL = 12;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;
@@ -237,7 +237,7 @@ export function parseMessage(raw: unknown): Message | null {
       if (!Array.isArray(raw.at) || raw.at.length !== 3 || !raw.at.every(isNumber)) return null;
       if (!Array.isArray(raw.edited) || raw.edited.length % 2 !== 0 || raw.edited.length > 2 * 65536 || !raw.edited.every(isChunkCoord)) return null;
       if (!isMode(raw.mode) || (raw.kept !== null && !isKept(raw.kept))) return null;
-      if (raw.generation !== 1 && raw.generation !== 2) return null;
+      if (raw.generation !== 1 && raw.generation !== 2 && raw.generation !== 3) return null;
       return {
         type: 'welcome',
         you: raw.you,

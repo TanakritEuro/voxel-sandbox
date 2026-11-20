@@ -1,6 +1,8 @@
 // Caves: winding tunnels everywhere underground, and wide caverns deep down, carved out of the
 // generated chunk. Tunnels are where two 3D noises are both near zero (long "spaghetti"
-// passages that wander in every direction); caverns are where a third noise is high.
+// passages that wander in every direction); caverns are where a third noise is high. In generation
+// version 3, a deep biome's cells (`deep.ts`) open into caverns more readily (`DEEP_CAVERN`), so
+// crystal caverns and grottoes are wide.
 //
 // Noise is sampled only every 4 blocks and interpolated in between: 55 ns a sample would be
 // ~15 ms a column at every block. Per chunk that's 9 × 9 × 9 samples a field; each column
@@ -23,6 +25,14 @@ const TUNNEL = 0.07;
 /** Caverns: where the cavern noise is above this, and only below CAVERN_TOP. */
 const CAVERN = 0.55;
 const CAVERN_TOP = 40;
+/** Caverns in a deep biome's cells (version 3): a lower threshold, so more and wider. */
+const DEEP_CAVERN = 0.35;
+/** A deep biome's cells, 8 blocks a side. */
+const DEEP_CELL = 8;
+const DEEP_CELLS = S / DEEP_CELL;
+
+/** Is the 8 x 8 x 8 cell holding (x, y, z) in a deep biome? (`Deep.biomeAt`, version 3.) */
+export type DeepCells = (x: number, y: number, z: number) => boolean;
 /** The lowest layers are never carved, so the world has a floor. */
 const FLOOR = 4;
 
@@ -38,8 +48,14 @@ export class Caves {
   private readonly colA = new Float32Array(N);
   private readonly colB = new Float32Array(N);
   private readonly colC = new Float32Array(N);
+  /** One chunk's deep cells (reused). */
+  private readonly cells = new Uint8Array(DEEP_CELLS ** 3);
 
-  constructor(seed: number) {
+  constructor(
+    seed: number,
+    /** Version 3: which cells are in a deep biome (none: none are). */
+    private readonly deep: DeepCells | null = null,
+  ) {
     this.tunnelA = new Noise(seed ^ 0x7c4e1);
     this.tunnelB = new Noise(seed ^ 0x2b8f3);
     this.cavern = new Noise(seed ^ 0x6ad05);
@@ -79,7 +95,57 @@ export class Caves {
       const b = along(this.tunnelB, 48, 28, 48);
       if (b < TUNNEL && b > -TUNNEL) return true;
     }
-    return y0 < CAVERN_TOP && y < CAVERN_TOP && along(this.cavern, 70, 36, 70) > CAVERN;
+    return y0 < CAVERN_TOP && y < CAVERN_TOP && along(this.cavern, 70, 36, 70) > (this.deep?.(x, y, z) ? DEEP_CAVERN : CAVERN);
+  }
+
+  /**
+   * `carvedAt` for every y from `y0` to `y1` in column (x, z) at once: 1 where carved. Each sample
+   * level is worked out once rather than for every block, with the same arithmetic, so the answers
+   * are the same.
+   */
+  carvedColumn(x: number, z: number, limit: number, y0: number, y1: number): Uint8Array {
+    const out = new Uint8Array(y1 - y0 + 1);
+    const lx = toLocal(x);
+    const lz = toLocal(z);
+    const xs = toChunk(x) * S + (lx >> 2) * STEP;
+    const zs = toChunk(z) * S + (lz >> 2) * STEP;
+    const fx = (lx & 3) / STEP;
+    const fz = (lz & 3) / STEP;
+    const level = (noise: Noise, sx: number, sy: number, sz: number, yy: number) => {
+      const v = (dx: number, dz: number) => Math.fround(noise.noise3((xs + dx) / sx, yy / sy, (zs + dz) / sz));
+      const a = v(0, 0) + (v(STEP, 0) - v(0, 0)) * fx;
+      const b = v(0, STEP) + (v(STEP, STEP) - v(0, STEP)) * fx;
+      return Math.fround(a + (b - a) * fz);
+    };
+    // Sample levels by their y (every STEP from the one at or below y0), each worked out once.
+    const first = y0 >> 2;
+    const count = (y1 >> 2) - first + 2;
+    const levels = [new Float64Array(count).fill(Number.NaN), new Float64Array(count).fill(Number.NaN), new Float64Array(count).fill(Number.NaN)];
+    const at = (noise: Noise, which: number, sx: number, sy: number, sz: number, yy: number) => {
+      const n = (yy >> 2) - first;
+      let v = levels[which][n];
+      if (Number.isNaN(v)) levels[which][n] = v = level(noise, sx, sy, sz, yy);
+      return v;
+    };
+    for (let y = Math.max(y0, FLOOR); y <= Math.min(y1, limit); y++) {
+      const cy0 = toChunk(y) * S;
+      const ly = y - cy0;
+      const ys = cy0 + (ly >> 2) * STEP;
+      const fy = (ly & 3) / STEP;
+      const along = (noise: Noise, which: number, sx: number, sy: number, sz: number) => {
+        const lo = at(noise, which, sx, sy, sz, ys);
+        return lo + (at(noise, which, sx, sy, sz, ys + STEP) - lo) * fy;
+      };
+      let carved = false;
+      const a = along(this.tunnelA, 0, 48, 28, 48);
+      if (a < TUNNEL && a > -TUNNEL) {
+        const b = along(this.tunnelB, 1, 48, 28, 48);
+        carved = b < TUNNEL && b > -TUNNEL;
+      }
+      if (!carved && cy0 < CAVERN_TOP && y < CAVERN_TOP) carved = along(this.cavern, 2, 70, 36, 70) > (this.deep?.(x, y, z) ? DEEP_CAVERN : CAVERN);
+      if (carved) out[y - y0] = 1;
+    }
+    return out;
   }
 
   /**
@@ -96,6 +162,16 @@ export class Caves {
     const x0 = cx * S;
     const z0 = cz * S;
     const caverns = y0 < CAVERN_TOP;
+    // Which of the chunk's 8-block cells are deep (version 3).
+    const cells = this.cells;
+    let deep = false;
+    for (let j = 0; j < DEEP_CELLS; j++)
+      for (let k = 0; k < DEEP_CELLS; k++)
+        for (let i = 0; i < DEEP_CELLS; i++) {
+          const d = caverns && this.deep !== null && this.deep(x0 + i * DEEP_CELL, y0 + j * DEEP_CELL, z0 + k * DEEP_CELL);
+          cells[(j * DEEP_CELLS + k) * DEEP_CELLS + i] = d ? 1 : 0;
+          if (d) deep = true;
+        }
     for (let i = 0; i < N; i++)
       for (let k = 0; k < N; k++)
         for (let j = 0; j < N; j++) {
@@ -141,7 +217,10 @@ export class Caves {
             const b = this.colB[j] + (this.colB[j + 1] - this.colB[j]) * fy;
             open = b < TUNNEL && b > -TUNNEL;
           }
-          if (!open && caverns && y0 + ly < CAVERN_TOP) open = this.colC[j] + (this.colC[j + 1] - this.colC[j]) * fy > CAVERN;
+          if (!open && caverns && y0 + ly < CAVERN_TOP) {
+            const threshold = deep && cells[((ly >> 3) * DEEP_CELLS + (lz >> 3)) * DEEP_CELLS + (lx >> 3)] ? DEEP_CAVERN : CAVERN;
+            open = this.colC[j] + (this.colC[j + 1] - this.colC[j]) * fy > threshold;
+          }
           if (open) {
             blocks[index] = AIR;
             carved++;

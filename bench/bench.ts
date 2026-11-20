@@ -1252,9 +1252,9 @@ it('generation versions', () => {
   // Generating the bench's columns (radius 9 round the origin) by each version, alternating, and
   // what version 2 makes of the land over 4096 x 4096 blocks (a column every 8).
   const cols = columns(RADIUS + 1);
-  const times: Record<Generation, number[]> = { 1: [], 2: [] };
+  const times: Record<Generation, number[]> = { 1: [], 2: [], 3: [] };
   for (let run = 0; run <= RUNS; run++) {
-    for (const generation of [1, 2] as Generation[]) {
+    for (const generation of [1, 2, 3] as Generation[]) {
       const g = new Generator(SEED, { generation });
       const t0 = performance.now();
       for (const [cx, cz] of cols) g.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);
@@ -1262,7 +1262,7 @@ it('generation versions', () => {
     }
   }
   const per = (g: Generation) => median(times[g]) / cols.length;
-  const lines = ['', `generation by version (${cols.length} columns, median of ${RUNS}): version 1 ${per(1).toFixed(3)} ms a column, version 2 ${per(2).toFixed(3)} (${((per(2) / per(1) - 1) * 100).toFixed(0)} %)`];
+  const lines = ['', `generation by version (${cols.length} columns, median of ${RUNS}): version 1 ${per(1).toFixed(3)} ms a column, version 2 ${per(2).toFixed(3)} (${((per(2) / per(1) - 1) * 100).toFixed(0)} %), version 3 ${per(3).toFixed(3)} (${((per(3) / per(2) - 1) * 100).toFixed(0)} % on 2)`];
   for (const seed of [SEED, 7, 123]) {
     const g1 = new Generator(seed, { generation: 2, rivers: false });
     const g2 = new Generator(seed, { generation: 2 });

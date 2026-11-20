@@ -1,6 +1,6 @@
 # Milestone 19: underground
 
-**Status:** plan, to check (2026-11-21).
+**Status:** plan approved (2026-11-21); step 1 built.
 
 ## Goal
 
@@ -132,7 +132,7 @@ are tested headless; how lava and the caves feel is left for playtests.
 ## Steps
 
 1. **Version 3 and the deep caves:** blocks and textures, deep biomes, crystal clusters, grottoes and
-   mushrooms; checksums for versions 1 and 2; tests.
+   mushrooms; checksums for versions 1 and 2; tests. Done (2026-11-21).
 2. **Lava:** `LiquidFlow`, lava's blocks, meshing, lakes in generation, lava meeting water, swimming in it,
    burning, items and mobs; tests.
 3. **Dungeons:** the structure, loot, delvers near them; tests.
@@ -149,3 +149,66 @@ are tested headless; how lava and the caves feel is left for playtests.
    below.
 5. **Dungeons** about one per 96 × 96 blocks, deep, with delvers twice as likely near them.
 6. **The lantern** from an iron and a torch, standing or hanging.
+
+## Step 1: version 3 and the deep caves (2026-11-21)
+
+**What's in:**
+- **Generation version 3** (`GENERATION` 3, `generationOf` takes 3; `PROTOCOL` 12, since a guest of an older
+  build would read version 3 as 1). **Version 2 pinned:** checksums of the same 12 columns as version 1's,
+  taken before anything changed (`generationV2.test.ts`).
+- **Blocks 204–207:**
+  - crystal cluster: crossed sheets, light 12, held up by the block under it, gives a crystal, a pick's;
+  - grotto floor: a soft violet floor with pale spores, a spade's;
+  - mushroom stem: pale, an axe's;
+  - mushroom cap: teal with pale spots, gills underneath, light 12, an axe's.
+- **`world/deep.ts`:**
+  - a deep biome per 8 x 8 x 8 cell below y 40, from a 3D noise: crystal caverns, mushroom grottoes, or
+    neither;
+  - **wider caverns there:** in a deep cell the cavern noise opens at 0.35 rather than 0.55 (`Caves` takes
+    the cells; `carvedAt` agrees, so everything that asks whether a block is cave still gets the truth);
+  - **`decorate`** after caves and ores: in crystal caverns, a cluster on 1 in 8 stone floor blocks and crystal
+    ore on 1 in 29 stone blocks beside the air; in grottoes, the floor under the air is grotto floor;
+  - **giant mushrooms:** per 6 x 6 column cell, nine in ten get up to three tries at a column standing on a
+    grotto floor with room for a stem of 3–7 and its cap (radius 2, or 3 for a stem of 6 or more, a rim a block
+    lower), all below y 40; written into every chunk they reach, as trees are.
+- **`Caves.carvedColumn`:** a column's run of cave at once, each noise level worked out once rather than per
+  block, the same as `carvedAt` block for block (tested): the mushroom search reads columns through it.
+- **`?find=crystal` and `?find=grotto`:** the nearest cave floor in that biome with room round it (cave 3 blocks
+  out each way at head height), the player stood there underground.
+- **Tests (6 new, 2 updated, 1 new file of checksums):**
+  - version 3 opens wider caverns and grows clusters, ore, grotto floors and mushrooms, all below y 40, nothing
+    else changed;
+  - each in its own biome;
+  - a mushroom's cap whole across a chunk border;
+  - `carvedColumn` against `carvedAt`;
+  - the blocks;
+  - the two finds;
+  - version 2's checksums; the version test takes 3.
+
+**Measured** (bench `generation versions`): version 3 is 13% slower than version 2 a column (3.82 against 3.38 ms
+that run; version 2 is 10% on version 1). The mushroom search was most of it at first (24%): biome looked up block
+by block, then `carvedAt` block by block; now biome by cell, cave by `carvedColumn` over just the grotto cells'
+range, 0.33 ms a column.
+
+**In the browser** (`?seed=20261022`):
+- `?find=grotto`: a giant mushroom, its pale stem rising into the cap, the gills underneath and the teal rim round
+  it, on the spotted grotto floor;
+- `?find=crystal`: clusters of pale cyan shards on the cavern floor, glowing, lighting the stone;
+- a 30 s sprint flight over version 3 land: no missing chunks, 2 frames over 20 ms (max 25.2), main thread p50 3.7 ms;
+- no console errors.
+- **Found there:**
+  - **crystal caverns and grottoes were just tunnels** passing through those biomes, narrow and nearly empty (39
+    blocks of cave and one cluster in a 32-block cube). Deep cells now open into caverns.
+  - **no mushrooms at all:** the search stopped at the first floor going down whether or not it had room. It looks on
+    down now, fits the stem to the room, and tries three columns a cell.
+  - **too dark to see:** light 8 from the caps had faded to 3 a few blocks off. Caps and clusters give 12 now.
+  - **the finds stood you in a passing tunnel;** they want room round the spot now.
+
+**Changed from the plan:**
+- **Block ids:** the deep blocks took 204–207 (blocks are numbered in order); lava, basalt and the lanterns will
+  follow from 208.
+- **Light 12** for clusters and caps (the plan had 10 and 8).
+- **Clusters only on floors:** one hanging from a ceiling would need a second id, held up from above.
+- **Deep biomes widen their caverns,** which the plan didn't say: they'd be ordinary tunnels otherwise.
+- **`PROTOCOL` 12 in this step,** not step 4: the welcome carries the version.
+

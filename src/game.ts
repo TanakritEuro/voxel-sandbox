@@ -786,9 +786,14 @@ const [atX, atZ] = (params.get('at') ?? '0,0').split(',').map((v) => Math.floor(
 const findKind = params.get('find');
 const foundPlace = isFindable(findKind) ? findNearest(world.generator, findKind, atX, atZ ?? 0) : null;
 if (findKind !== null) console.log(foundPlace ? `[find] ${findKind} at ${foundPlace.x}, ${foundPlace.z}` : `[find] no ${findKind} within reach`);
-const spawn = foundPlace ? dryNear(world.generator, foundPlace.x, foundPlace.z) : world.generator.findLand(atX, atZ ?? 0);
+// Underground finds (deep caves) are stood in where they were found; the rest by the nearest dry land.
+const spawn: { x: number; z: number; y?: number } = foundPlace
+  ? foundPlace.y !== undefined
+    ? foundPlace
+    : dryNear(world.generator, foundPlace.x, foundPlace.z)
+  : world.generator.findLand(atX, atZ ?? 0);
 /** Where a new player stands, and a survival player starts again. */
-const spawnFeet = { x: spawn.x + 0.5, y: world.generator.height(spawn.x, spawn.z) + 1, z: spawn.z + 0.5 };
+const spawnFeet = { x: spawn.x + 0.5, y: spawn.y ?? world.generator.height(spawn.x, spawn.z) + 1, z: spawn.z + 0.5 };
 const player = new Player(
   camera,
   input,

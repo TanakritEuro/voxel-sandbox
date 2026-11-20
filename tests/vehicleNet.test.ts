@@ -27,7 +27,7 @@ const state = (over: Partial<PlayerState> = {}): PlayerState => ({
 
 describe('vehicles on the wire', () => {
   it('pack 52 bytes a vehicle, with its rider and where it is on a rail, and come back as they were', () => {
-    expect(PROTOCOL).toBe(11);
+    expect(PROTOCOL).toBeGreaterThanOrEqual(11); // vehicles came with 11
     const cart = createVehicle(4, VehicleKind.Cart, 10.5, 70, -3.25, 1);
     cart.rail = { x: 10, y: 70, z: -4, s: 0.75 };
     cart.speed = -3.5;

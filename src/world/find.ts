@@ -5,8 +5,9 @@ import { Biome } from './biomes';
 import { SEA_LEVEL } from './coords';
 import type { Generator } from './generate';
 import { STRUCTURE_CELL, StructureKind, structureInCell } from './structures';
+import { DEEP_TOP, DeepBiome } from './deep';
 
-export const FINDABLE = ['river', 'savanna', 'swamp', 'ruin', 'camp'] as const;
+export const FINDABLE = ['river', 'savanna', 'swamp', 'ruin', 'camp', 'crystal', 'grotto'] as const;
 export type Findable = (typeof FINDABLE)[number];
 
 export const isFindable = (s: string | null): s is Findable => (FINDABLE as readonly string[]).includes(s ?? '');
@@ -19,7 +20,9 @@ function matches(g: Generator, kind: Findable, x: number, z: number): boolean {
       return g.height(x, z) < SEA_LEVEL && SEA_LEVEL + g.climate.height(x, z) > SEA_LEVEL + 3;
     case 'ruin':
     case 'camp':
-      return false; // searched by cell, in `findNearest`
+    case 'crystal':
+    case 'grotto':
+      return false; // searched by cell, or underground, in `findNearest`
     case 'savanna':
     case 'swamp':
     {
@@ -35,10 +38,12 @@ function matches(g: Generator, kind: Findable, x: number, z: number): boolean {
 
 /**
  * The nearest column of `kind` to (x, z), looking every `step` blocks outwards in square rings up
- * to `radius`; null if there is none.
+ * to `radius`; null if there is none. Underground kinds (version 3's deep caves) come with the height
+ * to stand at, on a cave's floor in it.
  */
-export function findNearest(g: Generator, kind: Findable, x: number, z: number, radius = 4096, step = 8): { x: number; z: number } | null {
+export function findNearest(g: Generator, kind: Findable, x: number, z: number, radius = 4096, step = 8): { x: number; z: number; y?: number } | null {
   if (kind === 'ruin' || kind === 'camp') return nearestStructure(g, kind === 'ruin' ? StructureKind.Ruin : StructureKind.Camp, x, z, radius);
+  if (kind === 'crystal' || kind === 'grotto') return nearestDeep(g, kind === 'crystal' ? DeepBiome.Crystal : DeepBiome.Grotto, x, z, Math.min(radius, 1024), step);
   for (let r = 0; r <= radius; r += step) {
     for (let dz = -r; dz <= r; dz += step) {
       for (let dx = -r; dx <= r; dx += step) {
@@ -63,6 +68,31 @@ export function dryNear(g: Generator, x: number, z: number): { x: number; z: num
         if (g.height(x + dx, z + dz) >= SEA_LEVEL) return { x: x + dx, z: z + dz };
       }
   return { x, z };
+}
+
+/**
+ * The nearest cave floor in deep biome `biome` to (x, z): columns every `step` blocks in rings
+ * outwards, each looked down from `DEEP_TOP` for a block of cave with cave above and rock below, and room
+ * round it (cave 3 blocks out each way at head height): in a cavern, not a passing tunnel.
+ */
+function nearestDeep(g: Generator, biome: DeepBiome, x: number, z: number, radius: number, step: number): { x: number; z: number; y: number } | null {
+  if (g.options.generation < 3) return null;
+  for (let r = 0; r <= radius; r += step)
+    for (let dz = -r; dz <= r; dz += step)
+      for (let dx = -r; dx <= r; dx += step) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const cx = x + dx;
+        const cz = z + dz;
+        let limit: number | null = null;
+        for (let y = DEEP_TOP - 2; y > 12; y--) {
+          if (g.deep.biomeAt(cx, y, cz) !== biome) continue;
+          limit ??= g.caveLimitAt(cx, cz);
+          const cave = (ax: number, ay: number, az: number) => g.caves.carvedAt(ax, ay, az, ax === cx && az === cz ? limit! : g.caveLimitAt(ax, az));
+          if (!cave(cx, y, cz) || !cave(cx, y + 1, cz) || cave(cx, y - 1, cz)) continue;
+          if ([[3, 0], [-3, 0], [0, 3], [0, -3]].every(([dx2, dz2]) => cave(cx + dx2, y + 1, cz + dz2))) return { x: cx, z: cz, y };
+        }
+      }
+  return null;
 }
 
 /** Structure cells' width (`structures.ts`). */

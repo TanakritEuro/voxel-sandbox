@@ -8,6 +8,7 @@
 
 import { Biome, BIOME_COUNT, Climate } from './biomes';
 import { Caves } from './caves';
+import { Deep, DeepBiome, MUSHROOM_REACH, placeMushrooms } from './deep';
 import { type Ground, placeOres, placeTrees, TREE_REACH, TREE_TOP, treesIn } from './features';
 import { Block } from './blocks';
 import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL, WORLD_HEIGHT } from './coords';
@@ -109,13 +110,13 @@ export function columnLayers(info: ColumnInfo): Run[] {
 /**
  * Versions of world generation. A world keeps the version it was made with, so land it hasn't
  * edited yet comes out the same next to land it has: 1 is the world before Milestone 16, 2 adds
- * rivers, savanna and swamp, and structures.
+ * rivers, savanna and swamp, and structures; 3 (Milestone 19) adds the deep caves (`deep.ts`).
  */
-export type Generation = 1 | 2;
+export type Generation = 1 | 2 | 3;
 /** The version new worlds get. */
-export const GENERATION: Generation = 2;
-/** A version as saved or sent: 2 if it says so, else 1 (worlds from before versions say nothing). */
-export const generationOf = (v: unknown): Generation => (v === 2 ? 2 : 1);
+export const GENERATION: Generation = 3;
+/** A version as saved or sent: 2 or 3 if it says so, else 1 (worlds from before versions say nothing). */
+export const generationOf = (v: unknown): Generation => (v === 3 ? 3 : v === 2 ? 2 : 1);
 
 /**
  * Generation passes that can be switched off (all on by default), for tests that compare with and
@@ -153,6 +154,8 @@ export class Generator {
   readonly caves: Caves;
   /** Version 2's rivers. */
   readonly rivers: Rivers;
+  /** Version 3's deep caves. */
+  readonly deep: Deep;
   readonly options: Required<GeneratorOptions>;
   private readonly detail: Noise;
   private readonly weights = new Float64Array(BIOME_COUNT);
@@ -165,9 +168,17 @@ export class Generator {
   ) {
     this.options = { caves: true, ores: true, trees: true, rivers: true, generation: 1, ...options };
     this.climate = new Climate(seed, this.options.generation);
-    this.caves = new Caves(seed);
+    this.deep = new Deep(seed);
+    // Version 3's deep biomes open their caves into caverns.
+    this.caves = new Caves(seed, this.options.generation >= 3 ? (x, y, z) => this.deep.biomeAt(x, y, z) !== DeepBiome.None : null);
     this.detail = new Noise(seed ^ 0x51e7);
     this.rivers = new Rivers(seed);
+  }
+
+  /** How high caves may carve in column (x, z) (`caveLimit` from the heights there and beside it). */
+  caveLimitAt(x: number, z: number): number {
+    const h = this.height(x, z);
+    return caveLimit(h, Math.min(h, this.height(x + 1, z), this.height(x - 1, z), this.height(x, z + 1), this.height(x, z - 1)));
   }
 
   /** Surface height at world column (x, z): the y of the topmost solid block. Version 2 cuts rivers' valleys into it. */
@@ -365,6 +376,9 @@ export class Generator {
     }
     for (const t of trees) top = Math.max(top, t.y + TREE_TOP);
     const reeds = this.options.generation === 1 ? null : this.reedsIn(x0, z0, heights, biomes, ground);
+    // Version 3's giant mushrooms reaching into these columns.
+    const R = MUSHROOM_REACH;
+    const mushrooms = this.options.generation >= 3 && this.options.caves ? this.deep.mushroomsIn(x0 - R, z0 - R, x0 + S - 1 + R, z0 + S - 1 + R, (x, z, y0, y1) => this.caves.carvedColumn(x, z, spanLimits[index(x, z)], y0, y1)) : [];
     // Structures reaching into these columns, and what each writes.
     const structures = this.options.generation === 1 ? [] : this.structuresIn(x0, z0, x0 + S - 1, z0 + S - 1);
     const built = structures.map((st) => structureBlocks(this.seed, st, this));
@@ -385,6 +399,10 @@ export class Generator {
       }
       if (this.options.caves) this.caves.carve(blocks, cx, cy, cz, limits);
       if (this.options.ores) placeOres(blocks, cx, cy, cz, this.seed);
+      if (this.options.generation >= 3 && this.options.caves) {
+        this.deep.decorate(blocks, cx, cy, cz);
+        if (mushrooms.length) placeMushrooms(blocks, cx, cy, cz, mushrooms);
+      }
       if (trees.length) placeTrees(blocks, cx, cy, cz, trees, this.seed);
       if (reeds) {
         for (let c = 0; c < COLUMNS; c++) {
