@@ -3,7 +3,7 @@ import { dropsOf } from '../src/survival/drops';
 import { Item } from '../src/survival/items';
 import { Block, BLOCKS, torchSupport } from '../src/world/blocks';
 import { CHUNK_SIZE, MAX_CHUNK_Y, MIN_CHUNK_Y } from '../src/world/coords';
-import { DEEP_TOP, DeepBiome } from '../src/world/deep';
+import { DEEP_TOP, DeepBiome, LAVA_LEVEL } from '../src/world/deep';
 import { findNearest } from '../src/world/find';
 import { Generator } from '../src/world/generate';
 
@@ -27,9 +27,10 @@ describe('deep caves (generation version 3)', () => {
   for (let cz = -3; cz <= 3; cz++) for (let cx = -3; cx <= 3; cx++) columns.push([cx, cz]);
   const v3 = new Map(columns.map(([cx, cz]) => [`${cx},${cz}`, g3.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y)]));
 
-  it('open wider caverns and grow crystal clusters, grotto floors and giant mushrooms in them, all below y 40, changing nothing above it', () => {
+  it('open wider caverns and grow crystal clusters, grotto floors and giant mushrooms in them, all below y 40, changing nothing above it; lava lakes at y 10 and below', () => {
     const counts = new Map<number, number>();
     let highest = 0;
+    let highestLava = 0;
     let differ = 0;
     for (const [cx, cz] of columns) {
       const a = v3.get(`${cx},${cz}`)!;
@@ -41,15 +42,21 @@ describe('deep caves (generation version 3)', () => {
         if (block === was) continue;
         differ++;
         highest = Math.max(highest, y);
+        if (block === Block.Lava) {
+          highestLava = Math.max(highestLava, y);
+          // Only where version 2 had cave, or version 3 opened it.
+          expect([Block.Air, Block.Stone, Block.Dirt, Block.Gravel, Block.CoalOre, Block.CopperOre, Block.IronOre, Block.CrystalOre]).toContain(was);
+        }
         counts.set(block, (counts.get(block) ?? 0) + 1);
       }
     }
     expect(differ).toBeGreaterThan(0);
     expect(highest).toBeLessThan(DEEP_TOP);
-    for (const b of [Block.CrystalCluster, Block.GrottoFloor, Block.MushroomStem, Block.MushroomCap, Block.CrystalOre]) expect(counts.get(b) ?? 0, BLOCKS[b].name).toBeGreaterThan(0);
+    for (const b of [Block.CrystalCluster, Block.GrottoFloor, Block.MushroomStem, Block.MushroomCap, Block.CrystalOre, Block.Lava]) expect(counts.get(b) ?? 0, BLOCKS[b].name).toBeGreaterThan(0);
+    expect(highestLava).toBe(LAVA_LEVEL);
     // Nothing else is new but air: deep biomes open their caves into wider caverns.
     expect(counts.get(Block.Air) ?? 0).toBeGreaterThan(0);
-    for (const b of counts.keys()) expect([Block.Air, Block.CrystalCluster, Block.GrottoFloor, Block.MushroomStem, Block.MushroomCap, Block.CrystalOre]).toContain(b);
+    for (const b of counts.keys()) expect([Block.Air, Block.CrystalCluster, Block.GrottoFloor, Block.MushroomStem, Block.MushroomCap, Block.CrystalOre, Block.Lava]).toContain(b);
   });
 
   it('put each in its own biome: clusters in crystal caverns on stone, grotto floors and mushrooms in grottoes', () => {

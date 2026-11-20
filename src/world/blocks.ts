@@ -103,6 +103,13 @@ export enum Block {
   GrottoFloor = 205,
   MushroomStem = 206,
   MushroomCap = 207,
+  /** Lava (Milestone 19): a source, flowing levels 1–3 (`LIQUIDS.lava`), falling lava; basalt, where a source met water. */
+  Lava = 208,
+  LavaFlow1 = 209,
+  LavaFlow2 = 210,
+  LavaFlow3 = 211,
+  LavaFalling = 212,
+  Basalt = 213,
 }
 
 type RGB = [number, number, number];
@@ -153,8 +160,10 @@ export interface BlockInfo {
    * are drawn too, so a canopy of leaves isn't hollow when seen through the holes.
    */
   cutout: boolean;
-  /** Swum in, not walked on (water). */
+  /** Swum in, not walked on (water, lava). */
   liquid: boolean;
+  /** Lava: burns, glows, swum in slowly, drawn in the opaque pass. */
+  lava?: boolean;
   /** How deep a liquid is, from the block's bottom (1 full, level / 8 flowing); 0 for the rest. */
   liquidHeight: number;
   /** Seconds of holding the button to break it (by hand; there are no tools). */
@@ -288,6 +297,19 @@ const WATER: Omit<BlockInfo, 'sound'> = {
   transparent: true,
   liquid: true,
   liquidHeight: 1,
+  lightCost: 1,
+};
+
+/** Lava: a source, and what flowing and falling lava copy. Light 15; light through it as through water. */
+const LAVA: Omit<BlockInfo, 'sound'> = {
+  ...solid('Lava', Infinity, faces('lava'), 0xe8641c),
+  opaque: false,
+  passable: true,
+  targetable: false,
+  liquid: true,
+  lava: true,
+  liquidHeight: 1,
+  light: 15,
   lightCost: 1,
 };
 
@@ -455,6 +477,11 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   solid('Grotto floor', 0.8, faces('grotto_floor', 'stone'), 0x5a4466, 0x8a8d91),
   solid('Mushroom stem', 1.2, faces('mushroom_stem_top', 'mushroom_stem'), 0xd8d0c0),
   { ...solid('Mushroom cap', 0.8, faces('mushroom_cap', 'mushroom_cap', 'mushroom_gills'), 0x3fa8a0, 0x3fa8a0, 0xc8b8a0), light: 12 },
+  // Lava: as water is, but glowing, not see-through (the opaque pass), and three levels of flowing.
+  LAVA,
+  ...[1, 2, 3].map((level) => ({ ...LAVA, pickable: false, liquidHeight: level / 4 })),
+  { ...LAVA, pickable: false },
+  solid('Basalt', 3, faces('basalt_top', 'basalt'), 0x3a3638),
 ];
 
 /** A rail block of either kind: thin, walked through, in the cutout pass, broken quickly. */
@@ -512,11 +539,15 @@ SOUNDS[Block.CrystalCluster] = 'glass';
 SOUNDS[Block.GrottoFloor] = 'dirt';
 SOUNDS[Block.MushroomStem] = 'wood';
 SOUNDS[Block.MushroomCap] = 'leaves';
+for (let b = Block.Lava; b <= Block.LavaFalling; b++) SOUNDS[b as Block] = 'water';
 // Plank slabs and stairs sound of wood.
 for (let b = Block.Slab; b < Block.Fence; b++) if ((slabOf(b as Block) ?? stairsOf(b as Block))!.material === 1) SOUNDS[b as Block] = 'wood';
 for (let b = Block.Wheat; b < Block.Wheat + 8; b++) SOUNDS[b as Block] = 'leaves';
 
 export const BLOCKS: readonly BlockInfo[] = TABLE.map((info, b) => ({ ...info, sound: SOUNDS[b as Block] ?? 'stone' }));
+
+/** Is the block water (a source, flowing or falling), not lava? */
+export const isWater = (block: Block): boolean => BLOCKS[block].liquid && !BLOCKS[block].lava;
 
 /** Every block the creative picker offers: all but air, wall torches and moving water, in id order. */
 export const PLACEABLE: readonly Block[] = BLOCKS.map((_, b) => b as Block).filter((b) => b !== Block.Air && BLOCKS[b].pickable);

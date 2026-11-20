@@ -74,7 +74,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { bedOf, Block, BLOCKS, chestOf, FACINGS, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, FACINGS, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, isWater, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { railPlacement } from './world/rails';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
@@ -83,7 +83,7 @@ import { CHUNK_SIZE, toChunk } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock, touches } from './world/physics';
 import { raycast, type RayHit } from './world/raycast';
-import { WaterFlow, type WaterChange, type WaterWorld, wakeColumn } from './world/water';
+import { LAVA, LiquidFlow, type LiquidChange, type LiquidWorld, wakeColumn, WATER } from './world/liquids';
 import { isLogic, LogicFlow, type LogicChange, wakeLogicColumn } from './world/logic';
 import { Circuit } from './circuit';
 import { World } from './world/world';
@@ -528,7 +528,7 @@ function launchBoat(x: number, z: number): void {
         if (!world.hasColumn(toChunk(gx), toChunk(gz))) continue;
         let y = 200;
         while (y > 1 && world.getBlock(gx, y, gz) === Block.Air) y--;
-        if (!BLOCKS[world.getBlock(gx, y, gz)].liquid) continue;
+        if (!isWater(world.getBlock(gx, y, gz))) continue;
         const s = surfaceAt(world, gx + 0.5, y, gz + 0.5);
         const boat = s === null ? null : vehicles?.placeBoat(gx + 0.5, s - TUNING.vehicles.boat.draft, gz + 0.5, input.yaw);
         if (boat) ride(boat);
@@ -620,9 +620,14 @@ const workersParam = Number(params.get('workers'));
 const pool = new WorkerPool(Number.isInteger(workersParam) && workersParam > 0 ? workersParam : undefined);
 const loader = new ChunkLoader(world, chunks, pool, guest ? guest.saves : saver);
 
-// Flowing water (`world/water.ts`): edits wake it, and it ticks every `TUNING.water.tickSeconds`.
-const flow = new WaterFlow();
-let waterClock = 0;
+// Flowing water and lava (`world/liquids.ts`): edits wake them, and each ticks every its own
+// `tickSeconds` (water 0.25 s, lava 0.5 s).
+const flow = new LiquidFlow(WATER);
+const lavaFlow = new LiquidFlow(LAVA);
+const flows = [flow, lavaFlow];
+/** Per flow: seconds since its last tick, and a tick's changes, made the frame after it ran (and its simulation time). */
+const flowClocks = flows.map(() => 0);
+const flowDue: ({ changes: LiquidChange[]; sim: number } | null)[] = flows.map(() => null);
 /** For `?stats`: the last tick's changes and times, and the slowest since the line was last read. */
 let waterLast = { changes: 0, sim: 0, apply: 0 };
 let waterWorst = 0;
@@ -638,19 +643,23 @@ loader.onColumnAdded = (cx, cz, saved) => {
   if (guest) return guest.columnAdded(cx, cz);
   mobs?.columnLoaded(cx, cz);
   vehicles?.columnLoaded(cx, cz);
-  wakeColumn(flow, world, cx, cz, saved);
+  for (const f of flows) wakeColumn(f, world, cx, cz, saved);
   wakeLogicColumn(logic, world, cx, cz, saved);
 };
 
-/** Make a tick's changes (or `?flood`'s): the blocks and their light at once, then saving, and remeshing in the workers. */
-function applyWater(changes: WaterChange[]): void {
+/**
+ * Make a liquid tick's changes (or `?flood`'s): the blocks and their light at once, then saving, and
+ * remeshing in the workers. The other liquid is woken round them (`from` woke its own).
+ */
+function applyLiquid(changes: LiquidChange[], from: LiquidFlow | null): void {
   // Water washing a logic block away breaks its circuit.
   for (const [x, y, z] of changes) if (isLogic(world.getBlock(x, y, z))) logic.wake(x, y, z);
+  for (const f of flows) if (f !== from) for (const [x, y, z] of changes) f.wake(x, y, z);
   applyChanges(changes);
 }
 
-/** Blocks set by a tick (water's or logic's), as `applyWater` says; shared with guests to be made the same way. */
-function applyChanges(changes: WaterChange[] | LogicChange[]): void {
+/** Blocks set by a tick (a liquid's or logic's), as `applyLiquid` says; shared with guests to be made the same way. */
+function applyChanges(changes: LiquidChange[] | LogicChange[]): void {
   const stale = world.setBlocks(changes);
   host?.shareEdits(changes, 0, 0, true);
   const edited = new Set<string>();
@@ -694,38 +703,41 @@ function fromHost(changes: BlockChange[], water: boolean): void {
   }
 }
 
-/** A tick's changes, made the frame after it ran (and its simulation time). */
-let waterDue: { changes: WaterChange[]; sim: number } | null = null;
-
 /**
- * Once a frame (not while paused): a water tick when one is due. Its changes are made on the
- * next frame, so a busy tick's two halves (working them out, then the blocks and light) fall on
- * different frames; they're made long before the next tick, as the flow needs.
+ * Once a frame (not while paused): each liquid's tick when one is due, one liquid a frame. Its
+ * changes are made on the next frame, so a busy tick's two halves (working them out, then the
+ * blocks and light) fall on different frames; they're made long before the next tick, as the flow
+ * needs.
  */
-function flowWater(dt: number): void {
-  if (waterDue) {
-    const { changes, sim } = waterDue;
-    waterDue = null;
+function flowLiquids(dt: number): void {
+  for (let i = 0; i < flows.length; i++) flowClocks[i] += dt;
+  for (let i = 0; i < flows.length; i++) {
+    const due = flowDue[i];
+    if (!due) continue;
+    flowDue[i] = null;
     const t0 = performance.now();
-    applyWater(changes);
+    applyLiquid(due.changes, flows[i]);
     const apply = performance.now() - t0;
-    waterLast = { changes: changes.length, sim, apply };
-    waterWorst = Math.max(waterWorst, sim, apply);
-    flood?.tick(changes.length, sim, apply);
+    waterLast = { changes: due.changes.length, sim: due.sim, apply };
+    waterWorst = Math.max(waterWorst, due.sim, apply);
+    if (flows[i] === flow) flood?.tick(due.changes.length, due.sim, apply);
     return;
   }
-  const T = TUNING.water.tickSeconds;
-  waterClock += dt;
-  if (waterClock < T) return;
-  waterClock = Math.min(waterClock - T, T); // never more than one tick behind
-  if (!flow.pending) return;
-  const t0 = performance.now();
-  const cache = new BlockCache(world);
-  const blocks: WaterWorld = { getBlock: (x, y, z) => cache.getBlock(x, y, z), hasColumn: (cx, cz) => world.hasColumn(cx, cz) };
-  const changes = flow.tick(blocks);
-  const sim = performance.now() - t0;
-  if (changes.length) waterDue = { changes, sim };
-  else waterLast = { changes: 0, sim, apply: 0 };
+  for (let i = 0; i < flows.length; i++) {
+    const f = flows[i];
+    const T = f.liquid.tuning.tickSeconds;
+    if (flowClocks[i] < T) continue;
+    flowClocks[i] = Math.min(flowClocks[i] - T, T); // never more than one tick behind
+    if (!f.pending) continue;
+    const t0 = performance.now();
+    const cache = new BlockCache(world);
+    const blocks: LiquidWorld = { getBlock: (x, y, z) => cache.getBlock(x, y, z), hasColumn: (cx, cz) => world.hasColumn(cx, cz) };
+    const changes = f.tick(blocks);
+    const sim = performance.now() - t0;
+    if (changes.length) flowDue[i] = { changes, sim };
+    else waterLast = { changes: 0, sim, apply: 0 };
+    return;
+  }
 }
 
 /**
@@ -764,7 +776,7 @@ function logicLine(): string {
 function waterLine(): string {
   const w = waterLast;
   const line =
-    `${flow.pending} woken; last tick ${w.changes} changes, ${w.sim.toFixed(2)} ms simulating, ${w.apply.toFixed(2)} ms making them; ` +
+    `${flow.pending} woken (lava ${lavaFlow.pending}); last tick ${w.changes} changes, ${w.sim.toFixed(2)} ms simulating, ${w.apply.toFixed(2)} ms making them; ` +
     `slowest half a tick ${waterWorst.toFixed(2)} ms`;
   waterWorst = 0;
   return line;
@@ -1109,7 +1121,7 @@ const autofly =
       });
 // `?flood`: the sea let into a room under it at once, to measure the worst case (`flood.ts`).
 const flood = params.has('flood')
-  ? new Flood(world, flow, applyWater, (report, text) => {
+  ? new Flood(world, flow, (changes) => applyLiquid(changes, flow), (report, text) => {
       stats.note = text;
       console.log(`[flood]\n${text}\n${JSON.stringify(report)}`);
     })
@@ -1469,6 +1481,8 @@ function setMode(toSurvival: boolean): void {
 // to start again after dying (back at the spawn, with everything still carried).
 const vitalsEl = el(document.body, 'div', 'vitals hidden');
 const hurtEl = el(document.body, 'div', 'hurt-flash');
+/** A red-orange tint over the screen while burning. */
+const burnEl = el(document.body, 'div', 'burn-tint');
 /** Darkens while asleep (over `TUNING.sleep.dim` s). */
 const sleepEl = el(document.body, 'div', 'sleep-dim');
 sleepEl.style.setProperty('--dim', `${TUNING.sleep.dim}s`);
@@ -1478,7 +1492,7 @@ el(deathPanel, 'div', 'menu-title', 'You died');
 const deathWhy = el(deathPanel, 'p', 'menu-help');
 el(deathPanel, 'p', 'menu-help', 'Everything you carried is still with you.');
 button(el(deathPanel, 'div', 'menu-row'), 'Start again', () => startAgain(), 'menu-go');
-const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.', starving: 'You starved.', gloamer: 'A gloamer got you.', delver: 'A delver got you.' } as const;
+const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.', burning: 'You burned.', starving: 'You starved.', gloamer: 'A gloamer got you.', delver: 'A delver got you.' } as const;
 /** What the HUD shows now, so it's redrawn only when that changes. */
 let vitalsShown = '';
 
@@ -1519,6 +1533,7 @@ function live(dt: number): void {
     flying: player.flying,
     eyeInWater: player.eyeInWater,
     touchingCactus: touches(b, world, Block.Cactus),
+    inLava: b.inLava,
     sprinting: player.sprinting && !player.flying,
     swimming: b.inWater,
     digging: mining.target !== null,
@@ -1529,6 +1544,7 @@ function live(dt: number): void {
     void hurtEl.offsetWidth; // start the flash again
     hurtEl.classList.add('on');
   }
+  burnEl.classList.toggle('on', health.burning > 0 && !health.dead);
   renderVitals();
   if (health.dead) die();
 }
@@ -1616,7 +1632,7 @@ function edit(x: number, y: number, z: number, block: Block, share = true): void
   // The water round it may flow now (in, out, or on), and the circuits round it change; a guest's
   // are the host's to run.
   if (stale.length && !guest) {
-    flow.wake(x, y, z);
+    for (const f of flows) f.wake(x, y, z);
     logic.wake(x, y, z);
   }
   if (stale.length && share) {
@@ -2007,6 +2023,11 @@ function frame(now: number): void {
     player.update(dt);
     sleeping(dt);
     if (survival) live(dt);
+    else if (health.burning) {
+      // Switched to creative while burning: put out.
+      health.burning = 0;
+      burnEl.classList.remove('on');
+    }
     // Footsteps, landing, splashing and digging, from how the player moved this frame.
     const b = player.body;
     const moved = player.seat ? 0 : Math.hypot(b.x - lastFeet.x, b.z - lastFeet.z);
@@ -2035,20 +2056,22 @@ function frame(now: number): void {
   groundView.update(guest ? guest.ground.map((g) => ({ id: g.id, item: g.item, body: g })) : ground.items, (x, y, z) => brightness(world.getLight(Math.floor(x), Math.floor(y), Math.floor(z)), daylightNow), now / 1000);
   chunks.setSunlight(sky.sunlight);
   chunks.setWaterFlow(waterFlow(now / 1000, TUNING.water.flow));
+  chunks.setLavaFlow(waterFlow(now / 1000, TUNING.lava.flow));
   // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).
   const air = blendFog(world.generator.climate.weights(camera.position.x, camera.position.z));
   fog = fog ? easeFog(fog, air, dt, TUNING.fog.ease) : air;
   const horizon = fogColour(sky.colour, fog, sky.daylight);
   const distance = TUNING.view.radius * CHUNK_SIZE;
   waterView.setRange(distance * fog.start, distance * 0.95);
-  waterView.update(player.eyeInWater, horizon, sky.daylight);
-  skyDome.update(camera, { ...sky, colour: horizon }, TUNING.sky.glow, player.eyeInWater);
-  clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, TUNING.view.radius * CHUNK_SIZE, player.eyeInWater);
+  waterView.update(player.eyeInWater, horizon, sky.daylight, player.eyeInLava);
+  const eyeUnder = player.eyeInWater || player.eyeInLava;
+  skyDome.update(camera, { ...sky, colour: horizon }, TUNING.sky.glow, eyeUnder);
+  clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, TUNING.view.radius * CHUNK_SIZE, eyeUnder);
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 
   if (!guest && worldRuns()) {
-    flowWater(dt);
+    flowLiquids(dt);
     tickLogic(dt);
     tickFurnaces(dt);
     tickCrops(dt);
@@ -2081,8 +2104,11 @@ function frame(now: number): void {
     buildShapes(player.body.x, player.body.z);
     shapesParam = false;
   }
-  if (ground.items.length && worldRuns())
+  if (ground.items.length && worldRuns()) {
     ground.update(dt, world, (x, z) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z))), survival && !dead && !player.waiting ? [player.body] : [], pickUp);
+    // Items burnt up in lava go in a puff.
+    for (const [x, y, z] of ground.takeBurned()) particles.puff(x, y, z, 0.15, 0.3, brightness(world.getLight(Math.floor(x), Math.floor(y + 0.5), Math.floor(z)), daylightNow));
+  }
   // `?flood=guest` waits for a guest to be in, to measure what the water sends.
   circuit?.update(now, interval, player.body.x, player.body.y, player.body.z, player.waiting);
   flood?.update(now, interval, player.body.x, player.body.z, player.waiting || (params.get('flood') === 'guest' && (host?.players.length ?? 0) < 2));

@@ -15,8 +15,10 @@ import { Noise } from './noise';
 
 /** Deep biomes only below this height. */
 export const DEEP_TOP = 40;
-/** Nothing deep below this (the caves' floor and, later, lava lakes). */
+/** Nothing deep below this (the caves' floor and lava lakes). */
 const DEEP_BOTTOM = 12;
+/** Lava lakes: every cave block at this height and below is still lava, as the sea fills low land. */
+export const LAVA_LEVEL = 10;
 
 export enum DeepBiome {
   None = 0,
@@ -210,6 +212,14 @@ export function placeMushrooms(blocks: Uint8Array, cx: number, cy: number, cz: n
         if (d > (r - 1) * (r - 1) + 1 && d <= r * r + 1) put(m.x + dx, top - 1, m.z + dz, Block.MushroomCap);
       }
   }
+}
+
+/** Lava lakes in chunk (cx, cy, cz)'s blocks: the cave (air) at `LAVA_LEVEL` and below filled with lava sources. */
+export function fillLava(blocks: Uint8Array, cy: number): void {
+  const y0 = cy * S;
+  const top = Math.min(LAVA_LEVEL - y0, S - 1);
+  const LAVA = Block.Lava;
+  for (let i = 0, end = Math.max(0, top + 1) << 10; i < end; i++) if (blocks[i] === AIR) blocks[i] = LAVA;
 }
 
 /** Ground a grotto's floor covers: stone, earth and gravel (not ores, not wood or leaves). */

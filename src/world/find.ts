@@ -5,9 +5,9 @@ import { Biome } from './biomes';
 import { SEA_LEVEL } from './coords';
 import type { Generator } from './generate';
 import { STRUCTURE_CELL, StructureKind, structureInCell } from './structures';
-import { DEEP_TOP, DeepBiome } from './deep';
+import { DEEP_TOP, DeepBiome, LAVA_LEVEL } from './deep';
 
-export const FINDABLE = ['river', 'savanna', 'swamp', 'ruin', 'camp', 'crystal', 'grotto'] as const;
+export const FINDABLE = ['river', 'savanna', 'swamp', 'ruin', 'camp', 'crystal', 'grotto', 'lava'] as const;
 export type Findable = (typeof FINDABLE)[number];
 
 export const isFindable = (s: string | null): s is Findable => (FINDABLE as readonly string[]).includes(s ?? '');
@@ -22,6 +22,7 @@ function matches(g: Generator, kind: Findable, x: number, z: number): boolean {
     case 'camp':
     case 'crystal':
     case 'grotto':
+    case 'lava':
       return false; // searched by cell, or underground, in `findNearest`
     case 'savanna':
     case 'swamp':
@@ -44,6 +45,7 @@ function matches(g: Generator, kind: Findable, x: number, z: number): boolean {
 export function findNearest(g: Generator, kind: Findable, x: number, z: number, radius = 4096, step = 8): { x: number; z: number; y?: number } | null {
   if (kind === 'ruin' || kind === 'camp') return nearestStructure(g, kind === 'ruin' ? StructureKind.Ruin : StructureKind.Camp, x, z, radius);
   if (kind === 'crystal' || kind === 'grotto') return nearestDeep(g, kind === 'crystal' ? DeepBiome.Crystal : DeepBiome.Grotto, x, z, Math.min(radius, 1024), step);
+  if (kind === 'lava') return nearestLava(g, x, z, Math.min(radius, 1024), step);
   for (let r = 0; r <= radius; r += step) {
     for (let dz = -r; dz <= r; dz += step) {
       for (let dx = -r; dx <= r; dx += step) {
@@ -91,6 +93,33 @@ function nearestDeep(g: Generator, biome: DeepBiome, x: number, z: number, radiu
           if (!cave(cx, y, cz) || !cave(cx, y + 1, cz) || cave(cx, y - 1, cz)) continue;
           if ([[3, 0], [-3, 0], [0, 3], [0, -3]].every(([dx2, dz2]) => cave(cx + dx2, y + 1, cz + dz2))) return { x: cx, z: cz, y };
         }
+      }
+  return null;
+}
+
+/**
+ * The nearest shore of a lava lake to (x, z): a cave floor of rock just above the lava's level, with room
+ * over it and the lake 2 to 4 blocks off one way (cave at the lava's level there, so lava). Version 3 only.
+ */
+function nearestLava(g: Generator, x: number, z: number, radius: number, step: number): { x: number; z: number; y: number } | null {
+  if (g.options.generation < 3) return null;
+  const cave = (ax: number, ay: number, az: number) => g.caves.carvedAt(ax, ay, az, g.caveLimitAt(ax, az));
+  for (let r = 0; r <= radius; r += step)
+    for (let dz = -r; dz <= r; dz += step)
+      for (let dx = -r; dx <= r; dx += step) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        // Near a lake at all: the lava's level is cave here.
+        if (!cave(x + dx, LAVA_LEVEL, z + dz)) continue;
+        // A shore within a few blocks: rock at the lava's level with two of cave over it, and the lake beside.
+        for (let sz = -4; sz <= 4; sz++)
+          for (let sx = -4; sx <= 4; sx++) {
+            const cx = x + dx + sx;
+            const cz = z + dz + sz;
+            const y = LAVA_LEVEL + 1;
+            if (cave(cx, LAVA_LEVEL, cz) || !cave(cx, y, cz) || !cave(cx, y + 1, cz)) continue;
+            for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+              for (let d = 2; d <= 4; d++) if (cave(cx + ox * d, LAVA_LEVEL, cz + oz * d) && cave(cx + ox * d, y, cz + oz * d)) return { x: cx, z: cz, y };
+          }
       }
   return null;
 }

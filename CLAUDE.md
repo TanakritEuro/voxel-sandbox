@@ -27,7 +27,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestone 19 (underground: lava, deep cave biomes, dungeons, a lantern; generation version 3) in progress, plan
-approved (`docs/milestone-19.md`); step 1 (version 3 and the deep caves) built.
+approved (`docs/milestone-19.md`); steps 1 (version 3 and the deep caves) and 2 (lava) built.
 Milestones 1–18 built (`docs/milestone-1.md` to `docs/milestone-18.md`), waiting for playtests
 (Milestone 18, getting about: rails laid by hand that join up as they're laid (straight, sloped, curved) and powered
 rails worked by signals; carts that roll along them, ridden, chest carts; boats rowed on rivers and the sea; a map
@@ -157,7 +157,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, stepping up, light, day length, sleep, sky, mobs (kept animals, breeding), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), logic, survival (stacks, tool speeds and
+  reach, stepping up, light, day length, sleep, sky, mobs (kept animals, breeding), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), lava (tick, drop search, its view, swimming, burning), logic, survival (stacks, tool speeds and
   wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
   eating, meat from animals, smelting time, items on the ground, farming), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
@@ -167,7 +167,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   126–133, farmland 134, wheat 135–142, slabs 143–148 and stairs 149–172 in `SHAPE_MATERIALS`, fence 173, glass pane 174 (`connects`: boxes from
   their neighbours), dry grass 175, mud 176, reeds 177 (crossed sheets), parasol wood and leaves 178–179, stone and mossy bricks 180–181, rails 182–191 by shape and powered rails 192–203 by
   shape, off and on (`rail`, `poweredRail`, `railOf`, `RAIL_SHAPES`), crystal clusters (crossed sheets, light 12), grotto
-  floor, mushroom stems and caps (light 12) 204–207, `chest`, `door`,
+  floor, mushroom stems and caps (light 12) 204–207, lava 208–212 (a source, flowing levels 1–3, falling; `lava`: light 15,
+  drawn in the opaque pass) and basalt 213, `isWater` (a liquid not lava), `chest`, `door`,
   `doorSide`, `bed`, `wheat`, `slab`, `stairs` and their `…Of`; `boxes`: what a body bumps into when it
   isn't the whole block, a door's panel, a bed's half, a slab, stairs' two):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
@@ -189,13 +190,14 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`, `carvedColumn` (a column's run at once); in version 3 a deep biome's cells open
   into caverns more readily), `deep.ts` (version 3, below y 40: deep biomes by 8-block cell from a 3D noise, crystal
   caverns and mushroom grottoes; `decorate`: clusters on crystal caverns' floors, crystal ore in their walls, grotto floors;
-  `mushroomsIn`: giant mushrooms on grotto floors per 6 x 6 cell, `placeMushrooms` across chunk borders), `rivers.ts` (version 2: valleys cut to a bed below sea level along a
+  `mushroomsIn`: giant mushrooms on grotto floors per 6 x 6 cell, `placeMushrooms` across chunk borders; `fillLava`: lava lakes,
+  the cave at `LAVA_LEVEL` (10) and below filled with lava sources), `rivers.ts` (version 2: valleys cut to a bed below sea level along a
   winding noise's zero lines, filled by the sea's still water, narrowing and ending as mountains weigh in, `riverStrength` in
   `generate.ts`), `structures.ts` (version 2: ruins and camps, one chance per 112 x 112-block cell, only on dry, nearly level
   land with no cave at the floor, decided from the generator's height function; `structureBlocks`: the volume cleared, the
   ground filled up to the floor, the walls or tent, a chest; written after everything else, across chunk borders;
-  `Generator.lootAt` says whose chest a place is), `find.ts` (`?find=river|savanna|swamp|ruin|camp|crystal|grotto`: the nearest of a kind (the deep ones a roomy cave floor
-  to stand in), searched with the generator alone; `dryNear` somewhere to stand by it),
+  `Generator.lootAt` says whose chest a place is), `find.ts` (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava`: the nearest of a kind (the deep ones a roomy cave floor
+  to stand in, lava a rock shore just above a lake), searched with the generator alone; `dryNear` somewhere to stand by it),
   `features.ts` (ore veins and trees across chunk borders, parasol trees and swamp oaks too; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
   `updateLight` after an edit, `updateLightAt` for many at once, chunks looked up through the last one
@@ -206,15 +208,17 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   through linked regions that decides what to mesh and draw (`Reach`); the old chunk walk `reachableChunks` kept for comparison),
   `world.ts` (`Chunk`, `World`: get/set across chunks (`setBlocks`: many, one light update), columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
-  `water.ts` (flowing water, a cellular automaton: `WaterFlow` wakes blocks round edits and ticks them,
-  falling, spreading towards the nearest drop, new sources between two, drying up; changes
-  returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `wake.ts` (what moves on its own
+  `liquids.ts` (flowing water and lava, one cellular automaton: `LiquidFlow` for a `Liquid` (`WATER` spreading 7 and looking 4
+  for a drop, `LAVA` 3 and 2; to each the other is solid) wakes blocks round edits and ticks them,
+  falling, spreading towards the nearest drop, new sources between two, drying up; lava touching water basalt from a
+  source, stone flowing; changes returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `wake.ts` (what moves on its own
   woken when a column loads: in it if saved, on its neighbours' faces), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
   at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
   buttons let go, powered rails on while signalled as lamps are, doors opened while signalled (each door's last signal kept, so a click lasts until it changes); changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with boxes hit only where they are, the nearest; the hit point), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
   blocks' boxes, every box of a block, fences' and panes' from their neighbours (looked for inside the blocks
   the body is in, and a block lower for a fence's top, only with one about, `nearBox`), walking, jumping,
-  stepping up half a block on the ground (`moveStepping`, players and mobs),
+  stepping up half a block on the ground (`moveStepping`, players and mobs), swimming in lava at half speed (`inLava`,
+  `touchesLava`, `liquidAt` for the eye),
   crouching at edges, swimming (in water below its surface, shallow flowing water waded), flying;
   `currentAt`: flowing water carries bodies down its slope;
   `underLiquid` for the eye; `overlapsBlock` for placing (a block's box if given); `stepMob` for mobs; `touches`: a kind of block against the box, for cactus), `mining.ts` (break
@@ -237,8 +241,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   every ~70 s in light 9 or more, saved in the record's `crops`), `sleep.ts` (`canSleep`: at night, nothing
   hostile near; `bedFoot`, `bedFrom`, `wakeAt`: beside the bed where there's room), `ground.ts` (`GroundItems`: items lying on the ground, boxes
   under the block physics at 60 Hz, asleep at rest, floating, merging, picked up within reach of a
-  player's box, aging out, a cap), `health.ts` (`Health`: falls from where the feet last stood,
-  air and drowning, cactus, hunger (faster working hard; starving down to 1; `eat`), healing only well
+  player's box, aging out, a cap, burnt up in lava (`takeBurned`)), `health.ts` (`Health`: falls from where the feet last stood,
+  air and drowning, cactus, lava (4 points every half second in it, `burning` 3 s after unless in water), hunger (faster working hard; starving down to 1; `eat`), healing only well
   fed, death; stepped a frame at a time with how the body is).
 - `src/mobs/` — `kinds.ts` (the six animals (the ambler in the savanna, the wader in the swamp), the gloamer and the delver (deep caves): size,
   speeds, climb and drop, biomes, ground, groups, health in points, how far the head nods walking (`headBob`), the `food`
@@ -252,7 +256,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   hits (points against a kind's health; tools hit harder); hostile kinds (taking turns) appearing in the dark round
   the prey and fading by day, their hits kept for the game (`takeAttacks`, `takeFaded`); the sounds they make; round every player when playing together, the cap
   by players; not saved), `hit.ts` (the mob under the
-  crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand: steps, drops, no corner
+  crosshair: a ray against their boxes, within reach or the block looked at), `pathfind.ts` (A* over the places a mob can stand, never in lava: steps, drops, no corner
   cutting, swimming at the surface, through open doors and not closed ones, never over a fence, node and range limits; typed arrays reused between
   searches), `kept.ts` (`KeptAnimals`: kept animals whose columns
   aren't loaded, by column, stored and given back, cleaned from the world record's `animals`; a fed wild animal is kept, up to
@@ -399,7 +403,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp|crystal|grotto` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
+  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with, rails, carts, a boat and a map), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),

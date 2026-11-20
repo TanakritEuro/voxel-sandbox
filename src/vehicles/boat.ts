@@ -8,7 +8,7 @@
 // rowed only feebly.
 
 import { TUNING } from '../config';
-import { BLOCKS } from '../world/blocks';
+import { BLOCKS, isWater } from '../world/blocks';
 import { type BlockSource, currentAt, moveBody } from '../world/physics';
 import type { Vehicle } from './vehicle';
 
@@ -27,10 +27,10 @@ export function surfaceAt(blocks: BlockSource, x: number, y: number, z: number):
   const bz = Math.floor(z);
   for (let by = Math.floor(y) + 1; by >= Math.floor(y) - 1; by--) {
     const info = BLOCKS[blocks.getBlock(bx, by, bz)];
-    if (!info.liquid) continue;
+    if (!info.liquid || info.lava) continue;
     // The top of this water: a full block if there's more water over it.
     let top = by;
-    while (BLOCKS[blocks.getBlock(bx, top + 1, bz)].liquid) top++;
+    while (isWater(blocks.getBlock(bx, top + 1, bz))) top++;
     return top + BLOCKS[blocks.getBlock(bx, top, bz)].liquidHeight;
   }
   return null;
@@ -82,7 +82,7 @@ export function waterOnRay(blocks: BlockSource, o: readonly [number, number, num
     const y = o[1] + d[1] * t;
     const z = o[2] + d[2] * t;
     const info = BLOCKS[blocks.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))];
-    if (info.liquid) {
+    if (info.liquid && !info.lava) {
       const s = surfaceAt(blocks, x, y, z);
       if (s !== null && y <= s) return [Math.floor(x) + 0.5, s - TUNING.vehicles.boat.draft, Math.floor(z) + 0.5];
       continue;

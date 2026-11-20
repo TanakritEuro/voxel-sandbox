@@ -105,6 +105,9 @@ export const TEXTURE_NAMES = [
   'mushroom_stem_top',
   'mushroom_cap',
   'mushroom_gills',
+  'lava',
+  'basalt',
+  'basalt_top',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -662,6 +665,32 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   mushroom_gills(c) {
     // Under the cap: gills in lines.
     for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, hex(0xc8b8a0), (x % 2 ? 0.85 : 1.05) * (1 + (c.rng() - 0.5) * 0.08));
+  },
+  lava(c) {
+    // Glowing orange, crusted darker in patches, bright yellow seams: it moves as water does.
+    c.speckle(hex(0xe8641c), 0.18);
+    c.spots(9, hex(0xa83a10), 0.15);
+    c.spots(6, hex(0x7a2a0e), 0.15);
+    for (let n = 0; n < 6; n++) {
+      const x = Math.floor(c.rng() * TEXTURE_SIZE);
+      const y = Math.floor(c.rng() * TEXTURE_SIZE);
+      const length = 2 + Math.floor(c.rng() * 4);
+      for (let k = 0; k < length; k++) c.set(x + k, y + (k > 1 && c.rng() < 0.4 ? 1 : 0), hex(0xffc04a), 1 + (c.rng() - 0.5) * 0.1);
+    }
+  },
+  basalt(c) {
+    // Dark grey columns: vertical seams, a little rough.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, hex(0x3a3638), (x % 5 === 0 ? 0.7 : 1) * (1 + (c.rng() - 0.5) * 0.18));
+    c.spots(5, hex(0x55504f), 0.1);
+  },
+  basalt_top(c) {
+    // The columns' ends: a few cells with dark seams between.
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const seam = x % 5 === 0 || (y + (Math.floor(x / 5) % 2) * 3) % 6 === 0;
+        c.set(x, y, hex(0x3a3638), (seam ? 0.65 : 1.05) * (1 + (c.rng() - 0.5) * 0.15));
+      }
   },
   rail_curve: (c) => curvedRails(c),
   powered_rail: (c) => rails(c, COPPER, hex(0x5a2a1a)),

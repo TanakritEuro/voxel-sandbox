@@ -3,12 +3,12 @@
 // to a stop, bobbing at the top of water. One that has come to rest sleeps, and only looks now and
 // then at the block under it, to fall when that goes. The same items lying close together merge
 // into one stack. A player within reach picks one up, as much of it as fits; with no room it stays.
-// After a while, or when its land unloads, it's gone, and past the cap the oldest go first. Not
-// saved. Pure: the game says where the players are and takes what they pick up.
+// After a while, or when its land unloads, it's gone, and past the cap the oldest go first. One in
+// lava burns up (`takeBurned`: where, for a puff). Not saved. Pure: the game says where the players are and takes what they pick up.
 
 import { TUNING } from '../config';
 import { BLOCKS } from '../world/blocks';
-import { createBody, HALF_WIDTH, HEIGHT, moveBody, touchesLiquid, underLiquid, type Body, type BlockSource } from '../world/physics';
+import { createBody, HALF_WIDTH, HEIGHT, moveBody, touchesLava, touchesLiquid, underLiquid, type Body, type BlockSource } from '../world/physics';
 import type { Stack } from './inventory';
 import { itemInfo } from './items';
 
@@ -30,6 +30,8 @@ export interface GroundItem {
   delay: number;
   /** At rest: no physics until the block under it goes. */
   asleep: boolean;
+  /** In lava: gone at the end of the step. */
+  burnt?: boolean;
 }
 
 /** Where a player's feet are. */
@@ -57,6 +59,15 @@ export class GroundItems {
   private nextId = 1;
   private clock = 0;
   private mergeClock = 0;
+  /** Where items burnt up in lava since `takeBurned` was last called. */
+  private burned: [number, number, number][] = [];
+
+  /** Where items burnt up since the last call (for a puff each). */
+  takeBurned(): [number, number, number][] {
+    const out = this.burned;
+    this.burned = [];
+    return out;
+  }
 
   /**
    * Put `stack` on the ground with its middle at (x, y, z), moving at (vx, vy, vz), not to be
@@ -101,6 +112,11 @@ export class GroundItems {
       const g = this.items[i];
       g.age += dt;
       g.delay = Math.max(0, g.delay - dt);
+      if (g.burnt) {
+        this.burned.push([g.body.x, g.body.y, g.body.z]);
+        this.items.splice(i, 1);
+        continue;
+      }
       if (g.age >= G.life || !loaded(g.body.x, g.body.z)) {
         this.items.splice(i, 1);
         continue;
@@ -134,11 +150,20 @@ export class GroundItems {
     if (g.asleep) {
       // Every so often (spread out by id), look under it: gone, and it falls.
       if ((g.age + g.id * 0.037) % G.sleepCheck >= dt) return;
+      // Lava flowed over it.
+      if (BLOCKS[world.getBlock(Math.floor(b.x), Math.floor(b.y + 0.01), Math.floor(b.z))].lava) {
+        g.burnt = true;
+        return;
+      }
       if (!BLOCKS[world.getBlock(Math.floor(b.x), Math.floor(b.y - 0.01), Math.floor(b.z))].passable) return;
       g.asleep = false;
       b.onGround = false;
     }
     b.inWater = touchesLiquid(b, world);
+    if (b.inWater && touchesLava(b, world)) {
+      g.burnt = true;
+      return;
+    }
     let vy = b.vy;
     if (b.inWater) {
       const k = 1 - Math.exp(-G.waterDrag * dt);

@@ -48,6 +48,10 @@ const fragmentShader = /* glsl */ `
     uniform vec2 flowB;
     uniform float ripple;
   #endif
+  #ifdef LAVA
+    uniform float lavaLayer;
+    uniform vec2 lavaFlow;
+  #endif
   varying vec3 vShade;
   varying vec2 vLight;
   varying vec2 vUv;
@@ -73,6 +77,12 @@ const fragmentShader = /* glsl */ `
       float a = 6.2832 * (vUv.x + vUv.y) / 8.0 + ripple;
       float b = 6.2832 * (vUv.x - vUv.y) / 8.0 - ripple * 0.7;
       texel.rgb *= 1.0 + 0.07 * sin(a) * sin(b);
+    } else
+    #endif
+    #ifdef LAVA
+    if (abs(vLayer - lavaLayer) < 0.5) {
+      // Lava, in the opaque pass: two copies creeping slowly across each other.
+      texel = mix(sampleTile(vUv + lavaFlow, dx, dy), sampleTile(vUv * 0.75 - lavaFlow.yx, dx * 0.75, dy * 0.75), 0.5);
     } else
     #endif
     texel = sampleTile(vUv, dx, dy);
@@ -136,6 +146,8 @@ export function createBlockMaterial(
       flowA: { value: new THREE.Vector2() },
       flowB: { value: new THREE.Vector2() },
       ripple: { value: 0 },
+      lavaLayer: { value: textureLayer('lava') },
+      lavaFlow: { value: new THREE.Vector2() },
     },
   ]);
   uniforms.map = { value: map };
@@ -146,6 +158,8 @@ export function createBlockMaterial(
     defines: {
       ...(options.transparent ? { WATER: '' } : { OPAQUE: '' }),
       ...(options.alphaTest > 0 && { ALPHA_TEST: '' }),
+      // Lava only in the solid pass.
+      ...(!options.transparent && options.alphaTest === 0 && { LAVA: '' }),
       ...(options.lightView && { LIGHT_VIEW: '' }),
     },
     fog: true,

@@ -28,11 +28,10 @@ import { PADDED } from './padding';
 const S = CHUNK_SIZE;
 const P = PADDED;
 const AIR = Block.Air;
-const WATER = Block.Water;
-/** Water a cell is filled with where its solid blocks are taken out: sources and falling water (flowing water is kept as it is). */
-const FULL_WATER = new Uint8Array(256);
-FULL_WATER[Block.Water] = 1;
-FULL_WATER[Block.WaterFalling] = 1;
+/** The liquid a cell is filled with where its solid blocks are taken out: by its sources and falling blocks (flowing is kept as it is). */
+const FILL = new Uint8Array(256);
+FILL[Block.Water] = FILL[Block.WaterFalling] = Block.Water;
+FILL[Block.Lava] = FILL[Block.LavaFalling] = Block.Lava;
 
 /** Blocks a cell's solidity counts: opaque cubes and leaves (not air, water, glass or torches). */
 const SOLID = new Uint8Array(256);
@@ -99,7 +98,7 @@ export function coarsen(blocks: Uint8Array, light: Uint8Array, k: number): void 
                   floorBlock = b;
                 }
               } else {
-                if (FULL_WATER[b]) fill = WATER;
+                if (FILL[b]) fill = FILL[b];
                 lit = brighter(lit, light[i]);
               }
             }
@@ -159,7 +158,7 @@ function border(blocks: Uint8Array, light: Uint8Array, axis: number, layer: numb
         solid++;
         top = b;
       } else {
-        if (FULL_WATER[b]) fill = WATER;
+        if (FILL[b]) fill = FILL[b];
         lit = brighter(lit, light[i]);
       }
     }

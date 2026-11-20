@@ -12,8 +12,10 @@ describe('the block picker and the hotbar', () => {
     // 7 furnace states, and of the homes' blocks 3 more chest facings, 15 door states, 7 bed states,
     // farmland and the 8 stages of wheat (made by tilling and sowing), and of the shapes 3 upper slabs
     // and 21 more stairs (facings, upside down), and of the rails 9 more shapes and 11 more powered
-    // rails' shapes and states (laid by joining up, and by signals).
-    expect(PLACEABLE.length).toBe(BLOCKS.length - 13 - 15 - 3 - 7 - 31 - 7 - 3 - 15 - 7 - 1 - 8 - 3 - 21 - 9 - 11);
+    // rails' shapes and states (laid by joining up, and by signals), and the four kinds of moving lava.
+    expect(PLACEABLE.length).toBe(BLOCKS.length - 13 - 15 - 3 - 7 - 31 - 7 - 3 - 15 - 7 - 1 - 8 - 3 - 21 - 9 - 11 - 4);
+    expect(PLACEABLE).toContain(Block.Lava);
+    expect(PLACEABLE).not.toContain(Block.LavaFlow3);
     for (const b of [Block.Chest, Block.Door, Block.Bed]) expect(PLACEABLE).toContain(b);
     expect(PLACEABLE).not.toContain(Block.WaterFlow7);
     expect(PLACEABLE).toContain(Block.Water);

@@ -58,14 +58,17 @@ const DZ = [0, 0, 1, -1, 1, -1, 1, -1];
 
 // Block flags as local arrays: the hot loop reads them thousands of times a search.
 const PASSABLE = new Uint8Array(256);
+/** Water, swum at the surface; lava, never gone into. */
 const LIQUID = new Uint8Array(256);
+const LAVA = new Uint8Array(256);
 /** Fences: 1.5 high, so not a place to stand on (and nothing jumps them). */
 const TALL = new Uint8Array(256);
 BLOCKS.forEach((info, b) => {
   // An open door is a way through (its panel is against a side); a closed one is a wall, and mobs
   // can't open doors.
   PASSABLE[b] = info.passable || doorOf(b)?.open ? 1 : 0;
-  LIQUID[b] = info.liquid ? 1 : 0;
+  LIQUID[b] = info.liquid && !info.lava ? 1 : 0;
+  LAVA[b] = info.lava ? 1 : 0;
   TALL[b] = info.connects === 'fence' ? 1 : 0;
 });
 
@@ -148,7 +151,7 @@ export function findPath(world: BlockSource, start: readonly [number, number, nu
   const room = (x: number, y: number, z: number, h: number): boolean => {
     for (let i = 0; i < h; i++) {
       const b = get(x, y + i, z);
-      if (!PASSABLE[b] || LIQUID[b]) return false;
+      if (!PASSABLE[b] || LIQUID[b] || LAVA[b]) return false;
     }
     return true;
   };

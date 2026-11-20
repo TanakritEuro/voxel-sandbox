@@ -32,7 +32,7 @@ import { chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, chunkRegions, connectivityOf, MAX_REGIONS, NO_REGION, reachableChunks, regionBytes, regionMap, seeThrough, walkRegions } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
-import { wakeColumn, WaterFlow } from '../src/world/water';
+import { LiquidFlow, wakeColumn } from '../src/world/liquids';
 import { LogicFlow } from '../src/world/logic';
 import { GroundItems } from '../src/survival/ground';
 import { CHEST_SLOTS, Chests } from '../src/survival/chest';
@@ -439,7 +439,7 @@ it('water', () => {
     // (`wakeColumn`), on generated land with no moving water, as while flying.
     const world = new World(SEED);
     for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) world.ensureColumn(dx, dz);
-    const flow = new WaterFlow();
+    const flow = new LiquidFlow();
     const times: number[] = [];
     for (let run = 0; run < 5; run++)
       for (let dz = -3; dz <= 3; dz++)
@@ -476,8 +476,8 @@ it('water', () => {
       for (let d = y - 1; d > Math.max(1, y - 30); d--) if (world.getBlock(x, d, z) === Block.Air) return [y, d];
       return null;
     };
-    const run = (label: string, begin: (flow: WaterFlow) => void) => {
-      const flow = new WaterFlow();
+    const run = (label: string, begin: (flow: LiquidFlow) => void) => {
+      const flow = new LiquidFlow();
       begin(flow);
       const sim: number[] = [];
       const apply: number[] = [];
@@ -1263,6 +1263,22 @@ it('generation versions', () => {
   }
   const per = (g: Generation) => median(times[g]) / cols.length;
   const lines = ['', `generation by version (${cols.length} columns, median of ${RUNS}): version 1 ${per(1).toFixed(3)} ms a column, version 2 ${per(2).toFixed(3)} (${((per(2) / per(1) - 1) * 100).toFixed(0)} %), version 3 ${per(3).toFixed(3)} (${((per(3) / per(2) - 1) * 100).toFixed(0)} % on 2)`];
+  // Lighting the same columns as they arrive (World.addColumn), by version: version 3's lava lakes glow.
+  const lit: Record<2 | 3, number[]> = { 2: [], 3: [] };
+  let lavaBlocks = 0;
+  for (const generation of [2, 3] as const) {
+    const made = cols.map(([cx, cz]) => new Generator(SEED, { generation }).generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y));
+    if (generation === 3) for (const column of made) for (const c of column) if (c) for (let i = 0; i < c.length; i++) if (c[i] === Block.Lava) lavaBlocks++;
+    for (let run = 0; run <= RUNS; run++) {
+      const world = new World(SEED, { generation });
+      const copies = made.map((column) => column.map((c) => (c ? c.slice() : null)));
+      const t0 = performance.now();
+      cols.forEach(([cx, cz], k) => world.addColumn(cx, cz, copies[k]));
+      if (run > 0) lit[generation].push(performance.now() - t0);
+    }
+  }
+  const litPer = (g: 2 | 3) => median(lit[g]) / cols.length;
+  lines.push(`  lighting them as they arrive: version 2 ${litPer(2).toFixed(3)} ms a column, version 3 ${litPer(3).toFixed(3)} (${((litPer(3) / litPer(2) - 1) * 100).toFixed(0)} %; ${(lavaBlocks / cols.length).toFixed(0)} lava blocks a column)`);
   for (const seed of [SEED, 7, 123]) {
     const g1 = new Generator(seed, { generation: 2, rivers: false });
     const g2 = new Generator(seed, { generation: 2 });

@@ -7,7 +7,7 @@
 // map is the world's: every map shows the same, saved in the record's `map` (each tile run-length
 // encoded, as text). `paint` draws any window of it at any scale, unexplored land blank parchment.
 
-import { Block, BLOCKS } from '../world/blocks';
+import { Block, BLOCKS, isWater } from '../world/blocks';
 import { CHUNK_BITS, CHUNK_SIZE, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
 import { decodeRle, encodeRle } from '../save/rle';
 import { EMPTY_BLOCKS, type World } from '../world/world';
@@ -25,7 +25,7 @@ const WATER = [0.68, 0.84, 1];
 const PALETTE = new Uint8Array(256 * 3 * 3);
 BLOCKS.forEach((info, b) => {
   for (let shade = 0; shade < 3; shade++) {
-    const k = (info.liquid ? WATER : LAND)[shade];
+    const k = (info.liquid && !info.lava ? WATER : LAND)[shade];
     for (let c = 0; c < 3; c++) PALETTE[(b * 3 + shade) * 3 + c] = Math.min(255, Math.round(info.top[c] * 255 * k));
   }
 });
@@ -72,9 +72,9 @@ export function tileOf(world: World, cx: number, cz: number): Uint8Array {
         continue;
       }
       tile[p] = t.block;
-      if (BLOCKS[t.block].liquid) {
+      if (isWater(t.block)) {
         let depth = 1;
-        while (depth < 8 && BLOCKS[world.getBlock(x, t.y - depth, z)].liquid) depth++;
+        while (depth < 8 && isWater(world.getBlock(x, t.y - depth, z))) depth++;
         tile[AREA + p] = depth >= 6 ? 0 : depth >= 3 ? 1 : 2;
       } else {
         const n = north[i];

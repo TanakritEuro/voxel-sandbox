@@ -62,6 +62,11 @@ export class ChunkRenderer {
     u.ripple.value = flow.ripple;
   }
 
+  /** How far lava's texture has crept (`waterFlow` at lava's pace). */
+  setLavaFlow(flow: WaterFlow): void {
+    (this.opaqueMaterial.uniforms.lavaFlow.value as THREE.Vector2).set(...flow.a);
+  }
+
   /** Show a chunk's mesh, replacing any it had. */
   set(key: string, cx: number, cy: number, cz: number, data: ChunkMesh): void {
     this.remove(key);

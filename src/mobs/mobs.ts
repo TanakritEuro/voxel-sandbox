@@ -84,6 +84,8 @@ export class MobManager {
   private readonly voices: Rng;
   /** Seconds until each mob calls next. */
   private readonly calls = new Map<Mob, number>();
+  /** Seconds since each mob in lava was last burnt. */
+  private readonly burning = new Map<Mob, number>();
   private readonly sounds: MobSound[] = [];
   private readonly attacks: Attack[] = [];
   private nextId = 1;
@@ -174,6 +176,7 @@ export class MobManager {
         },
       };
       for (let s = 0; s < steps; s++) for (const m of this.mobs) stepBrain(m, ctx);
+      this.burn(steps * TUNING.mobs.step);
       for (const m of this.mobs) if (KINDS[m.kind].hops && m.body.onGround && !this.before.get(m)?.onGround) this.sound(m, 'land');
     }
     // Calls, now and then; none at rest.
@@ -259,6 +262,28 @@ export class MobManager {
     this.sound(mob, 'puff');
     this.remove(mob);
     return true;
+  }
+
+  /**
+   * Mobs in lava take a hit every `TUNING.lava.mobEvery` seconds, the first at once, knocked up and on
+   * the way they face (so one may get out).
+   */
+  private burn(dt: number): void {
+    const every = TUNING.lava.mobEvery;
+    const hot: Mob[] = [];
+    for (const m of this.mobs) {
+      if (!m.body.inLava) {
+        this.burning.delete(m);
+        continue;
+      }
+      const t = (this.burning.get(m) ?? every) + dt;
+      this.burning.set(m, t >= every ? t - every : t);
+      if (t >= every) hot.push(m);
+    }
+    for (const m of hot) {
+      this.hit(m, m.body.x + Math.sin(m.yaw), m.body.z + Math.cos(m.yaw));
+      if (!this.mobs.includes(m)) this.burning.delete(m);
+    }
   }
 
   /** The hostile mobs' hits on players since the last time this was asked, oldest first. */

@@ -8,7 +8,7 @@
 
 import { LONG_FRAME_MS } from './stats';
 import { Block } from './world/blocks';
-import type { WaterFlow } from './world/water';
+import type { LiquidFlow } from './world/liquids';
 import type { World } from './world/world';
 
 type Change = [number, number, number, Block];
@@ -39,7 +39,7 @@ export class Flood {
 
   constructor(
     private readonly world: World,
-    private readonly flow: WaterFlow,
+    private readonly flow: LiquidFlow,
     /** Make these changes as the game does (blocks, light, remeshing, saving). */
     private readonly apply: (changes: Change[]) => void,
     private readonly onReport: (report: FloodReport, text: string) => void,

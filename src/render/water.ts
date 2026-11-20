@@ -32,6 +32,7 @@ export class WaterView {
   /** The fog's range above water, to put back. */
   private air: { near: number; far: number };
   private readonly waterColour = new THREE.Color(TUNING.water.fogColour);
+  private readonly lavaColour = new THREE.Color(TUNING.lava.fogColour);
 
   constructor(private readonly scene: THREE.Scene) {
     this.fog = scene.fog as THREE.Fog;
@@ -44,13 +45,15 @@ export class WaterView {
     this.air.far = far;
   }
 
-  /** Once a frame: whether the eye is under water, the sky's colour (sRGB 0–1) and daylight (`sky.ts`). */
-  update(underwater: boolean, sky: RGB, daylight: number): void {
+  /** Once a frame: whether the eye is under water, the sky's colour (sRGB 0–1) and daylight (`sky.ts`), and whether it's in lava. */
+  update(underwater: boolean, sky: RGB, daylight: number, inLava = false): void {
     const colour = this.fog.color;
-    if (underwater) colour.copy(this.waterColour).multiplyScalar(0.25 + 0.75 * daylight);
+    // Lava glows: the same by day and night, and closing in at once.
+    if (inLava) colour.copy(this.lavaColour);
+    else if (underwater) colour.copy(this.waterColour).multiplyScalar(0.25 + 0.75 * daylight);
     else colour.setRGB(sky[0], sky[1], sky[2], THREE.SRGBColorSpace);
-    this.fog.near = underwater ? TUNING.water.fogNear : this.air.near;
-    this.fog.far = underwater ? TUNING.water.fogFar : this.air.far;
+    this.fog.near = inLava ? TUNING.lava.fogNear : underwater ? TUNING.water.fogNear : this.air.near;
+    this.fog.far = inLava ? TUNING.lava.fogFar : underwater ? TUNING.water.fogFar : this.air.far;
     (this.scene.background as THREE.Color).copy(colour);
   }
 }

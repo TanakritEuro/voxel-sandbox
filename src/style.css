@@ -492,6 +492,28 @@ body.menu-mode #hud {
   animation: hurt-fade 0.35s ease-out forwards;
 }
 
+/* Burning (lava): a red-orange tint, flickering a little. */
+.burn-tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 60%, rgba(255, 120, 30, 0.12), rgba(230, 70, 20, 0.45));
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+}
+
+.burn-tint.on {
+  opacity: 1;
+  transition-duration: 0.1s;
+  animation: burn-flicker 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes burn-flicker {
+  to {
+    filter: brightness(1.25);
+  }
+}
+
 @keyframes hurt-fade {
   to {
     opacity: 0;

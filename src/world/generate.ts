@@ -8,7 +8,7 @@
 
 import { Biome, BIOME_COUNT, Climate } from './biomes';
 import { Caves } from './caves';
-import { Deep, DeepBiome, MUSHROOM_REACH, placeMushrooms } from './deep';
+import { Deep, DeepBiome, fillLava, LAVA_LEVEL, MUSHROOM_REACH, placeMushrooms } from './deep';
 import { type Ground, placeOres, placeTrees, TREE_REACH, TREE_TOP, treesIn } from './features';
 import { Block } from './blocks';
 import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL, WORLD_HEIGHT } from './coords';
@@ -402,6 +402,7 @@ export class Generator {
       if (this.options.generation >= 3 && this.options.caves) {
         this.deep.decorate(blocks, cx, cy, cz);
         if (mushrooms.length) placeMushrooms(blocks, cx, cy, cz, mushrooms);
+        if (y0 <= LAVA_LEVEL) fillLava(blocks, cy);
       }
       if (trees.length) placeTrees(blocks, cx, cy, cz, trees, this.seed);
       if (reeds) {

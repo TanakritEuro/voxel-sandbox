@@ -35,8 +35,10 @@ export interface Body {
   vz: number;
   /** Standing on something since the last step. */
   onGround: boolean;
-  /** The box reaches below a liquid's surface (as of the last step). */
+  /** The box reaches below a liquid's surface (as of the last step), water or lava. */
   inWater: boolean;
+  /** That liquid is lava (some of it): swum in slowly, and it burns. */
+  inLava?: boolean;
   /** The box: half its width on x and z, and its height (the player's, or a mob's). */
   halfWidth: number;
   height: number;
@@ -68,6 +70,7 @@ export const createBody = (x: number, y: number, z: number, halfWidth = HALF_WID
   vz: 0,
   onGround: false,
   inWater: false,
+  inLava: false,
   halfWidth,
   height,
 });
@@ -274,20 +277,24 @@ function anyOverlapped(body: Body, test: (bx: number, by: number, bz: number) =>
  * overlaps it; in shallower flowing water, only when the surface is more than `swim.wade` of the
  * body's height over its feet, so a puddle is waded through.
  */
-export function touchesLiquid(body: Body, world: BlockSource): boolean {
+export function touchesLiquid(body: Body, world: BlockSource, lavaOnly = false): boolean {
   const wade = TUNING.player.swim.wade * body.height;
   return anyOverlapped(body, (x, y, z) => {
     const info = BLOCKS[world.getBlock(x, y, z)];
-    if (!info.liquid) return false;
+    if (!info.liquid || (lavaOnly && !info.lava)) return false;
     return info.liquidHeight >= 1 || y + info.liquidHeight - body.y > wade;
   });
 }
 
-/** How deep the water in block (x, y, z) is: a full block with water above it, else its `liquidHeight` (0 if it isn't water). */
+/** Is the box in lava (as `touchesLiquid` is in any liquid)? */
+export const touchesLava = (body: Body, world: BlockSource): boolean => touchesLiquid(body, world, true);
+
+/** How deep the liquid in block (x, y, z) is: a full block with the same liquid above it, else its `liquidHeight` (0 if it isn't liquid). */
 function depthAt(world: BlockSource, x: number, y: number, z: number): number {
   const info = BLOCKS[world.getBlock(x, y, z)];
   if (!info.liquid) return 0;
-  return BLOCKS[world.getBlock(x, y + 1, z)].liquid ? 1 : info.liquidHeight;
+  const above = BLOCKS[world.getBlock(x, y + 1, z)];
+  return above.liquid && !above.lava === !info.lava ? 1 : info.liquidHeight;
 }
 
 /**
@@ -325,9 +332,14 @@ const SIDEWAYS = [
 
 /** Is the point (x, y, z) under a liquid's surface? */
 export function underLiquid(world: BlockSource, x: number, y: number, z: number): boolean {
+  return liquidAt(world, x, y, z) !== 0;
+}
+
+/** The liquid the point (x, y, z) is under the surface of: 0 none, 1 water, 2 lava. */
+export function liquidAt(world: BlockSource, x: number, y: number, z: number): 0 | 1 | 2 {
   const by = Math.floor(y);
   const info = BLOCKS[world.getBlock(Math.floor(x), by, Math.floor(z))];
-  return info.liquid && y < by + info.liquidHeight;
+  return info.liquid && y < by + info.liquidHeight ? (info.lava ? 2 : 1) : 0;
 }
 
 /** Is there a solid block under some part of the box, with the feet at (x, body.y, z)? */
@@ -408,12 +420,15 @@ export function stepPlayer(body: Body, input: MoveInput, world: BlockSource, dt 
   }
 
   body.inWater = touchesLiquid(body, world);
+  body.inLava = body.inWater && touchesLava(body, world);
   const swim = P.swim;
   const swimming = body.inWater;
-  const speed = swimming ? swim.speed : input.crouch ? P.crouchSpeed : input.sprint ? P.sprintSpeed : P.walkSpeed;
+  // Lava is swum in slowly.
+  const thick = body.inLava ? TUNING.lava.swimSpeed : 1;
+  const speed = swimming ? swim.speed * thick : input.crouch ? P.crouchSpeed : input.sprint ? P.sprintSpeed : P.walkSpeed;
   // Flowing water carries the body along: the velocity it heads for has the current added.
   const [fx, fz] = currentAt(body, world);
-  const push = TUNING.water.push;
+  const push = TUNING.water.push * thick;
   let vx: number;
   let vz: number;
   let vy0: number;
@@ -425,7 +440,7 @@ export function stepPlayer(body: Body, input: MoveInput, world: BlockSource, dt 
     vx = body.vx + (wx * speed + fx * push - body.vx) * k;
     vz = body.vz + (wz * speed + fz * push - body.vz) * k;
     vy0 = body.vy;
-    vy = vy0 + ((input.jump ? swim.upSpeed : -swim.maxSink) - vy0) * k;
+    vy = vy0 + ((input.jump ? swim.upSpeed * thick : -swim.maxSink * thick) - vy0) * k;
   } else {
     // Turn the horizontal velocity towards the wanted one, by at most the acceleration.
     const maxChange = (body.onGround ? P.groundAccel : P.airAccel) * dt;
@@ -481,10 +496,12 @@ export function stepMob(body: Body, move: MobMove, world: BlockSource, dt = TUNI
   const M = TUNING.mobs;
   const P = TUNING.player;
   body.inWater = touchesLiquid(body, world);
-  // Flowing water carries it along, as the player.
+  body.inLava = body.inWater && touchesLava(body, world);
+  // Flowing water carries it along, as the player; lava is thick.
+  const thick = body.inLava ? TUNING.lava.swimSpeed : 1;
   const [fx, fz] = currentAt(body, world);
-  const wantX = move.vx + fx * TUNING.water.push;
-  const wantZ = move.vz + fz * TUNING.water.push;
+  const wantX = (move.vx + fx * TUNING.water.push) * thick;
+  const wantZ = (move.vz + fz * TUNING.water.push) * thick;
   let vx: number;
   let vz: number;
   let vy0: number;

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { TUNING } from './config';
 import type { Controls } from './input';
 import { FixedStep } from './math';
-import { type BlockSource, type Body, createBody, type MoveInput, stepPlayer, underLiquid } from './world/physics';
+import { type BlockSource, type Body, createBody, liquidAt, type MoveInput, stepPlayer } from './world/physics';
 
 /** Two presses of Space closer together than this (seconds) start or stop flying. */
 const DOUBLE_TAP = 0.3;
@@ -27,6 +27,8 @@ export class Player {
   waiting = true;
   /** The camera is inside a liquid block: draw the underwater view. */
   eyeInWater = false;
+  /** The eye is in lava (its own view: orange, close). */
+  eyeInLava = false;
   /**
    * Riding (Milestone 18): where the seat is now, drawn between the vehicle's steps, or null once the
    * ride is over. The body sits there, standing still on it (so falls start afresh), its own physics
@@ -185,6 +187,8 @@ export class Player {
     const b = this.body;
     const c = this.camera.position.set(lerp(p.x, b.x, t), lerp(p.y, b.y, t) + this.eye + this.stepLag, lerp(p.z, b.z, t));
     this.camera.rotation.set(this.input.pitch, this.input.yaw, 0, 'YXZ');
-    this.eyeInWater = underLiquid(this.world, c.x, c.y, c.z);
+    const eye = liquidAt(this.world, c.x, c.y, c.z);
+    this.eyeInWater = eye === 1;
+    this.eyeInLava = eye === 2;
   }
 }

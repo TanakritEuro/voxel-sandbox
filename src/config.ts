@@ -271,6 +271,27 @@ export const TUNING = {
     /** Flowing water carries the player and mobs down its slope at this speed (blocks / s), added to their own. */
     push: 1.4,
   },
+  lava: {
+    /** Flowing lava (`world/liquids.ts`): ticked half as often as water, spreading 3 and looking 2 for a drop. */
+    tickSeconds: 0.5,
+    maxPerTick: 1024,
+    dropSearch: 2,
+    /** With the eye in lava: fog colour and range (blocks). */
+    fogColour: 0xd8501a,
+    /** The texture creeps this fast (blocks a second). */
+    flow: 0.04,
+    fogNear: 0,
+    fogFar: 3,
+    /** Swimming in lava: water's speeds times this. */
+    swimSpeed: 0.5,
+    /** Burning (survival): `damage` points every `every` seconds in lava; out of it, for `after` seconds more, `afterDamage` each `every`, put out by water. */
+    damage: 4,
+    every: 0.5,
+    after: 3,
+    afterDamage: 1,
+    /** A mob in lava takes a hit this often (seconds). */
+    mobEvery: 0.5,
+  },
   save: {
     /** Edited chunks are written this long after an edit (ms); at once when unloaded or when the page is hidden. */
     delayMs: 2000,

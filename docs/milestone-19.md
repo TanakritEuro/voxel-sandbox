@@ -1,6 +1,6 @@
 # Milestone 19: underground
 
-**Status:** plan approved (2026-11-21); step 1 built.
+**Status:** plan approved (2026-11-21); steps 1 and 2 built.
 
 ## Goal
 
@@ -134,7 +134,7 @@ are tested headless; how lava and the caves feel is left for playtests.
 1. **Version 3 and the deep caves:** blocks and textures, deep biomes, crystal clusters, grottoes and
    mushrooms; checksums for versions 1 and 2; tests. Done (2026-11-21).
 2. **Lava:** `LiquidFlow`, lava's blocks, meshing, lakes in generation, lava meeting water, swimming in it,
-   burning, items and mobs; tests.
+   burning, items and mobs; tests. Done (2026-11-21).
 3. **Dungeons:** the structure, loot, delvers near them; tests.
 4. **The lantern and `?find`;** together (`PROTOCOL` 12); tests.
 5. **Measurements,** notes, playtest questions.
@@ -211,4 +211,53 @@ range, 0.33 ms a column.
 - **Clusters only on floors:** one hanging from a ceiling would need a second id, held up from above.
 - **Deep biomes widen their caverns,** which the plan didn't say: they'd be ordinary tunnels otherwise.
 - **`PROTOCOL` 12 in this step,** not step 4: the welcome carries the version.
+
+## Step 2: lava (2026-11-21)
+
+**What's in:**
+- **`world/water.ts` is `world/liquids.ts`:** `LiquidFlow` runs the same automaton for a `Liquid` (`WATER`, `LAVA`):
+  its source, falling and flowing blocks, how many flowing levels (7, 3), its `TUNING` (tick 0.25 s / 0.5 s, look for a
+  drop 4 / 2). Each liquid's table of what blocks are to it is built from that, the other liquid solid. Water's 10
+  tests pass unchanged.
+- **Lava meeting water:** a lava block with water beside, above or below it becomes **basalt** if it's a source,
+  **stone** if not, checked whenever lava looks at a block; every liquid change wakes the other liquid round it, as
+  edits wake both.
+- **Blocks 208–213:** lava (source, flowing 1–3 at a quarter, half and three quarters deep, falling), light 15, a liquid
+  not raycast (built against through), sounding of liquid; basalt, dark columns, a stone pick's.
+- **Drawn:** a liquid's faces (full and part blocks, sides between levels) in the opaque pass for lava, its own texture
+  (orange, darker crust, bright seams) creeping slowly in the solid shader (`LAVA` define, a third of water's drift);
+  lava against lava draws no face, lava against water does. Far chunks fill coarse cells with lava as with water.
+- **Lava lakes (version 3):** after carving and the deep features, every cave block at y 10 and below is a lava source
+  (`fillLava`). Standing still, they cost nothing until something is dug into them.
+- **Swimming:** in lava a body swims at half water's speed, sinks and rises at half, and is pushed by a current at half;
+  `Body.inLava`. With the eye in lava, the fog is orange and 3 blocks deep.
+- **Burning (survival):** 4 points at once on touching lava and every half second in it, then 3 s of burning at a
+  point a half second, put out by water; "You burned."; a red-orange tint, flickering, while burning. Turning creative
+  puts it out.
+- **Items** in lava burn up in a puff, falling in or lying where it flows (an item asleep looks at its own block too).
+- **Mobs** never path into lava (it's never room, or ground, and not swum); one in it takes a hit every half second,
+  knocked up and forward, until it gets out or goes.
+- **Boats and the map** count only water: no boat on lava, and lava is drawn as land in its own colour.
+- **`?find=lava`** (planned for step 4, needed here to look at it): a rock shore at y 11 with lava 2–4 blocks off.
+- **Tests (11 new, 2 updated):** spreading 3, falling off a ledge, basalt and stone where it meets water (beside and
+  from above), light 15 and not water, the opaque pass, swimming at half speed and the eye, burning (in, after, put
+  out), items burning, paths never across it (water's are swum), a mob burnt until gone, `?find=lava`; version 3's
+  differences from version 2 now include lava, only at y 10 and below, only in cave; the picker leaves out moving lava.
+
+**Measured** (bench `generation versions`, 253 columns): generating version 3 against version 2 swings from 5 % to 19 %
+run to run (step 1's code gave 17 % in the same sitting), so the lakes cost nothing visible; lighting columns as they
+arrive is 11 % more in version 3 (1.19 against 1.07 ms a column), from 333 lava blocks a column glowing.
+
+**In the browser** (`?seed=20261022&find=lava`):
+- the lake glowing orange, flush with the rock shore, lighting the cave round it; 120 fps;
+- a shore block dug out: lava flowed into the hole;
+- water poured in beside the lake: the lava next to it turned to basalt within the tick;
+- in survival, walking in: the tint, hearts going 4 at a time, "You died / You burned." in under 3 s;
+- no console errors.
+
+**Changed from the plan:**
+- **Block ids** 208–213 (the plan had 204–209; the deep blocks took 204–207).
+- **Lava touching water from below** (lava falling onto water) turns too, not only beside or above.
+- **Lava is in the creative picker** (as water is); neither can be carried in survival.
+- **`?find=lava` in this step.**
 

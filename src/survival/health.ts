@@ -4,6 +4,8 @@
 //   against where they land; water breaks a fall, and flying is no fall;
 // - drowning: the eyes under water use up air, then cost a point a second; above, air comes back;
 // - cactus: a point every half second while touching one;
+// - lava: 4 points at once and every half second in it, then burning for 3 s more at a point every
+//   half second, put out by water (`TUNING.lava`);
 // - hunger: lost slowly, faster sprinting, swimming and digging; eating gives it back;
 // - healing: from a while after the last hurt, a point every few seconds, only well fed, costing
 //   hunger; starving costs health down to 1 point, never the last.
@@ -23,6 +25,8 @@ export interface Condition {
   flying: boolean;
   eyeInWater: boolean;
   touchingCactus: boolean;
+  /** In lava (`inWater` is any liquid, lava too). */
+  inLava?: boolean;
   /** Working hard: each makes it hungrier. */
   sprinting?: boolean;
   swimming?: boolean;
@@ -30,6 +34,7 @@ export interface Condition {
 }
 
 const S = TUNING.survival;
+const L = TUNING.lava;
 
 export class Health {
   health = S.maxHealth;
@@ -38,7 +43,9 @@ export class Health {
   /** Hunger points: full at `TUNING.survival.maxHunger`. */
   hunger = S.maxHunger;
   /** What hurt last. */
-  cause: 'fall' | 'drowning' | 'cactus' | 'starving' | Foe | null = null;
+  cause: 'fall' | 'drowning' | 'cactus' | 'burning' | 'starving' | Foe | null = null;
+  /** Seconds of burning left (out of lava; full while in it). */
+  burning = 0;
   /** The highest the feet were since they last stood; null while standing, in water or flying. */
   private top: number | null = null;
   /** Where the feet last stood (a fall starts there, not a frame below it). */
@@ -47,6 +54,8 @@ export class Health {
   private healClock = 0;
   private drownClock = 0;
   private cactusClock = S.cactusEvery;
+  /** Seconds since lava or burning last hurt (from `every`, so the first touch hurts at once). */
+  private burnClock = L.every;
   private starveClock = 0;
   /** Hunger used and not yet taken off a whole point. */
   private used = 0;
@@ -93,6 +102,28 @@ export class Health {
         this.cause = 'cactus';
       }
     } else this.cactusClock = S.cactusEvery;
+    // Lava: at once on touching, then every so often; burning on after, unless in water.
+    if (c.inLava) {
+      this.burning = L.after;
+      this.burnClock += dt;
+      while (this.burnClock >= L.every) {
+        this.burnClock -= L.every;
+        damage += L.damage;
+        this.cause = 'burning';
+      }
+    } else if (this.burning > 0) {
+      if (c.inWater) this.burning = 0;
+      else {
+        this.burnClock += Math.min(dt, this.burning);
+        this.burning = Math.max(0, this.burning - dt);
+        while (this.burnClock >= L.every) {
+          this.burnClock -= L.every;
+          damage += L.afterDamage;
+          this.cause = 'burning';
+        }
+      }
+      if (this.burning === 0) this.burnClock = L.every;
+    }
     // Hunger: a point a minute, more working hard.
     const perMinute = S.hungerBase + (c.sprinting ? S.hungerSprint : 0) + (c.swimming ? S.hungerSwim : 0) + (c.digging ? S.hungerDig : 0);
     this.useHunger((perMinute / 60) * dt);
@@ -152,6 +183,8 @@ export class Health {
     this.healClock = 0;
     this.drownClock = 0;
     this.cactusClock = S.cactusEvery;
+    this.burning = 0;
+    this.burnClock = L.every;
     this.starveClock = 0;
     this.cause = null;
   }
