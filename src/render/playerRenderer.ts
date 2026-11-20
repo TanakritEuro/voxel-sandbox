@@ -84,14 +84,15 @@ export class PlayerRenderer {
       shown.add(id);
       const light = brightness(world.getLight(Math.floor(pose.x), Math.floor(pose.y + 1), Math.floor(pose.z)), daylight);
       const pace = Math.min(1, pose.speed / 4.3);
-      const swing = pose.flying ? 0 : Math.sin(pose.walked * STRIDE) * SWING * pace;
+      const swing = pose.flying || pose.sitting ? 0 : Math.sin(pose.walked * STRIDE) * SWING * pace;
       const arm = pose.sinceSwing < ARM_SWING ? Math.sin((pose.sinceSwing / ARM_SWING) * Math.PI) * 1.4 : 0;
-      const drop = pose.crouching ? 0.25 : 0;
+      // Sitting (riding): the hips down near the seat, the legs out in front.
+      const drop = pose.sitting ? 0.6 : pose.crouching ? 0.25 : 0;
       const bend = pose.crouching ? 0.45 : 0;
       for (const { part, mesh } of this.parts) {
         m.makeRotationY(pose.yaw).setPosition(pose.x, pose.y - drop, pose.z);
         m.multiply(step.makeTranslation(...part.pivot));
-        if (part.kind === 'leg') m.multiply(step.makeRotationX(swing * part.side));
+        if (part.kind === 'leg') m.multiply(step.makeRotationX(pose.sitting ? Math.PI / 2 : swing * part.side));
         else if (part.kind === 'body') m.multiply(step.makeRotationX(-bend));
         else if (part.kind === 'arm') m.multiply(step.makeRotationX(-swing * part.side + (part.side > 0 ? arm : 0) + bend * 0.5));
         else m.multiply(step.makeRotationX(Math.max(-1.2, Math.min(1.2, pose.pitch))));

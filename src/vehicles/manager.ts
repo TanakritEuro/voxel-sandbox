@@ -62,6 +62,11 @@ export class VehicleManager {
   private nextId = 1;
   /** For `?stats`: this frame's time (ms). */
   ms = 0;
+  /**
+   * Is player `rider` moving what they ride themself (a guest, on the host)? Those aren't stepped here:
+   * where they are comes from the rider (`hostVehicles`).
+   */
+  riddenElsewhere: (rider: number) => boolean = () => false;
 
   constructor(private readonly world: VehicleWorld) {}
 
@@ -85,6 +90,18 @@ export class VehicleManager {
     if (this.count >= TUNING.vehicles.most) return null;
     const v = createVehicle(this.nextId++, kind, x + 0.5, y, z + 0.5, yaw);
     if (!putOnRail(v, this.world, x, y, z)) return null;
+    this.vehicles.push(v);
+    return v;
+  }
+
+  /**
+   * A guest's own copy of the host's vehicle it gets into, to ride: of `kind`, numbered `id` as the
+   * host's is, where the host last had it.
+   */
+  adopt(id: number, kind: VehicleKind, x: number, y: number, z: number, yaw: number, speed: number, rail: [number, number, number, number] | null): Vehicle {
+    const v = createVehicle(id, kind, x, y, z, yaw);
+    v.speed = speed;
+    if (rail) v.rail = { x: rail[0], y: rail[1], z: rail[2], s: rail[3] };
     this.vehicles.push(v);
     return v;
   }
@@ -118,6 +135,7 @@ export class VehicleManager {
       for (const v of this.vehicles) this.before.set(v, { x: v.body.x, y: v.body.y, z: v.body.z, yaw: v.yaw, pitch: v.pitch });
       for (let s = 0; s < steps; s++)
         for (const v of this.vehicles) {
+          if (v.rider >= 0 && this.riddenElsewhere(v.rider)) continue;
           const input = v.rider >= 0 ? inputs.get(v.rider) : undefined;
           if (v.kind === VehicleKind.Boat) stepBoat(v, this.world, TUNING.vehicles.step, input ? { forward: input.forward, turn: input.turn } : null);
           else stepCart(v, this.world, TUNING.vehicles.step, input && input.forward > 0 ? input.look : null);

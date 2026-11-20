@@ -54,7 +54,10 @@ import { mobOnRay, rayBox } from './mobs/hit';
 import { surfaceAt, waterOnRay } from './vehicles/boat';
 import { type RiderInput, VehicleManager } from './vehicles/manager';
 import { rideable, seatHeight, type Vehicle, VehicleKind } from './vehicles/vehicle';
-import { VehicleRenderer } from './render/vehicleRenderer';
+import { VehicleRenderer, type VehicleView } from './render/vehicleRenderer';
+import { hostVehicles } from './net/hostVehicles';
+import { VEHICLE_Y } from './net/protocol';
+import type { RidePose } from './net/playerState';
 import { MapView } from './render/mapView';
 import { WorldMap } from './survival/map';
 import { KINDS, MobKind } from './mobs/kinds';
@@ -269,6 +272,26 @@ let mobsRead = performance.now();
 // columns to load. The host's or a lone player's (guests don't have them yet).
 const vehicles = guest ? null : new VehicleManager(world);
 vehicles?.load(record.vehicles);
+// Playing together, what a guest rides is moved by the guest (`net/hostVehicles.ts`): not stepped here.
+if (vehicles) vehicles.riddenElsewhere = (p) => p !== 0;
+// A guest's own copy of the host's vehicle it rides, stepped here (the host's are drawn from its snapshots).
+const localRide = guest ? new VehicleManager(world) : null;
+/** This player's number: 0 for the host or a lone player. */
+const me = () => guest?.you ?? 0;
+/** The vehicles this player sees: the host's own, or a guest's mirror of them with its own ride in place of the host's. */
+function shownVehicles(): Vehicle[] {
+  if (vehicles) return vehicles.vehicles;
+  if (!guest || !localRide) return [];
+  const own = localRide.vehicles;
+  return [...guest.vehicles.vehicles.filter((v) => !own.some((o) => o.id === v.id)), ...own];
+}
+/** The vehicles as the renderer takes them. */
+const vehicleShown: VehicleView = {
+  get vehicles() {
+    return shownVehicles();
+  },
+  drawnAt: (v) => (vehicles ? vehicles.drawnAt(v) : localRide?.vehicles.includes(v) ? localRide.drawnAt(v) : guest!.vehicles.drawnAt(v)),
+};
 const vehicleView = new VehicleRenderer(TUNING.vehicles.most);
 // The world's map (`survival/map.ts`), filled in round the player as they go; a guest's is their own
 // for the visit.
@@ -279,19 +302,39 @@ const hasMap = () => !survival || pack.slots.some((s) => s?.item === Item.Map);
 scene.add(vehicleView.group);
 renderer.compile(vehicleView.group, camera);
 
-/** The vehicle this player rides, if any. */
-const riding = (): Vehicle | undefined => vehicles?.ridden(0);
+/** The vehicle this player rides, if any (a guest's own copy). */
+const riding = (): Vehicle | undefined => (vehicles ?? localRide)?.ridden(me());
 
-/** Get in `v`: this player sits in it (`Player.seat`) until getting out. */
+/**
+ * Get in `v`: this player sits in it (`Player.seat`) until getting out. A guest gets into its own
+ * copy at once, where the host last had it, and asks the host (who says if it may not).
+ */
 function ride(v: Vehicle): void {
-  if (!vehicles?.ride(v, 0)) return;
+  const manager = vehicles ?? localRide;
+  if (!manager || v.rider >= 0) return;
+  let mine = v;
+  if (guest && localRide) {
+    const snap = guest.vehicles.latest(v.id);
+    if (!snap) return;
+    mine = localRide.adopt(v.id, v.kind, snap.x, snap.y, snap.z, snap.yaw, snap.speed, snap.rail);
+    guest.mount(v.id);
+  }
+  if (!manager.ride(mine, me())) return;
   player.seat = () => {
-    const now = vehicles.ridden(0);
+    const now = manager.ridden(me());
     if (!now) return null;
-    const at = vehicles.drawnAt(now);
+    const at = manager.drawnAt(now);
     return { x: at.x, y: at.y + seatHeight(now), z: at.z };
   };
   sound.play({ name: 'place', material: 'stone', gain: 0.5 });
+}
+
+/** Where what this player rides is, for its state (a guest's moves the host's). */
+function ridePose(): RidePose | undefined {
+  const v = riding();
+  if (!v) return undefined;
+  const r = v.rail;
+  return { id: v.id, x: v.body.x, y: v.body.y, z: v.body.z, yaw: v.yaw, pitch: v.pitch, speed: v.speed, rail: r ? [r.x, r.y, r.z, r.s] : null };
 }
 
 /**
@@ -302,8 +345,13 @@ function ride(v: Vehicle): void {
 function getOut(): void {
   const v = riding();
   player.seat = null;
-  if (!v || !vehicles) return;
-  vehicles.leave(0);
+  if (!v) return;
+  if (vehicles) vehicles.leave(0);
+  else {
+    // A guest's copy goes; the host steps it from where the guest left it.
+    localRide?.remove(v);
+    guest?.dismount();
+  }
   const b = v.body;
   const W = 0.3;
   const fits = (x: number, y: number, z: number) => {
@@ -327,8 +375,8 @@ function getOut(): void {
 /** The vehicle on the crosshair within `reach` (not the one ridden), and how far. */
 function vehicleOnRay(origin: THREE.Vector3, dir: THREE.Vector3, reach: number): { vehicle: Vehicle; distance: number } | null {
   let best: { vehicle: Vehicle; distance: number } | null = null;
-  for (const v of vehicles?.vehicles ?? []) {
-    if (v.rider === 0) continue;
+  for (const v of shownVehicles()) {
+    if (v.rider === me()) continue;
     const b = v.body;
     const w = b.halfWidth;
     const d = rayBox(origin, dir, b.x - w, b.y, b.z - w, b.x + w, b.y + b.height, b.z + w);
@@ -339,8 +387,14 @@ function vehicleOnRay(origin: THREE.Vector3, dir: THREE.Vector3, reach: number):
 
 /** A hit on vehicle `v` (once in creative breaks it): broken, it's given back on the ground (survival), a chest cart's contents too. */
 function hitVehicle(v: Vehicle): void {
-  if (!vehicles) return;
   swing();
+  if (guest) {
+    // The host makes it (what it gives lands on its ground).
+    guest.hitVehicle(v.id);
+    sound.play({ name: 'dig', material: 'stone', gain: 1 });
+    return;
+  }
+  if (!vehicles) return;
   const b = v.body;
   const gives = vehicles.hit(v, !survival);
   sound.play({ name: gives ? 'break' : 'dig', material: 'stone', gain: 1 });
@@ -780,6 +834,8 @@ if (guest) {
     if (backpack.open) backpack.refresh();
   };
   guest.onHurt = (damage, push, fromX, fromZ, kind) => struck(damage, push, fromX, fromZ, kind);
+  // Out of what it rode: refused, or it's gone.
+  guest.onDismount = () => getOut();
   guest.onContainer = (x, y, z, state) => {
     const open = hostContainer;
     if (!open || open.x !== x || open.y !== y || open.z !== z) return;
@@ -822,7 +878,17 @@ function openToFriends(room: Room): HostSession {
       hitMob: (id, mobId, points) => guestHit(id, mobId, points),
       feedMob: (id, mobId, item) => guestFeed(id, mobId, item),
       // Guests' survival on this world's ground and in its furnaces.
-      ...hostSurvival(ground, furnaces, chests, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
+      ...hostSurvival(ground, furnaces, chests, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id), (id) => vehicles?.byId(id)),
+      // Guests riding, putting down and hitting this world's vehicles (the host's own put out of one that goes).
+      ...hostVehicles(
+        // The host always has vehicles (only a guest has none).
+        vehicles!,
+        world,
+        (id) => session.states().get(id),
+        () => !survival,
+        (st, x, y, z) => ground.drop(x, y, z, st, (Math.random() - 0.5) * 2, TUNING.survival.ground.hop, (Math.random() - 0.5) * 2),
+        (p) => (p === 0 ? getOut() : session.dismount(p)),
+      ),
       mode: () => modeOf(record),
       kept: (name) => {
         const k = record.guests?.[name];
@@ -964,6 +1030,7 @@ function playTogether(now: number): void {
       held: heldBlock(),
       swings,
       digging: mining.target?.block ?? 0,
+      riding: ridePose(),
     });
   }
   // The mobs near each guest, and the sounds they made; the time of day now and then.
@@ -972,6 +1039,7 @@ function playTogether(now: number): void {
     host.shareGround(ground.items);
     host.shareContainers();
     if (mobs) host.shareMobs(mobs.mobs, mobSoundsOut);
+    if (vehicles) host.shareVehicles(vehicles.vehicles);
     mobSoundsOut = [];
   }
   if (host && now / 1000 - lastTimeSent >= TUNING.net.timeEvery) {
@@ -1665,7 +1733,7 @@ function editing(dt: number): void {
     } else if (survival && holding && (holding.item === Item.Cart || holding.item === Item.ChestCart) && railOf(target.block)) {
       // A cart put on the rail clicked (the host's or a lone player's; guests can't yet).
       const kind = holding.item === Item.Cart ? VehicleKind.Cart : VehicleKind.ChestCart;
-      if (vehicles?.placeCart(kind, target.x, target.y, target.z, input.yaw)) {
+      if (guest ? (guest.placeVehicle(kind, target.x, target.y, target.z, input.yaw), true) : vehicles?.placeCart(kind, target.x, target.y, target.z, input.yaw)) {
         pack.takeOne(selected);
         renderHotbar();
         sound.play({ name: 'place', material: 'stone', gain: 1 });
@@ -1914,15 +1982,17 @@ function frame(now: number): void {
   // Paused: the player and the clock stand still; the world goes on loading.
   // Vehicles first: a rider's seat follows theirs. W pushes a cart from a standstill the way the rider
   // looks; W, S, A and D row a boat.
-  if (vehicles) {
+  const manager = vehicles ?? localRide;
+  if (guest) guest.vehicles.update(guest.clock());
+  if (manager) {
     const inputs = new Map<number, RiderInput>();
     if (riding() && !paused())
-      inputs.set(0, { forward: input.axis('KeyW') - input.axis('KeyS'), turn: input.axis('KeyD') - input.axis('KeyA'), look: [-Math.sin(input.yaw), -Math.cos(input.yaw)] });
+      inputs.set(me(), { forward: input.axis('KeyW') - input.axis('KeyS'), turn: input.axis('KeyD') - input.axis('KeyA'), look: [-Math.sin(input.yaw), -Math.cos(input.yaw)] });
     // A boat rowed round turns its rower's view with it.
     const boat = riding()?.kind === VehicleKind.Boat ? riding()! : null;
     const boatYaw = boat?.yaw ?? 0;
-    vehicles.update(worldRuns() ? dt : 0, inputs);
-    if (boat && boat.rider === 0) input.yaw += boat.yaw - boatYaw;
+    manager.update(worldRuns() ? dt : 0, inputs);
+    if (boat && boat.rider === me()) input.yaw += boat.yaw - boatYaw;
     // Crouching gets out.
     if (riding() && !paused() && (input.isHeld('ShiftLeft') || input.isHeld('ShiftRight'))) getOut();
   }
@@ -1984,7 +2054,7 @@ function frame(now: number): void {
   // A guest's furnace screen closes when the furnace is broken.
   if (hostContainer) {
     const b = world.getBlock(hostContainer.x, hostContainer.y, hostContainer.z);
-    if (!(hostContainer.furnace ? furnaceOf(b) : chestOf(b))) closeBackpack();
+    if (hostContainer.y !== VEHICLE_Y && !(hostContainer.furnace ? furnaceOf(b) : chestOf(b))) closeBackpack();
   }
   if (litter && !player.waiting && !guest) {
     scatter(litter, player.body.x, player.body.z);
@@ -2021,10 +2091,10 @@ function frame(now: number): void {
   // Right click on an animal holding its food: fed (before eating it, or using it on a block).
   if (aimed && survival && !dead && KINDS[aimed.mob.kind].food === pack.slots[selected]?.item && input.take('Mouse2')) feed(aimed.mob);
   // A boat held in survival: a right click on water within reach puts it there.
-  if (vehicles && survival && !dead && !paused() && pack.slots[selected]?.item === Item.Boat) {
+  if ((vehicles || guest) && survival && !dead && !paused() && pack.slots[selected]?.item === Item.Boat) {
     const p = camera.position;
     const spot = waterOnRay(world, [p.x, p.y, p.z], [dir.x, dir.y, dir.z], TUNING.edit.reach);
-    if (spot && input.take('Mouse2') && vehicles.placeBoat(spot[0], spot[1], spot[2], input.yaw)) {
+    if (spot && input.take('Mouse2') && (guest ? (guest.placeVehicle(VehicleKind.Boat, spot[0], spot[1], spot[2], input.yaw), true) : vehicles?.placeBoat(spot[0], spot[1], spot[2], input.yaw))) {
       pack.takeOne(selected);
       renderHotbar();
       sound.play({ name: 'place', material: 'wood', gain: 1 });
@@ -2037,10 +2107,13 @@ function frame(now: number): void {
     if (input.take('Mouse0')) hitVehicle(aimedVehicle.vehicle);
     if (input.take('Mouse2')) {
       const v = aimedVehicle.vehicle;
-      // A chest cart opens as a chest does (survival); the rest are got into.
-      if (v.slots && survival) {
-        backpack.showChest(v.slots);
-        input.unlock();
+      // A chest cart opens as a chest does (survival; a guest's is the host's); the rest are got into.
+      if (v.kind === VehicleKind.ChestCart && survival) {
+        if (guest) openHostContainer(v.id, VEHICLE_Y, 0, 'chest');
+        else if (v.slots) {
+          backpack.showChest(v.slots);
+          input.unlock();
+        }
       } else if (rideable(v)) ride(v);
     }
   }
@@ -2103,7 +2176,7 @@ function frame(now: number): void {
     guest.mobs.update(guest.clock());
     mobView.update(guest.mobs, world, daylightNow, now / 1000);
   }
-  if (vehicles) vehicleView.update(vehicles, world, daylightNow, now / 1000);
+  vehicleView.update(vehicleShown, world, daylightNow, now / 1000);
   // The map fills in round the player (a couple of columns a frame), and shows while held or opened.
   if (!player.waiting) worldMap.explore(world, player.body.x, player.body.z);
   mapView.update(dt, survival && !dead && pack.slots[selected]?.item === Item.Map, player.body.x, player.body.z, input.yaw);

@@ -1,6 +1,6 @@
 # Milestone 18: getting about
 
-**Status:** plan approved (2026-11-20); steps 1–4 built.
+**Status:** plan approved (2026-11-20); steps 1–5 built.
 
 ## Goal
 
@@ -208,7 +208,7 @@ saving and the map are tested headless; how riding feels is left for playtests.
 3. **Boats.** Water physics, rowing, placing on water, drawing; `?boat`; tests. Done (2026-11-20).
 4. **The map.** Paper and maps, explored tiles, the panel and full-screen map, saving; tests. Done (2026-11-20).
 5. **Together.** Vehicles to guests, riders moving their own, `mount` and `dismount`, chest carts,
-   riders drawn; PROTOCOL 11; tests.
+   riders drawn; PROTOCOL 11; tests. Done (2026-11-20).
 6. **Measurements,** notes, playtest questions.
 
 ## Decisions to agree
@@ -488,4 +488,54 @@ plan didn't say.
 - **A guest's map** lasts the visit, not saved by name as the plan had it: a map is hundreds of KB, too
   much to keep for every guest in the host's record. It could come later.
 - **Rails, carts, a boat and a map in `?kit`,** for trying them.
+
+## Step 5: together (2026-11-20)
+
+**What's in:**
+- **Vehicles to guests (`net/vehicleState.ts`):**
+  - 13 float32s each (52 bytes): id, kind, place, facing, pitch, rider, speed, and on a rail how far
+    along and its block;
+  - the host sends each guest those within 96 blocks with the mobs (`shareVehicles`, a new `vehicles`
+    message);
+  - a guest's `VehicleMirror` draws them between snapshots, as mobs are.
+- **Riding together:**
+  - **a guest gets in at once:** it rides its own copy of the host's vehicle, from where the host last had
+    it (`VehicleManager.adopt`), steps it itself, and asks the host (`mount`);
+  - **the host checks reach and that nobody's in it,** or answers `dismount` (the guest gets out);
+  - **riding, the guest's state carries the vehicle's pose** (`PlayerState.riding`, 168 bytes instead of
+    80): id, place, facing, speed, rail. The host takes it unless it's a jump of over 16 blocks, and
+    doesn't step that vehicle meanwhile (`riddenElsewhere`);
+  - **getting out** (`dismount`) gives it back to the host to step from where the guest left it;
+  - a guest who leaves is out of what it rode;
+  - one broken under a rider tells the rider it's out (the host itself, or a guest).
+- **Guests putting down and hitting vehicles** (`vplace`, `vhit`): the host checks reach, a rail or water
+  there, and makes them; a refused one comes back (`given`). Hits break as the host's world has it (one
+  in creative, three in survival, what it gives on the host's ground).
+- **Chest carts** go through the container messages as the place (their id, `VEHICLE_Y` = -1, 0): no
+  block is ever there. `hostSurvival` serves them as chests, checked by reach to the cart.
+- **`net/hostVehicles.ts`** (pure): the host's side of all this, as `hostSurvival.ts` is for survival.
+- **Riders drawn sitting:** a player whose state says they ride is lowered 0.6 with their legs out in front.
+- **`PROTOCOL` 11.**
+- **Tests (7 new, 3 updated):**
+  - vehicle states, their rider and rail, bad ones refused;
+  - the riding state (168 bytes), a vehicle far from its rider refused, a rider's pose sitting;
+  - the new messages, and a chest cart's container place (not y -2, not z 1);
+  - the mirror between snapshots;
+  - **through the loopback network:**
+    - a guest sees a host's cart and gets in;
+    - a second guest is refused and told;
+    - the rider's pose is taken, a jump isn't;
+    - getting out gives it back;
+    - a guest puts down a cart, a chest cart with no rail under it comes back, and its hit breaks one
+      (creative), putting the host out of it;
+    - a guest opens a chest cart, puts and takes.
+  - Updated: the test host and the two `HostWorld` fakes.
+
+**In the browser:**
+- `?railway&bot=1`: the host riding with a test guest in: 120 fps, 25 KB/s out, 52 messages a second,
+  no console errors.
+- `?bot=2` with the bots briefly made to say they ride (not kept): they're drawn lowered, sitting.
+- **Not tried:** two browsers playing together, a guest riding (the loopback tests cover it).
+
+**Changed from the plan:** none.
 

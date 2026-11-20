@@ -18,8 +18,12 @@ import { Chests } from '../src/survival/chest';
 import { GroundItems } from '../src/survival/ground';
 import { Item } from '../src/survival/items';
 import { MobKind } from '../src/mobs/kinds';
+import { hostVehicles } from '../src/net/hostVehicles';
+import { VEHICLE_Y } from '../src/net/protocol';
+import { VehicleKind } from '../src/vehicles/vehicle';
+import { VehicleManager } from '../src/vehicles/manager';
 import type { Stack } from '../src/survival/inventory';
-import { chest, door, doorOf, furnace, wheat } from '../src/world/blocks';
+import { chest, door, doorOf, furnace, rail, wheat } from '../src/world/blocks';
 import { useAt } from '../src/world/parts';
 
 const SEED = 20261022;
@@ -69,6 +73,10 @@ async function makeHost(env: Env, generation: Generation = 1) {
   const ground = new GroundItems();
   const furnaces = new Furnaces();
   const chests = new Chests();
+  // Its vehicles, and the host player put out of one (its own game's to do).
+  const vehicles = new VehicleManager(world);
+  vehicles.riddenElsewhere = (p) => p !== 0;
+  const outs: number[] = [];
   // Its feeding of mobs: what was asked, and whether it's made.
   const feeds = {
     made: [] as [number, number, number][],
@@ -92,7 +100,15 @@ async function makeHost(env: Env, generation: Generation = 1) {
       edit,
       hitMob: () => {},
       feedMob: (player, id, item) => feeds.feed(player, id, item),
-      ...hostSurvival(ground, furnaces, chests, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id)),
+      ...hostSurvival(ground, furnaces, chests, (x, y, z) => world.getBlock(x, y, z), (id) => session.states().get(id), (id) => vehicles.byId(id)),
+      ...hostVehicles(
+        vehicles,
+        world,
+        (id) => session.states().get(id),
+        () => mode.value === 'creative',
+        (st, x, y, z) => ground.drop(x, y, z, st, 0, 0, 0, 0),
+        (p) => (p === 0 ? outs.push(0) : session.dismount(p)),
+      ),
       mode: () => mode.value,
       kept: (name) => kept.get(name) ?? null,
       keep: (name, s) => void kept.set(name, s),
@@ -111,7 +127,7 @@ async function makeHost(env: Env, generation: Generation = 1) {
     world.setBlocks(changes);
     session.shareEdits(changes, 0, 0, true);
   };
-  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces, chests, feeds };
+  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces, chests, feeds, vehicles, outs };
 }
 
 async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, name: string) {
@@ -481,6 +497,96 @@ describe('survival over the network', () => {
     a.session.sendState(st);
     await env.pump(0.3);
   }
+
+  /** A rail at (x, surface, z) on the host, laid as a guest's would be (the host's own edit). */
+  function railAt(host: Awaited<ReturnType<typeof makeHost>>, x: number, z: number): number {
+    const y = surface(host.world, x, z);
+    host.hostEdit(x, y, z, rail(0));
+    return y;
+  }
+
+  it("shows the host's vehicles to a guest near, lets it ride one and move it, one rider at a time", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    const b = await makeGuest(env, host, 'Aroon');
+    const y = railAt(host, 6, 4);
+    const cart = host.vehicles.placeCart(VehicleKind.Cart, 6, y, 4, 0)!;
+    await standAt(env, a, 4.5, y, 4.5);
+    await standAt(env, b, 5.5, y, 3.5);
+    host.session.shareVehicles(host.vehicles.vehicles);
+    await env.pump(0.3);
+    expect(a.session.vehicles.latest(cart.id)).toMatchObject({ kind: VehicleKind.Cart, rider: -1, rail: [6, y, 4, expect.any(Number)] });
+    // A gets in: the host's cart is A's to move, and isn't stepped there meanwhile.
+    a.session.mount(cart.id);
+    await env.pump(0.3);
+    expect(cart.rider).toBe(a.session.you);
+    // B asks too: refused, told it's out.
+    let out = 0;
+    b.session.onDismount = () => out++;
+    b.session.mount(cart.id);
+    await env.pump(0.3);
+    expect(out).toBe(1);
+    expect(cart.rider).toBe(a.session.you);
+    // A rides it along: where A has it, the host has it.
+    const st: Omit<PlayerState, 'time'> = { x: 6.5, y: y + 0.35, z: 5.1, yaw: 0, pitch: 0, flying: false, crouching: false, swimming: false, onGround: true, held: Block.Air, swings: 0, digging: Block.Air };
+    a.session.sendState({ ...st, riding: { id: cart.id, x: 6.5, y, z: 4.9, yaw: 0, pitch: 0, speed: 2, rail: [6, y, 4, 0.6] } });
+    await env.pump(0.3);
+    host.vehicles.update(1 / 30);
+    expect([cart.body.z, cart.speed, cart.rail?.s]).toEqual([expect.closeTo(4.9, 5), 2, expect.closeTo(0.6, 5)]);
+    // A jump across the map isn't taken.
+    a.session.sendState({ ...st, x: 6.5, z: 400, riding: { id: cart.id, x: 6.5, y, z: 400.1, yaw: 0, pitch: 0, speed: 2, rail: null } });
+    await env.pump(0.3);
+    expect(cart.body.z).toBeCloseTo(4.9, 5);
+    // A gets out: the host's to step again.
+    a.session.dismount();
+    await env.pump(0.3);
+    expect(cart.rider).toBe(-1);
+  });
+
+  it("puts down a guest's cart or boat on the host, gives one back that can't go there, and makes its hits", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    const given: Stack[] = [];
+    a.session.onGiven = (st) => given.push(st);
+    const y = railAt(host, 6, 4);
+    await standAt(env, a, 4.5, y, 4.5);
+    a.session.placeVehicle(VehicleKind.Cart, 6, y, 4, 0);
+    a.session.placeVehicle(VehicleKind.ChestCart, 5, y, 4, 0); // no rail there
+    await env.pump(0.3);
+    expect(host.vehicles.vehicles.map((v) => v.kind)).toEqual([VehicleKind.Cart]);
+    expect(given).toEqual([{ item: Item.ChestCart, count: 1 }]);
+    // Creative: one hit breaks it, and nothing lands on the ground; a rider is told they're out.
+    const cart = host.vehicles.vehicles[0];
+    host.vehicles.ride(cart, 0);
+    a.session.hitVehicle(cart.id);
+    await env.pump(0.3);
+    expect(host.vehicles.vehicles).toEqual([]);
+    expect(host.outs).toEqual([0]);
+    expect(host.ground.items).toEqual([]);
+  });
+
+  it("opens a host's chest cart for a guest as a chest, by its number", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    host.mode.value = 'survival';
+    const a = await makeGuest(env, host, 'Pim');
+    const y = railAt(host, 6, 4);
+    const cart = host.vehicles.placeCart(VehicleKind.ChestCart, 6, y, 4, 0)!;
+    cart.slots!.slots[2] = { item: Item.Coal, count: 5 };
+    await standAt(env, a, 4.5, y, 4.5);
+    const seen: Record<string, unknown>[] = [];
+    a.session.onContainer = (_x, _y, _z, state) => seen.push(state);
+    a.session.openContainer(cart.id, VEHICLE_Y, 0);
+    await env.pump(0.3);
+    expect((seen.at(-1)!.slots as unknown[])[2]).toEqual({ item: Item.Coal, count: 5 });
+    a.session.containerPut(cart.id, VEHICLE_Y, 0, 0, { item: Item.Iron, count: 2 });
+    a.session.containerTake(cart.id, VEHICLE_Y, 0, 2);
+    await env.pump(0.3);
+    expect(cart.slots!.slots[0]).toEqual({ item: Item.Iron, count: 2 });
+    expect(cart.slots!.slots[2]).toBe(null);
+  });
 
   it("puts a guest's drop on the host's ground, shows it to every guest near, and gives it to the first who asks", async () => {
     const env = setup();

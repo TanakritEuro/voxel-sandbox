@@ -13,6 +13,11 @@
 // guest asks for it when it comes to load it) and keeps the block, the latest for each place, until
 // the column is added. A column being made while the edit arrived (asked for, or generating)
 // would miss it otherwise; for one the host's answer already had, making it again changes nothing.
+//
+// Vehicles (Milestone 18) are the host's, sent with the mobs; but a ridden one is moved by its rider.
+// A guest gets in at once and asks (`mount`), steps what it rides itself and sends where it is in its
+// state (`PlayerState.riding`), which the host takes; the host says `dismount` if it may not ride, or
+// when what it rode is gone. Getting out (`dismount`) gives it back to the host to step.
 
 import type { Generation } from '../world/generate';
 import type { WorldMode } from '../save/store';
@@ -31,6 +36,11 @@ import { type GroundSnap, packGround, unpackGround } from './itemState';
 import type { Stack } from '../survival/inventory';
 import { packState, type PlayerState, unpackState } from './playerState';
 import { RemotePlayer } from './remotePlayer';
+import { type RidePose } from './playerState';
+import { VehicleMirror } from './vehicleMirror';
+import { packVehicles, unpackVehicles } from './vehicleState';
+import type { Vehicle } from '../vehicles/vehicle';
+import { Item } from '../survival/items';
 import { type BlockChange, checkChunk, MAX_PLAYERS, type Message, packEdits, parseMessage, type PlayerInfo, PROTOCOL, unpackEdits } from './protocol';
 
 /** What the host's game gives its session. */
@@ -71,7 +81,20 @@ export interface HostWorld {
   containerPut(player: number, x: number, y: number, z: number, slot: number, stack: Stack): Stack | null;
   /** Player `player` takes what's in a slot of the furnace at (x, y, z): what they get, or null. */
   containerTake(player: number, x: number, y: number, z: number, slot: number): Stack | null;
+  /** Player `player` gets in vehicle `id`: true if they may (it's there, can be ridden, nobody's in it, it's within reach). */
+  mount(player: number, id: number): boolean;
+  /** Player `player` got out of what they rode (or left): the host steps it from here. */
+  dismount(player: number): void;
+  /** Where player `player` has what they ride (from their state): taken if it's theirs and not a jump. */
+  rideMoved(player: number, pose: RidePose): void;
+  /** Player `player` puts down a vehicle of `kind` (0 cart, 1 chest cart, 2 boat): true if it was. */
+  placeVehicle(player: number, kind: number, x: number, y: number, z: number, yaw: number): boolean;
+  /** Player `player` hit vehicle `id`: the game checks it's in reach and makes the hit. */
+  hitVehicle(player: number, id: number): void;
 }
+
+/** A vehicle kind's item (`vplace` refused: given back). */
+const VEHICLE_ITEMS = [Item.Cart, Item.ChestCart, Item.Boat];
 
 /** What a guest's game gives its session, once the world is made. */
 export interface GuestWorld {
@@ -176,6 +199,23 @@ export class HostSession {
       const heard = sounds.filter((s) => Math.hypot(s.x - at.x, s.y - at.y, s.z - at.z) <= hearing);
       if (heard.length) link.send({ type: 'mobsounds', data: packMobSounds(heard) });
     }
+  }
+
+  /** The vehicles (with the mobs): to each guest, those within the mobs' despawning distance of it. */
+  shareVehicles(vehicles: readonly Vehicle[]): void {
+    const far = TUNING.mobs.despawnDistance;
+    const time = this.now();
+    for (const [id, link] of this.guests) {
+      const at = this.remotes.get(id)?.latest;
+      if (!at) continue;
+      const near = vehicles.filter((v) => Math.hypot(v.body.x - at.x, v.body.z - at.z) <= far).slice(0, 256);
+      link.send({ type: 'vehicles', time, data: packVehicles(near) }, 'frames');
+    }
+  }
+
+  /** Guest `player` is out of what it rode (it's gone): tell it. */
+  dismount(player: number): void {
+    this.guests.get(player)?.send({ type: 'dismount' });
   }
 
   /**
@@ -350,11 +390,27 @@ export class HostSession {
         if (who) this.world.keep(who.name, m.survival);
         break;
       }
+      case 'mount':
+        if (!this.world.mount(id, m.id)) link.send({ type: 'dismount' });
+        break;
+      case 'dismount':
+        this.world.dismount(id);
+        break;
+      case 'vplace':
+        // Refused: the vehicle back to the guest who spent it.
+        if (!this.world.placeVehicle(id, m.kind, m.x, m.y, m.z, m.yaw)) link.send({ type: 'given', stack: { item: VEHICLE_ITEMS[m.kind], count: 1 } });
+        break;
+      case 'vhit':
+        this.world.hitVehicle(id, m.id);
+        break;
       case 'state': {
         // Theirs, whatever number they put on it; on to the others as theirs.
         let remote = this.remotes.get(id);
         if (!remote) this.remotes.set(id, (remote = new RemotePlayer()));
-        remote.push(unpackState(m.data)!);
+        const state = unpackState(m.data)!;
+        remote.push(state);
+        // Riding: what they ride is where they have it.
+        if (state.riding) this.world.rideMoved(id, state.riding);
         for (const [other, l] of this.guests) if (other !== id) l.send({ type: 'state', id, data: m.data }, 'frames');
         break;
       }
@@ -367,6 +423,7 @@ export class HostSession {
 
   private leave(id: number, reason: string): void {
     if (!this.guests.delete(id)) return;
+    this.world.dismount(id);
     this.remotes.delete(id);
     this.watching.delete(id);
     this.watched.delete(id);
@@ -442,6 +499,10 @@ export class GuestSession {
   readonly remotes = new Map<number, RemotePlayer>();
   /** The mobs near this player, as the host runs them. */
   readonly mobs = new MobMirror();
+  /** The vehicles near this player, as the host runs them. */
+  readonly vehicles = new VehicleMirror();
+  /** The host says this player is out of what it rode (refused, or it's gone). */
+  onDismount: () => void = () => {};
   /** Sounds mobs near this player made (calls, cries, landings, puffs). */
   onMobSounds: (sounds: MobSound[]) => void = () => {};
   /** The host's time of day, as last heard (from the welcome on). */
@@ -547,6 +608,26 @@ export class GuestSession {
     if (!this.closed) this.link.send({ type: 'hit', id, points });
   }
 
+  /** This player got in vehicle `id` (riding already): the host says `dismount` if it may not. */
+  mount(id: number): void {
+    if (!this.closed) this.link.send({ type: 'mount', id });
+  }
+
+  /** This player got out of what it rode. */
+  dismount(): void {
+    if (!this.closed) this.link.send({ type: 'dismount' });
+  }
+
+  /** Put down a vehicle of `kind` (spent here already; given back if refused). */
+  placeVehicle(kind: number, x: number, y: number, z: number, yaw: number): void {
+    if (!this.closed) this.link.send({ type: 'vplace', kind, x, y, z, yaw });
+  }
+
+  /** This player hit vehicle `id`: the host makes the hit. */
+  hitVehicle(id: number): void {
+    if (!this.closed) this.link.send({ type: 'vhit', id });
+  }
+
   /** Ask the host to put `stack` on the ground (broken, thrown, no room), at (x, y, z) moving at (vx, vy, vz). */
   drop(stack: Stack, x: number, y: number, z: number, vx = 0, vy = 0, vz = 0, delay = 0): void {
     if (!this.closed) this.link.send({ type: 'drop', stack, x, y, z, vx, vy, vz, delay });
@@ -637,6 +718,12 @@ export class GuestSession {
         break;
       case 'mobsounds':
         this.onMobSounds(unpackMobSounds(m.data) ?? []);
+        break;
+      case 'vehicles':
+        this.vehicles.push(m.time, unpackVehicles(m.data) ?? []);
+        break;
+      case 'dismount':
+        this.onDismount();
         break;
       case 'time':
         this.time = m.time;

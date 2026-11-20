@@ -151,6 +151,11 @@ describe('what the host runs, for its guests', () => {
       container: () => null,
       containerPut: (_p, _x, _y, _z, _slot, stack) => stack,
       containerTake: () => null,
+      mount: () => false,
+      dismount: () => {},
+      rideMoved: () => {},
+      placeVehicle: () => false,
+      hitVehicle: () => {},
     };
     const room = net.room();
     const host = new HostSession(room, world, 'Host', () => t);

@@ -14,9 +14,10 @@ import { unpackGround } from './itemState';
 import { BLOCKS } from '../world/blocks';
 import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/coords';
 import { unpackMobs, unpackMobSounds } from './mobState';
+import { unpackVehicles } from './vehicleState';
 import { unpackState } from './playerState';
 
-export const PROTOCOL = 10;
+export const PROTOCOL = 11;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;
@@ -122,7 +123,17 @@ export type Message =
   | { type: 'contents'; x: number; y: number; z: number; state: Record<string, unknown> }
   /** Guest → host: put `stack` into slot `slot` of the furnace at (x, y, z); or take what's in the slot. */
   | { type: 'cput'; x: number; y: number; z: number; slot: number; stack: Stack }
-  | { type: 'ctake'; x: number; y: number; z: number; slot: number };
+  | { type: 'ctake'; x: number; y: number; z: number; slot: number }
+  /** Host → guest, unordered: every vehicle near the guest at `time` on the host's clock (`vehicleState.ts`). */
+  | { type: 'vehicles'; time: number; data: ArrayBuffer }
+  /** Guest → host: this player gets in vehicle `id` (riding it already: the host says `dismount` if it may not). */
+  | { type: 'mount'; id: number }
+  /** Guest → host: this player got out. Host → guest: you're out (refused, or what you rode is gone). */
+  | { type: 'dismount' }
+  /** Guest → host: put a vehicle of `kind` (spent already; given back if refused): a cart on the rail at (x, y, z), a boat there on the water. */
+  | { type: 'vplace'; kind: number; x: number; y: number; z: number; yaw: number }
+  /** Guest → host: this player hit vehicle `id`. */
+  | { type: 'vhit'; id: number };
 
 /** A block set: where, and what. */
 export type BlockChange = [number, number, number, number];
@@ -148,6 +159,12 @@ export function unpackEdits(data: ArrayBuffer): BlockChange[] | null {
 
 /** A block's place: within ±2^20 blocks across, inside the world's height. */
 const isBlockPlace = (x: unknown, y: unknown, z: unknown) => isCount(x, -0x100000, 0x100000) && isCount(y, 0, WORLD_HEIGHT - 1) && isCount(z, -0x100000, 0x100000);
+/**
+ * A container's place in the container messages: a furnace's or chest's block, or a chest cart, as
+ * (its id, `VEHICLE_Y`, 0): no block is there.
+ */
+export const VEHICLE_Y = -1;
+const isContainerPlace = (x: unknown, y: unknown, z: unknown) => isBlockPlace(x, y, z) || (y === VEHICLE_Y && z === 0 && isCount(x, 0, 0x7fffffff));
 const isBlockId = (b: unknown): b is number => isCount(b, 0, BLOCKS.length - 1);
 
 /**
@@ -310,19 +327,19 @@ export function parseMessage(raw: unknown): Message | null {
         ? { type: 'hurt', damage: raw.damage, push: raw.push, fromX: raw.fromX, fromZ: raw.fromZ, kind: raw.kind }
         : null;
     case 'copen':
-      return isBlockPlace(raw.x, raw.y, raw.z) ? { type: 'copen', x: raw.x as number, y: raw.y as number, z: raw.z as number } : null;
+      return isContainerPlace(raw.x, raw.y, raw.z) ? { type: 'copen', x: raw.x as number, y: raw.y as number, z: raw.z as number } : null;
     case 'cclose':
       return { type: 'cclose' };
     case 'contents':
-      return isBlockPlace(raw.x, raw.y, raw.z) && isKept(raw.state) ? { type: 'contents', x: raw.x as number, y: raw.y as number, z: raw.z as number, state: raw.state } : null;
+      return isContainerPlace(raw.x, raw.y, raw.z) && isKept(raw.state) ? { type: 'contents', x: raw.x as number, y: raw.y as number, z: raw.z as number, state: raw.state } : null;
     case 'cput': {
       const stack = stackOf(raw.stack);
-      return stack && isBlockPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, CHEST_SLOTS - 1)
+      return stack && isContainerPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, CHEST_SLOTS - 1)
         ? { type: 'cput', x: raw.x as number, y: raw.y as number, z: raw.z as number, slot: raw.slot, stack }
         : null;
     }
     case 'ctake':
-      return isBlockPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, CHEST_SLOTS - 1) ? { type: 'ctake', x: raw.x as number, y: raw.y as number, z: raw.z as number, slot: raw.slot } : null;
+      return isContainerPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, CHEST_SLOTS - 1) ? { type: 'ctake', x: raw.x as number, y: raw.y as number, z: raw.z as number, slot: raw.slot } : null;
     case 'time':
       return isNumber(raw.time) && raw.time >= 0 && raw.time < 1 ? { type: 'time', time: raw.time } : null;
     case 'state':
@@ -331,6 +348,21 @@ export function parseMessage(raw: unknown): Message | null {
       return isCount(raw.seq, 1, 0x7fffffff) && isBlockPlace(raw.x, raw.y, raw.z) && isBlockId(raw.block)
         ? { type: 'refused', seq: raw.seq, x: raw.x as number, y: raw.y as number, z: raw.z as number, block: raw.block }
         : null;
+    case 'vehicles':
+      return isNumber(raw.time) && raw.data instanceof ArrayBuffer && raw.data.byteLength <= 52 * 256 && unpackVehicles(raw.data) !== null ? { type: 'vehicles', time: raw.time, data: raw.data } : null;
+    case 'mount':
+      return isCount(raw.id, 0, 0x7fffffff) ? { type: 'mount', id: raw.id } : null;
+    case 'dismount':
+      return { type: 'dismount' };
+    case 'vplace': {
+      const v = [raw.x, raw.y, raw.z, raw.yaw];
+      if (!isCount(raw.kind, 0, 2) || !v.every(isNumber)) return null;
+      const [x, y, z, yaw] = v as number[];
+      if (Math.abs(x) > 0x100000 || Math.abs(z) > 0x100000 || y < 0 || y > WORLD_HEIGHT) return null;
+      return { type: 'vplace', kind: raw.kind, x, y, z, yaw };
+    }
+    case 'vhit':
+      return isCount(raw.id, 0, 0x7fffffff) ? { type: 'vhit', id: raw.id } : null;
     default:
       return null;
   }

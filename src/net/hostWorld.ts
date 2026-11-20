@@ -37,6 +37,12 @@ export interface HostGame {
   container: HostWorld['container'];
   containerPut: HostWorld['containerPut'];
   containerTake: HostWorld['containerTake'];
+  /** Guests' riding, putting down and hitting the host's vehicles (`hostVehicles.ts`). */
+  mount: HostWorld['mount'];
+  dismount: HostWorld['dismount'];
+  rideMoved: HostWorld['rideMoved'];
+  placeVehicle: HostWorld['placeVehicle'];
+  hitVehicle: HostWorld['hitVehicle'];
   /** The world's mode, and guests' survival states kept by name (`HostWorld`'s). */
   mode(): WorldMode;
   kept(name: string): Record<string, unknown> | null;
@@ -131,6 +137,11 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
     container: (...a) => game.container(...a),
     containerPut: (...a) => game.containerPut(...a),
     containerTake: (...a) => game.containerTake(...a),
+    mount: (...a) => game.mount(...a),
+    dismount: (...a) => game.dismount(...a),
+    rideMoved: (...a) => game.rideMoved(...a),
+    placeVehicle: (...a) => game.placeVehicle(...a),
+    hitVehicle: (...a) => game.hitVehicle(...a),
     mode: () => game.mode(),
     kept: (name) => game.kept(name),
     keep: (name, survival) => game.keep(name, survival),

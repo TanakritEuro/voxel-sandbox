@@ -17,6 +17,8 @@ export interface PlayerPose {
   pitch: number;
   flying: boolean;
   crouching: boolean;
+  /** Riding (Milestone 18): sitting. */
+  sitting: boolean;
   swimming: boolean;
   onGround: boolean;
   held: number;
@@ -124,6 +126,7 @@ export class RemotePlayer {
       pitch,
       flying: from.flying,
       crouching: from.crouching,
+      sitting: from.riding !== undefined,
       swimming: from.swimming,
       onGround: from.onGround,
       held: from.held,
