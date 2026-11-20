@@ -10,8 +10,9 @@
 // - between two sources, standing on something solid or on a source: a new source;
 // - otherwise one level less than the highest water spreading into it from the side, as flowing
 //   water (levels 7 down to 1); none spreading into it, no water.
-// Water spreads sideways only standing on something solid: over air or other water it falls
-// instead. A source or falling water spreads at 7, flowing water at one less than its own level.
+// Water spreads sideways only standing on something solid, or a source on another source (a lake
+// or the sea spills into a hole dug beside it): over air or other moving water it falls instead.
+// A source or falling water spreads at 7, flowing water at one less than its own level.
 // On flat ground it goes only the ways that lead soonest to a drop within `dropSearch` blocks, if
 // there are any, so it runs off ledges rather than spreading evenly.
 //
@@ -189,9 +190,10 @@ export class LiquidFlow {
       const nk = KIND[nb];
       if (nk < SOURCE) continue;
       if (nk === SOURCE) sources++;
-      // It spreads only standing on something solid, and into this block only if it's one of its ways.
+      // It spreads only standing on something solid (a source on a source too: a deep lake spills sideways), and into this block only if it's one of its ways.
       const level = nk === FLOWING ? nb - L.flow1 : L.levels;
-      if (level <= best || KIND[this.block(nx, y - 1, nz)] !== SOLID) continue;
+      const under = KIND[this.block(nx, y - 1, nz)];
+      if (level <= best || (under !== SOLID && !(nk === SOURCE && under === SOURCE))) continue;
       if (this.waysOf(nx, y, nz) & (1 << (d ^ 1))) best = level;
     }
     if (sources >= 2) {

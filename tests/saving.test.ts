@@ -65,7 +65,7 @@ describe.each([
     expect(edited).toBeGreaterThan(1);
     expect(after.getBlock(-2, top - 5, -2)).toBe(Block.Torch);
     expect(after.getLight(-1, top - 5, -2) & 15).toBe(13);
-  });
+  }, 180_000); // Whole worlds generated and lit twice: 20–45 s alone, past a minute with the rest of the suite running beside it.
 
   it('keeps where the player was and the time of day', async () => {
     const store = await makeStore();

@@ -32,7 +32,9 @@ import { chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, chunkRegions, connectivityOf, MAX_REGIONS, NO_REGION, reachableChunks, regionBytes, regionMap, seeThrough, walkRegions } from '../src/world/visibility';
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
-import { LiquidFlow, wakeColumn } from '../src/world/liquids';
+import { LAVA, LiquidFlow, wakeColumn } from '../src/world/liquids';
+import { LAVA_LEVEL } from '../src/world/deep';
+import { findNearest } from '../src/world/find';
 import { LogicFlow } from '../src/world/logic';
 import { GroundItems } from '../src/survival/ground';
 import { CHEST_SLOTS, Chests } from '../src/survival/chest';
@@ -1312,5 +1314,116 @@ it('generation versions', () => {
   }
   lines.push('');
   console.log(lines.join('\n'));
+});
+
+it('lava', () => {
+  // Lava (Milestone 19) by the lake nearest the origin in version 3 land, both liquids ticked as the
+  // game does (each change waking the other), changes made with World.setBlocks: a shore block dug
+  // out into the lake, a room 16 x 16 x 3 beside the lake opened onto it at once, and water poured
+  // onto the lake. Then the deep features: what decorating and finding mushrooms costs a column.
+  const lines = [''];
+  const g3 = new Generator(SEED, { generation: 3 });
+  const shore = findNearest(g3, 'lava', 0, 0)!;
+  const fresh = () => {
+    const world = new World(SEED, { generation: 3 });
+    const cx = toChunk(shore.x);
+    const cz = toChunk(shore.z);
+    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) world.ensureColumn(cx + dx, cz + dz);
+    return world;
+  };
+  const run = (label: string, world: World, begin: (flows: LiquidFlow[]) => void) => {
+    const water = new LiquidFlow();
+    const lava = new LiquidFlow(LAVA);
+    const flows = [water, lava];
+    begin(flows);
+    const sim: number[] = [];
+    const apply: number[] = [];
+    const light: number[] = [];
+    let changed = 0;
+    let most = 0;
+    let ticks = 0;
+    let basalt = 0;
+    // Water ticks twice to lava's once, as in the game.
+    for (; ticks < 400 && flows.some((f) => f.pending); ticks++) {
+      for (const f of ticks % 2 === 0 ? flows : [water]) {
+        const t0 = performance.now();
+        const changes = f.tick(world);
+        const t1 = performance.now();
+        world.setBlocks(changes);
+        sim.push(t1 - t0);
+        apply.push(performance.now() - t1);
+        light.push(changes.length ? world.lightMs : 0);
+        for (const g of flows) if (g !== f) for (const [x, y, z] of changes) g.wake(x, y, z);
+        for (const c of changes) if (c[3] === Block.Basalt || c[3] === Block.Stone) basalt++;
+        changed += changes.length;
+        most = Math.max(most, changes.length);
+      }
+    }
+    lines.push(
+      `lava (${label}): ${ticks} water ticks${flows.some((f) => f.pending) ? ' (still going)' : ' to settle'}, ${changed} changes (${basalt} to basalt or stone), at most ${most} a tick; ` +
+        `ms a tick: simulation median ${median(sim).toFixed(3)}, max ${Math.max(...sim).toFixed(3)}; making them median ${median(apply).toFixed(2)}, max ${Math.max(...apply).toFixed(2)} (light max ${Math.max(...light).toFixed(2)})`,
+    );
+  };
+  lines.push(`lava: the shore nearest the origin at ${shore.x}, ${shore.y}, ${shore.z}`);
+  {
+    // A trench at the lake's level from the shore to the lake, dug out (the last block opening onto it).
+    const world = fresh();
+    let way: [number, number, number] | null = null;
+    for (const d of [2, 3, 4]) for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!way && world.getBlock(shore.x + ox * d, LAVA_LEVEL, shore.z + oz * d) === Block.Lava) way = [ox, oz, d];
+    if (way) {
+      const [ox, oz, d] = way;
+      run(`a trench ${d} long dug from the shore into the lake`, world, (flows) => {
+        for (let k = 0; k < d; k++) {
+          world.setBlock(shore.x + ox * k, LAVA_LEVEL, shore.z + oz * k, Block.Air);
+          for (const f of flows) f.wake(shore.x + ox * k, LAVA_LEVEL, shore.z + oz * k);
+        }
+      });
+    }
+  }
+  {
+    // A room beside the shore at the lake's level, opened at once (its blocks set to air and woken).
+    const world = fresh();
+    run('a 16 x 16 x 3 room at the lake opened at once', world, (flows) => {
+      for (let dz = 0; dz < 16; dz++)
+        for (let dx = 0; dx < 16; dx++)
+          for (let y = LAVA_LEVEL - 2; y <= LAVA_LEVEL; y++) {
+            const x = shore.x + dx;
+            const z = shore.z + dz;
+            if (world.getBlock(x, y, z) === Block.Lava) continue;
+            world.setBlock(x, y, z, Block.Air);
+            for (const f of flows) f.wake(x, y, z);
+          }
+    });
+  }
+  {
+    // A water source two blocks over the lake, beside the shore.
+    const world = fresh();
+    let at: [number, number] | null = null;
+    for (const [dx, dz] of [1, 2, 3, 4].flatMap((d) => [[d, 0], [-d, 0], [0, d], [0, -d]])) if (!at && world.getBlock(shore.x + dx, LAVA_LEVEL, shore.z + dz) === Block.Lava) at = [shore.x + dx, shore.z + dz];
+    if (at) {
+      const [x, z] = at;
+      run('water poured onto the lake', world, (flows) => {
+        world.setBlock(x, LAVA_LEVEL + 2, z, Block.Water);
+        for (const f of flows) f.wake(x, LAVA_LEVEL + 2, z);
+      });
+    } else lines.push('lava: no lake beside the shore to pour water on');
+  }
+  {
+    // A column's deep features (version 3): decorating its deep chunks again, and finding its mushrooms.
+    const cols = columns(RADIUS);
+    const made = cols.map(([cx, cz]) => g3.generateColumn(cx, cz, 0, 1));
+    const decorate: number[] = [];
+    const mushrooms: number[] = [];
+    for (let run = 0; run <= RUNS; run++) {
+      let t0 = performance.now();
+      cols.forEach(([cx, cz], k) => made[k].forEach((c, cy) => c && g3.deep.decorate(c.slice(), cx, cy, cz)));
+      if (run > 0) decorate.push((performance.now() - t0) / cols.length);
+      t0 = performance.now();
+      for (const [cx, cz] of cols) g3.deep.mushroomsIn(cx * 32 - 3, cz * 32 - 3, cx * 32 + 34, cz * 32 + 34, (x, z, y0, y1) => g3.caves.carvedColumn(x, z, g3.caveLimitAt(x, z), y0, y1));
+      if (run > 0) mushrooms.push((performance.now() - t0) / cols.length);
+    }
+    lines.push(`deep features a column (${cols.length} columns): decorating ${median(decorate).toFixed(3)} ms, finding mushrooms ${median(mushrooms).toFixed(3)} ms`);
+  }
+  console.log(lines.join('\n') + '\n');
 });
 

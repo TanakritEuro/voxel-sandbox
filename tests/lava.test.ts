@@ -64,7 +64,23 @@ describe('lava', () => {
     expect(TUNING.lava.dropSearch).toBeLessThan(TUNING.water.dropSearch);
   });
 
-  it('falls off a ledge as falling lava and spreads again below', () => {
+  it('spills from a deep lake into a tunnel dug into its side, as a deep lake of water does', () => {
+    for (const [source, flow1, levels] of [
+      [Block.Lava, Block.LavaFlow1, 3],
+      [Block.Water, Block.WaterFlow1, 7],
+    ] as const) {
+      // A lake 3 deep (y 8–10) over x -5..0, walled by rock; a tunnel dug east from it at y 9, one block high.
+      const land = new Land().floor(-6, 12, -3, 3, 8);
+      for (let x = -6; x <= 12; x++) for (let z = -3; z <= 3; z++) for (let y = 8; y <= 11; y++) land.set(x, y, z, x <= 0 && y <= 10 ? source : Block.Stone);
+      const flows = [new LiquidFlow(), new LiquidFlow(LAVA)];
+      for (let x = 1; x <= 8; x++) put(land, flows, x, 9, 0, Block.Air);
+      settle(land, flows);
+      // It runs along the tunnel as far as it spreads, falling a level a block.
+      for (let x = 1; x <= 8; x++) expect(land.getBlock(x, 9, 0), `${BLOCKS[source].name} at ${x}`).toBe(x <= levels ? ((flow1 + levels - x) as Block) : Block.Air);
+    }
+  });
+
+    it('falls off a ledge as falling lava and spreads again below', () => {
     const lava = new LiquidFlow(LAVA);
     const ledge = new Land().floor(-6, 6, -6, 6, 5).floor(-6, 0, -6, 6, 10);
     put(ledge, [lava], 0, 10, 0, Block.Lava);

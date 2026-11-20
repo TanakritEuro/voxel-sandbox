@@ -26,10 +26,14 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 19 (underground: lava, deep cave biomes, dungeons, a lantern; generation version 3) in progress, plan
-approved (`docs/milestone-19.md`); steps 1–4 (version 3 and the deep caves, lava, dungeons, the lantern) built.
-Milestones 1–18 built (`docs/milestone-1.md` to `docs/milestone-18.md`), waiting for playtests
-(Milestone 18, getting about: rails laid by hand that join up as they're laid (straight, sloped, curved) and powered
+Milestones 1–19 built (`docs/milestone-1.md` to `docs/milestone-19.md`), waiting for playtests
+(Milestone 19, underground, for worlds made from now on (generation version 3; older worlds keep their land): lava,
+a second liquid of the same automaton, spreading 3, glowing, burning and swum in slowly, basalt or stone where it meets
+water, lakes of it at y 10 and below; deep cave biomes below y 40, crystal caverns (glowing clusters, crystal ore) and
+mushroom grottoes (giant mushrooms with glowing caps); dungeons, buried brick rooms with better loot and more delvers
+about; the lantern, standing or hanging; a deep lake of water or lava spills into a hole dug beside it;
+`?find=crystal|grotto|lava|dungeon`;
+Milestone 18, getting about: rails laid by hand that join up as they're laid (straight, sloped, curved) and powered
 rails worked by signals; carts that roll along them, ridden, chest carts; boats rowed on rivers and the sea; a map
 of where you've been, held or full screen (N); together, the host's vehicles ridden by guests who move what they
 ride; `?railway`, `?boat`;

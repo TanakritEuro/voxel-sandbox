@@ -1,6 +1,6 @@
 # Milestone 19: underground
 
-**Status:** plan approved (2026-11-21); steps 1–4 built.
+**Status:** built (2026-11-21), waiting for playtests.
 
 ## Goal
 
@@ -137,7 +137,7 @@ are tested headless; how lava and the caves feel is left for playtests.
    burning, items and mobs; tests. Done (2026-11-21).
 3. **Dungeons:** the structure, loot, delvers near them; tests. Done (2026-11-21).
 4. **The lantern and `?find`;** together (`PROTOCOL` 12); tests. Done (2026-11-21).
-5. **Measurements,** notes, playtest questions.
+5. **Measurements,** notes, playtest questions. Done (2026-11-21).
 
 ## Decisions to agree
 
@@ -319,4 +319,76 @@ console errors.
 **Changed from the plan:**
 - **Lanterns are bumped into** (small boxes, not walked through as torches are).
 - **`?find=lava` and `?find=dungeon`** came with their steps.
+
+## Step 5: measurements (2026-11-21)
+
+**Found while measuring, and fixed: a deep lake didn't spill.** A liquid spread sideways only from a block standing on
+something solid, so a source standing on more of its own (any lake more than a block deep, the sea) never spread: a
+tunnel dug into a lava lake's side, or a hole dug beside the sea at its surface, stayed dry unless two sources touched
+it. That was water's rule from Milestone 8 too. Now a source standing on a source of its own spreads as well. Generated
+land is unchanged (nothing is woken there); water's 10 tests pass as they were; a new test digs a tunnel into a lake 3
+deep, of lava and of water, and sees each run along it as far as it spreads (it failed before the change).
+
+**Bench** (`npm run bench`, `lava` and `generation versions`; seed 20261022, by the lava shore nearest the origin,
+at -58, 11, 36; water ticked twice to lava's once, as in the game):
+
+| Case | Ticks to settle | Changes | Worst tick: working out | Worst tick: making them (light) |
+| --- | --- | --- | --- | --- |
+| a trench 4 long dug from the shore into the lake | 7 | 3 | 0.32 ms | 0.96 ms (0.84) |
+| a room 16 x 16 x 3 beside the lake opened at once | 21 | 200 | 1.87 ms | 1.50 ms (1.28) |
+| water poured onto the lake | 11 | 170 (63 to basalt or stone) | 1.69 ms | 0.62 ms (0.44) |
+
+- **Deep features a column:** decorating 0.09–0.14 ms, finding mushrooms 0.32–0.47 ms (two runs).
+- **Generation by version:** version 3 against version 2 swings 5–19 % run to run on the same code; lighting a column
+  as it arrives is 10–11 % more in version 3 (lava's glow); a dungeon's blocks 0.6 ms, one every 111 x 111 blocks.
+
+**Browser** (`?seed=20261022`):
+- **By a lava lake** (`?find=lava`, looking across it, 10 s): 120 fps (the display's cap), frames 8.3 ms average and
+  8.5 at most, GPU 2.2 ms average and 3.2 at most, main thread 3.1 ms average.
+- **Sprint flights** (`?autofly=30`, version 3 land): today's code 2 frames over 20 ms (max 25.2), main thread p50 4.4
+  and p99 11.6 ms, no missing chunks. Step 1's code on the same day: 3 frames over 20 ms, p50 4.3, p99 11.9; step 2's:
+  3, 4.4 and 13.0. The first two flights after starting the dev server gave 10–12 frames over 20 ms (main p50 4.5–4.9),
+  which looked like a regression until the same code flew clean on a warm server; noted here so a cold first run isn't
+  read as one again.
+- **Each `?find` kind** was looked at in its step: crystal, grotto, lava, dungeon. **Lava meeting water** by hand: basalt
+  within the tick (step 2).
+
+**A slow test:** the saving test that generates and lights whole worlds twice (`saving.test.ts`) takes 20–45 s alone
+and went past the 60 s limit twice with the whole suite running beside it on a busy machine; it has 3 minutes now.
+Nothing in it changed.
+
+## What changed from the plan, over the milestone
+
+- **Block ids:** deep blocks 204–207, lava 208–212, basalt 213, lanterns 214–215 (the plan's numbers came first in a
+  different order).
+- **Light 12** for crystal clusters and mushroom caps (the plan had 10 and 8); clusters only on floors.
+- **Deep biomes widen their caverns,** or they'd be ordinary tunnels.
+- **`PROTOCOL` 12 in step 1,** since the welcome carries the generation version.
+- **Lava touching water from below** turns too; **lava is in the creative picker** (as water is).
+- **Dungeons' iron is certain** (no empty chest); rails and cooked meat in their loot.
+- **Lanterns are bumped into,** small boxes like slabs.
+- **`?find=lava` and `?find=dungeon`** came with their steps.
+- **A deep lake spills** into a hole dug beside it, water too (step 5).
+
+## Playtest questions
+
+1. **Lava:**
+   - burning: 4 points every half second in it and 3 s after (a full bar in about 2.5 s): too harsh, or right for lava?
+   - swimming in it at half speed: can you get out of a lake you fell into, if you're quick?
+   - does the red-orange tint read as burning? Does the orange view with your eye in lava?
+   - is pouring water to crust a lake over with basalt something you'd do, and does it look right?
+2. **Deep caves:**
+   - do crystal caverns and grottoes feel like places worth going down for, and are they lit enough to see by
+     (clusters and caps at light 12)?
+   - are giant mushrooms common enough, and big enough?
+   - do lava lakes at y 10 and below come up too often, or too seldom, when digging down?
+3. **Dungeons:**
+   - do you come across them from the caves, or only by `?find`? About one every 111 blocks: too many, too few?
+   - is the loot worth the trip (iron always, crystal often, an iron tool sometimes, lanterns)?
+   - do the delvers about them make them feel guarded, or just annoying?
+4. **The lantern:** does it place where you expect (stand on floors, hang from ceilings, against a wall whichever holds
+   it)? Is bumping into one right, or should you walk through it like a torch?
+5. **Spilling:** a deep lake (water or lava) now pours into a hole dug beside it. Is that what you'd expect, and does
+   it ever surprise you badly (the sea pouring into a tunnel dug at its level)?
+6. **Together:** does lava flow and crust over the same for a guest as for the host?
 
