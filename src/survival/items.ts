@@ -38,6 +38,9 @@ export enum Item {
   ChestCart,
   /** Put on water with a right click. */
   Boat,
+  /** From reeds; a map from paper. Held, a map shows the land round you (`survival/map.ts`). */
+  Paper,
+  Map,
 }
 
 /** What a tool digs: a pick stone and ores, an axe wood, a spade earth. */
@@ -97,6 +100,8 @@ const ITEMS: readonly ItemInfo[] = [
   { name: 'Cart', stack: 1 },
   { name: 'Chest cart', stack: 1 },
   { name: 'Boat', stack: 1 },
+  material('Paper'),
+  { name: 'Map', stack: 1 },
 ];
 
 const PLACEABLE_SET = new Set<number>(PLACEABLE);

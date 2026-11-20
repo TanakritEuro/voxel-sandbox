@@ -27,7 +27,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 ## Current state
 
 Milestone 18 (getting about: boats, rails and carts with powered rails, a map) in progress, plan approved
-(`docs/milestone-18.md`); steps 1 (rails), 2 (carts) and 3 (boats) built.
+(`docs/milestone-18.md`); steps 1 (rails), 2 (carts), 3 (boats) and 4 (the map) built.
 Milestones 1–17 built (`docs/milestone-1.md` to `docs/milestone-17.md`), waiting for playtests
 (Milestone 17, creatures, part two: the ambler on the savanna and the wader in the swamp; an animal fed its food
 (wheat, seeds or berries) is kept, saved with the world and never despawned, up to 128; kept animals fed again fall
@@ -212,7 +212,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   timing (`timeOf`: in survival by the tool held) and crack stage).
 - `src/survival/` — survival worlds, pure: `items.ts` (items: placeable blocks by their ids, and
   `Item` from 256: sticks, coal, copper, iron, crystal, picks, axes and spades of wood, stone and
-  iron, raw copper and iron, raw and cooked meat, berries, embers, seeds, wheat, bread, moss; `itemInfo`, `toolOf`, `foodOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
+  iron, raw copper and iron, raw and cooked meat, berries, embers, seeds, wheat, bread, moss, carts, chest carts, boats, paper, maps; `itemInfo`, `toolOf`, `foodOf`), `inventory.ts` (`Inventory`: 36 slots (or any number), the hotbar first; adding,
   spending, picking up and putting down, Shift moves, tools wearing out; `from` cleans what was
   saved), `drops.ts` (`dropsOf`, `digTime`, `rightTool`, `pickTier`: what a block gives with what's
   held, and how long it takes), `crafting.ts` (`RECIPES`, `canMake`, `make`), `play.ts` (`breakWith`: what a broken block gives and the
@@ -220,7 +220,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `chest.ts` (`Chests`: 27
   slots each by place, saved in the world record's `containers`; a structure's chest filled from its loot the first time
   it's opened or broken, never again, the place kept even when empty), `loot.ts` (`lootFor`: a ruin's or camp's
-  chest by its table, seeded by its place; `lootSource` for a world), `farming.ts` (`tillable`, `sowable`,
+  chest by its table, seeded by its place; `lootSource` for a world), `map.ts` (`WorldMap`: the world's map, a 16 × 16 tile per
+  explored column, each pixel 2 × 2 blocks' top block and a shade (land against the land north, water by depth),
+  `tileOf`; `explore` round a player (4 chunks, two tiles a frame), `touch` after an edit, `paint` any window at any
+  scale, unexplored parchment; saved in the record's `map`, run-length encoded as base 64), `farming.ts` (`tillable`, `sowable`,
   `stageTime`, `growingLight`; `Crops`: wheat by place, a slice stepped each frame, growing a stage
   every ~70 s in light 9 or more, saved in the record's `crops`), `sleep.ts` (`canSleep`: at night, nothing
   hostile near; `bedFoot`, `bedFrom`, `wakeAt`: beside the bed where there's room), `ground.ts` (`GroundItems`: items lying on the ground, boxes
@@ -287,7 +290,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
   only the face directions that can point at the camera (`facing`), of the groups to draw (`drawRanges`), kept per entry until those change. `blockMaterial.ts` — the texture
   array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
-  textures (a slab's or stairs' boxes each drawn, cropped). `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
+  textures (a slab's or stairs' boxes each drawn, cropped). `mapView.ts` — the map shown: a panel in the corner while one is held, full screen with N (zoomed with the
+  wheel, dragged about), the player an arrow. `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
   icons. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
   `clouds.ts` — the blocky cloud layer and its tiling pattern. `fog.ts` — fog colour and
@@ -323,7 +327,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
   inventory, health and bed), `furnaces`, `containers` (chests), `crops`, `guests` (guests' survival states by name), `generation` (missing in older worlds: 1)
-  `animals` (kept animals) and `vehicles`), `saver.ts` (`WorldSaver`: which chunks a world
+  `animals` (kept animals), `vehicles` and `map`), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -384,7 +388,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
   `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
-  tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
+  tier and things to craft with, rails, carts, a boat and a map), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?railway` lays a loop of rails 40 x 20 round you
   on a stone bed (a hump with slopes and powered rails before it each way, ten powered rails with a wire and a switch) and

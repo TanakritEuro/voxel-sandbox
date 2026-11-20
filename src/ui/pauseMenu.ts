@@ -10,13 +10,13 @@ import { settingsControls } from './settingsPanel';
 
 export const KEYS = [
   'WASD walk · Space jump / swim up · Shift crouch · tap Ctrl to sprint · F or Space twice to fly (Space / Shift up / down)',
-  'Hold left button to break · Right click place · 1–9 or wheel pick a block · E blocks · Esc pause · F3 stats',
+  'Hold left button to break · Right click place · 1–9 or wheel pick a block · E blocks · N map · M mute · Esc pause · F3 stats',
 ];
 
 /** The keys in survival: no flying, and E for the inventory. */
 export const SURVIVAL_KEYS = [
   'WASD walk · Space jump / swim up · Shift crouch · tap Ctrl to sprint',
-  'Hold left button to break · Right click place · 1–9 or wheel pick a slot · E inventory · Esc pause · F3 stats',
+  'Hold left button to break · Right click place · 1–9 or wheel pick a slot · E inventory · N map (with a map) · M mute · Esc pause · F3 stats',
 ];
 
 export interface PauseEvents {

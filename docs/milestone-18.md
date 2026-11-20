@@ -1,6 +1,6 @@
 # Milestone 18: getting about
 
-**Status:** plan approved (2026-11-20); steps 1–3 built.
+**Status:** plan approved (2026-11-20); steps 1–4 built.
 
 ## Goal
 
@@ -206,7 +206,7 @@ saving and the map are tested headless; how riding feels is left for playtests.
 2. **Carts.** Vehicles, their manager, rail physics, riding, chest carts, drawing, saving; `?railway`;
    tests. Done (2026-11-20).
 3. **Boats.** Water physics, rowing, placing on water, drawing; `?boat`; tests. Done (2026-11-20).
-4. **The map.** Paper and maps, explored tiles, the panel and full-screen map, saving; tests.
+4. **The map.** Paper and maps, explored tiles, the panel and full-screen map, saving; tests. Done (2026-11-20).
 5. **Together.** Vehicles to guests, riders moving their own, `mount` and `dismount`, chest carts,
    riders drawn; PROTOCOL 11; tests.
 6. **Measurements,** notes, playtest questions.
@@ -431,4 +431,61 @@ the machine is faster today.
 
 **Changed from the plan:** getting out with no shore beside the boat puts you in the water (to swim). The
 plan didn't say.
+
+## Step 4: the map (2026-11-20)
+
+**What's in:**
+- **`survival/map.ts`** (`WorldMap`, pure):
+  - a tile of 16 × 16 pixels per explored column, each pixel 2 × 2 blocks;
+  - each pixel holds its top block, and a shade: land lower than, level with or higher than the pixel north
+    (so hills show), water deep (6+), middling (3–5) or shallow;
+  - `tileOf` takes a tile from the loaded column, finding each top by skipping all-air chunks;
+  - `explore`: the loaded columns within 4 chunks of the player not yet explored (or edited since),
+    nearest first, two a frame;
+  - `touch`: an edit's column taken again when next near;
+  - `paint`: any window at any scale into RGBA, the top block's colour by its shade, unexplored land
+    parchment;
+  - saved in the record's `map`, each tile run-length encoded as base 64, cleaned on load.
+- **Items and recipes:** paper, 3 from 3 reeds; a map from 8 paper and a copper; pictures of a sheet and of
+  a map.
+- **`render/mapView.ts`:**
+  - holding a map (survival), a panel in the bottom right: 256 × 256 blocks round you, 2 a pixel, north
+    up, you an arrow the way you look, painted four times a second;
+  - **N** opens the map full screen (in creative always, in survival with a map in the inventory):
+    zoomed with the wheel (half a block to 8 blocks a pixel, a block to start), dragged about, closed with
+    N, Esc or a click outside. The world goes on while it's open, as with the inventory.
+- **The game** explores round the player each frame, touches the tile of every edit's column, and saves the
+  map with the record. A guest's map is their own for the visit, not saved.
+- **`?kit`** also gives rails, powered rails, a cart, a chest cart, a boat, reeds and a map.
+- **Keys help:** N map, M mute.
+- **Tests (5 new, 1 updated):**
+  - a tile's top blocks and shades (a platform, a step, a shallow and a deep pool, the top row against the
+    column north, a generated column against its tops);
+  - exploring nearest first, a few at a time, only loaded columns, and again after an edit;
+  - painting explored land by shade and the rest parchment;
+  - saving and loading tile for tile, small, junk left out;
+  - the recipes.
+  - Updated: the item test's last item.
+
+**Measured** (bench `map`, the 289 columns round the origin):
+- 0.43 ms a tile under Vitest, so two a frame cost under a millisecond while exploring;
+- saved 229 bytes a tile: 65 KB for the 289, about 224 KB for 1000 columns;
+- the 289 saved in 1.9 ms and loaded in 3.6 ms.
+
+**In the browser** (`?seed=20261022&survival&kit&nolock`):
+- N after a few seconds: 81 columns explored; the coast, the sea darker where deeper, the beach, grass
+  dotted with trees, a snowy slope, a camp's planks; zoomed in with the wheel;
+- the map moved to the hotbar and held: the panel in the corner, the arrow at the player;
+- the inventory with the kit's rails, carts, boat, reeds and map, each with its picture;
+- no console errors.
+- **Found there:**
+  - the full-screen map started at 2 blocks a pixel, the explored land a small patch in the middle; it
+    starts at 1 now;
+  - the hotbar showed over the map's backdrop, so the map has a z-index now.
+
+**Changed from the plan:**
+- **N, not M,** opens the map: M already mutes.
+- **A guest's map** lasts the visit, not saved by name as the plan had it: a map is hundreds of KB, too
+  much to keep for every guest in the host's record. It could come later.
+- **Rails, carts, a boat and a map in `?kit`,** for trying them.
 

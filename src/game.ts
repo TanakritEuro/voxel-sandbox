@@ -55,6 +55,8 @@ import { surfaceAt, waterOnRay } from './vehicles/boat';
 import { type RiderInput, VehicleManager } from './vehicles/manager';
 import { rideable, seatHeight, type Vehicle, VehicleKind } from './vehicles/vehicle';
 import { VehicleRenderer } from './render/vehicleRenderer';
+import { MapView } from './render/mapView';
+import { WorldMap } from './survival/map';
 import { KINDS, MobKind } from './mobs/kinds';
 import { type MobSound, MobManager } from './mobs/mobs';
 import { BlockCache } from './mobs/blockCache';
@@ -216,7 +218,7 @@ let dead = false;
 if (unsaved && !guest && params.has('kit')) {
   for (const item of [Item.StonePick, Item.WoodAxe, Item.IronSpade, Block.Torch, Block.Planks, Item.WoodPick, Item.IronPick, Item.StoneAxe, Item.WoodSpade])
     pack.add(item, isBlockItem(item) ? 16 : 1);
-  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6], [Item.Seeds, 16], [Item.Wheat, 6], [Item.Moss, 3], [Block.Bed, 1]] as const) pack.add(item, n);
+  for (const [item, n] of [[Block.Wood, 12], [Block.Sand, 20], [Block.Stone, 30], [Item.Coal, 10], [Item.Copper, 12], [Item.Iron, 8], [Item.Crystal, 3], [Item.Stick, 6], [Block.Furnace, 1], [Item.RawCopper, 6], [Item.RawIron, 6], [Item.RawMeat, 4], [Item.Berries, 6], [Item.Seeds, 16], [Item.Wheat, 6], [Item.Moss, 3], [Block.Bed, 1], [Block.Rail, 32], [Block.PoweredRail, 6], [Item.Cart, 1], [Item.ChestCart, 1], [Item.Boat, 1], [Block.Reeds, 9], [Item.Map, 1]] as const) pack.add(item, n);
   // A little hungry, to try eating at once.
   health.hunger = 12;
 }
@@ -268,6 +270,12 @@ let mobsRead = performance.now();
 const vehicles = guest ? null : new VehicleManager(world);
 vehicles?.load(record.vehicles);
 const vehicleView = new VehicleRenderer(TUNING.vehicles.most);
+// The world's map (`survival/map.ts`), filled in round the player as they go; a guest's is their own
+// for the visit.
+const worldMap = guest ? new WorldMap() : WorldMap.from(record.map);
+const mapView = new MapView(hotbarEl.parentElement!, worldMap, () => input.lock());
+/** May the map be opened full screen: in creative always, in survival with a map in the inventory. */
+const hasMap = () => !survival || pack.slots.some((s) => s?.item === Item.Map);
 scene.add(vehicleView.group);
 renderer.compile(vehicleView.group, camera);
 
@@ -853,7 +861,7 @@ function closeToFriends(): void {
  * inventory screen or the picker leaves it going, so a furnace burns as you watch, and playing
  * together it never stops.
  */
-const worldRuns = () => !paused() || host !== null || guest !== null || backpack.open || inventory.open;
+const worldRuns = () => !paused() || host !== null || guest !== null || backpack.open || inventory.open || mapView.open;
 /** Arm swings so far (digging hits, breaks, places), for the others to see. */
 let swings = 0;
 let lastStateSent = Number.NEGATIVE_INFINITY;
@@ -1527,6 +1535,7 @@ function modeMenu(panel: HTMLElement, refresh: () => void): void {
  * too (`share`; not when it's a guest's edit, which the session shares as theirs).
  */
 function edit(x: number, y: number, z: number, block: Block, share = true): void {
+  worldMap.touch(toChunk(x), toChunk(z));
   const t0 = performance.now();
   const stale = world.setBlock(x, y, z, block);
   if (stale.length) saver.edited(world.getChunk(toChunk(x), toChunk(y), toChunk(z))!);
@@ -1799,6 +1808,14 @@ window.addEventListener('keydown', (e) => {
   } else if (e.code === 'Escape') {
     if (inventory.open) closeInventory();
     if (backpack.open) closeBackpack();
+    mapView.close();
+  } else if (e.code === 'KeyN') {
+    // N opens the map full screen (in survival, with a map about you) and closes it.
+    if (mapView.open) mapView.close();
+    else if (input.locked && !dead && hasMap()) {
+      mapView.show();
+      input.unlock();
+    }
   }
   const n = Number(e.key);
   if (n >= 1 && n <= hotbar.length) {
@@ -1875,7 +1892,7 @@ function togetherMenu(panel: HTMLElement, refresh: () => void): void {
 applySettings(settings);
 const paused = () => !input.locked && !autofly;
 // The picker frees the mouse too, without the pause menu.
-const showPause = () => (pauseMenu.visible = paused() && !inventory.open && !backpack.open && !dead);
+const showPause = () => (pauseMenu.visible = paused() && !inventory.open && !backpack.open && !mapView.open && !dead);
 document.addEventListener('pointerlockchange', showPause);
 showPause();
 
@@ -2087,6 +2104,9 @@ function frame(now: number): void {
     mobView.update(guest.mobs, world, daylightNow, now / 1000);
   }
   if (vehicles) vehicleView.update(vehicles, world, daylightNow, now / 1000);
+  // The map fills in round the player (a couple of columns a frame), and shows while held or opened.
+  if (!player.waiting) worldMap.explore(world, player.body.x, player.body.z);
+  mapView.update(dt, survival && !dead && pack.slots[selected]?.item === Item.Map, player.body.x, player.body.z, input.yaw);
   // Animals courting show it: hearts over them now and then.
   if (worldRuns() && (untilLoveHearts -= dt) <= 0) {
     untilLoveHearts = 1.2;
@@ -2182,6 +2202,7 @@ function saveRecord(): Promise<void> {
   // Kept animals, here and stored (with mobs off, as they were).
   if (mobs) record.animals = mobs.keptRecords();
   if (vehicles) record.vehicles = vehicles.records();
+  record.map = worldMap.toJSON();
   return saver.saveRecord(playerState(), time);
 }
 

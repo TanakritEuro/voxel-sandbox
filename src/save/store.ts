@@ -60,6 +60,8 @@ export interface WorldRecord {
   animals?: unknown[];
   /** Vehicles (Milestone 18): carts, here and in unloaded columns (`VehicleManager.records`). */
   vehicles?: unknown[];
+  /** The world's map (Milestone 18): explored columns' tiles (`WorldMap.toJSON`). */
+  map?: unknown;
 }
 
 /** A chunk's place and its RLE-encoded blocks. */

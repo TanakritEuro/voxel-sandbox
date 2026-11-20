@@ -37,6 +37,8 @@ const GRAIN = palette(0xd8b54a, 0x8a6a1e, 0xf6e08a);
 const CRUST = palette(0xc0803a, 0x7a4a1c, 0xe8b46a);
 const MOSS = palette(0x5f8f3a, 0x35552a, 0x9cc46a);
 const CART_IRON = palette(0x9a9ea4, 0x55595e, 0xd0d4d8);
+const PAPER = palette(0xece4cc, 0xb8ad8e, 0xfffaf0);
+const MAP_INK = palette(0xd8c9a3, 0x6b5a3a, 0x7fa860);
 const CHEST_WOOD = palette(0x9a6a3a, 0x5a3a1e, 0xc89058);
 
 // Masks, row 0 at the top: '.' empty, m/d/l the material's main, dark and light, h a handle.
@@ -242,6 +244,44 @@ const BOAT = [
   '................',
   '................',
 ];
+/** A sheet of paper, its corner turned. */
+const SHEET = [
+  '................',
+  '..mmmmmmmmmd....',
+  '..mllllllllmd...',
+  '..mllllllllmmd..',
+  '..mlllllllllmd..',
+  '..mlllllllllld..',
+  '..mlllllllllld..',
+  '..mlllllllllld..',
+  '..mlllllllllld..',
+  '..mlllllllllld..',
+  '..mlllllllllld..',
+  '..mlllllllllld..',
+  '..mlllllllllld..',
+  '..mlllllllllld..',
+  '..dddddddddddd..',
+  '................',
+];
+/** A map: parchment with a green coast and an ink line on it, a dark edge. */
+const MAP = [
+  '................',
+  '.dddddddddddddd.',
+  '.dmmmmmmmllmmmd.',
+  '.dmmmmmmllllmmd.',
+  '.dmmmmmlllllmmd.',
+  '.dmmdmmmllllmmd.',
+  '.dmmmdmmmlllmmd.',
+  '.dmmmmdmmmllmmd.',
+  '.dmmmmmdmmmlmmd.',
+  '.dmmmmmmddmmmmd.',
+  '.dmmllmmmmdmmmd.',
+  '.dmllllmmmmdmmd.',
+  '.dmlllllmmmmdmd.',
+  '.dmmmmmmmmmmmmd.',
+  '.dddddddddddddd.',
+  '................',
+];
 /** A soft tuft, ragged at the edges. */
 const TUFT = [
   '................',
@@ -352,6 +392,8 @@ const ART: Record<number, [string[], Palette]> = {
   [Item.Cart]: [CART, CART_IRON],
   [Item.ChestCart]: [CHEST_CART, CHEST_WOOD],
   [Item.Boat]: [BOAT, WOOD],
+  [Item.Paper]: [SHEET, PAPER],
+  [Item.Map]: [MAP, MAP_INK],
 };
 
 /** Item `item`'s picture: 16 × 16 RGBA, row 0 at the top, transparent where empty; null for a block (it has its own icon). */

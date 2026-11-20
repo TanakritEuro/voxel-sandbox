@@ -44,6 +44,8 @@ export const RECIPES: readonly Recipe[] = [
   r(Item.Cart, 1, [Item.Iron, 5]),
   r(Item.ChestCart, 1, [Item.Cart, 1], [Block.Chest, 1]),
   r(Item.Boat, 1, [Block.Planks, 5]),
+  r(Item.Paper, 3, [Block.Reeds, 3]),
+  r(Item.Map, 1, [Item.Paper, 8], [Item.Copper, 1]),
   r(Block.Pane, 16, [Block.Glass, 6]),
   r(Block.Sandstone, 1, [Block.Sand, 4]),
   r(Block.Lamp, 1, [Block.Glass, 4], [Item.Crystal, 1]),

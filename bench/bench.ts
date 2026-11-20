@@ -33,6 +33,7 @@ import { wakeColumn, WaterFlow } from '../src/world/water';
 import { LogicFlow } from '../src/world/logic';
 import { GroundItems } from '../src/survival/ground';
 import { CHEST_SLOTS, Chests } from '../src/survival/chest';
+import { WorldMap } from '../src/survival/map';
 import { Crops } from '../src/survival/farming';
 import { FUEL, Furnaces, INPUT } from '../src/survival/furnace';
 import { ALL_ITEMS, Item } from '../src/survival/items';
@@ -813,6 +814,41 @@ it('delvers', () => {
   const delvers = m.mobs.filter((x) => x.kind === MobKind.Delver).length;
   console.log(
     `\ndelvers: ${delvers} delvers and ${m.mobs.length - delvers} gloamers in a room under the spawn round a player (${hunting} hunting at most), 10 s: ${hits} hits on the player, ${m.searches - searches} path searches; ms a frame median ${median(times).toFixed(3)}, p95 ${percentile(times, 0.95).toFixed(3)}, max ${Math.max(...times).toFixed(3)}\n`,
+  );
+});
+
+it('map', () => {
+  // The world's map (Milestone 18): a tile for each of the 17 x 17 columns round the origin, as
+  // exploring takes them (ms a tile), then saved as the record does and loaded back (ms, and the size
+  // of the saved tiles, for the 289 and as it would be for 1000).
+  const world = new World(SEED);
+  for (let cz = -RADIUS; cz <= RADIUS; cz++) for (let cx = -RADIUS; cx <= RADIUS; cx++) world.ensureColumn(cx, cz);
+  const times: number[] = [];
+  let map = new WorldMap();
+  for (let run = 0; run <= RUNS; run++) {
+    map = new WorldMap();
+    const t0 = performance.now();
+    while (map.explore(world, 0, 0, RADIUS, 1000) > 0);
+    if (run > 0) times.push((performance.now() - t0) / map.size);
+  }
+  const out: number[] = [];
+  const back: number[] = [];
+  let bytes = 0;
+  for (let run = 0; run <= RUNS; run++) {
+    const t0 = performance.now();
+    const json = JSON.stringify(map.toJSON());
+    const t1 = performance.now();
+    WorldMap.from(JSON.parse(json));
+    const t2 = performance.now();
+    bytes = json.length;
+    if (run > 0) {
+      out.push(t1 - t0);
+      back.push(t2 - t1);
+    }
+  }
+  console.log(
+    `\nmap: ${map.size} tiles, ${median(times).toFixed(3)} ms a tile; saved ${(bytes / 1024).toFixed(1)} KB (${(bytes / map.size).toFixed(0)} bytes a tile, ` +
+      `${((bytes / map.size) * 1000 / 1024).toFixed(0)} KB for 1000) in ${median(out).toFixed(2)} ms, loaded in ${median(back).toFixed(2)} ms\n`,
   );
 });
 
