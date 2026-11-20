@@ -18,13 +18,15 @@
 // 6. Doors round anything touched or changed open while a signal reaches either half (as a lamp's
 //    would) and shut when it goes. A door is set only when its signal changes (each door's last is
 //    kept), so a hand's click lasts until then. One seen for the first time opens if it has a signal.
+// 7. Powered rails round anything touched or changed are on while a lamp there would be lit
+//    (Milestone 18).
 //
 // A tick's changes go into an overlay that its own reads see, and are returned for the caller to
 // make (as the water's are). At most `budget` woken blocks a tick, oldest first; the rest wait.
 // Unloaded land is nothing.
 
 import { TUNING } from '../config';
-import { Block, delay, door, doorOf, FACINGS, gateOf, inverter, wire, wirePower } from './blocks';
+import { Block, delay, door, doorOf, FACINGS, gateOf, inverter, POWERED_SHAPES, poweredRail, railOf, wire, wirePower } from './blocks';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, WORLD_HEIGHT } from './coords';
 import type { BlockSource } from './physics';
 import { wakeColumnBlocks } from './wake';
@@ -59,6 +61,8 @@ const isLamp = (b: Block) => b === Block.SignalLamp || b === Block.SignalLampOn;
 /** Logic blocks, by id. */
 const LOGIC = new Uint8Array(256);
 for (let b = Block.Wire; b <= Block.Delay + 31; b++) LOGIC[b] = 1;
+// Powered rails take signals as lamps do.
+for (let b = Block.PoweredRail; b < Block.PoweredRail + POWERED_SHAPES * 2; b++) LOGIC[b] = 1;
 
 /** Is `b` a logic block (any of them, in any state)? */
 export const isLogic = (b: Block): boolean => LOGIC[b] === 1;
@@ -161,6 +165,10 @@ export class LogicFlow {
           if (lit !== (b === Block.SignalLampOn)) this.set(p, lit ? Block.SignalLampOn : Block.SignalLamp);
         } else if (DOOR[b]) {
           this.door(p, b);
+        } else if (b >= Block.PoweredRail && b < Block.PoweredRail + POWERED_SHAPES * 2) {
+          const r = railOf(b)!;
+          const lit = this.lampLit(p);
+          if (lit !== r.on) this.set(p, poweredRail(r.shape, lit));
         } else if (b === Block.ButtonOn) {
           if (!this.releases.has(p)) this.releases.set(p, n + TUNING.logic.buttonTicks);
         } else {

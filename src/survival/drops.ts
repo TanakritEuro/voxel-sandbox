@@ -4,7 +4,7 @@
 // sticks come from a roll the caller makes (seeded, so a test can say what drops). Pure.
 
 import { TUNING } from '../config';
-import { bedOf, Block, BLOCKS, chestOf, doorOf, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, SHAPE_MATERIALS, slab, slabOf, stairs, stairsOf, wheatStage, wirePower } from '../world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, doorOf, furnace, furnaceOf, gateOf, isTorch, PLACEABLE, POWERED_SHAPES, railOf, SHAPE_MATERIALS, slab, slabOf, stairs, stairsOf, wheatStage, wirePower } from '../world/blocks';
 import type { Cost } from './inventory';
 import { Item, type Tool, type ToolKind } from './items';
 
@@ -16,6 +16,8 @@ for (const b of [Block.Wood, Block.SpruceWood, Block.ParasolWood, Block.Planks])
 // Chests, doors and beds: wood.
 for (let b = Block.Chest; b < Block.Farmland; b++) RIGHT_TOOL.set(b as Block, 'axe');
 RIGHT_TOOL.set(Block.Fence, 'axe');
+// Rails: a pick, any tier (no pick tier needed to get them back).
+for (let b = Block.Rail; b < Block.PoweredRail + POWERED_SHAPES * 2; b++) RIGHT_TOOL.set(b as Block, 'pick');
 for (const b of [Block.Dirt, Block.Grass, Block.DryGrass, Block.Mud, Block.Sand, Block.Gravel, Block.Snow, Block.SnowyGrass, Block.Farmland]) RIGHT_TOOL.set(b, 'spade');
 
 // Slabs and stairs dig as their material does.
@@ -104,6 +106,9 @@ export function dropsOf(block: Block, tool: Tool | undefined, roll: number): Cos
   if (given !== undefined) return [[given, 1]];
   if (isTorch(block)) return [[Block.Torch, 1]];
   if (wirePower(block) >= 0) return [[Block.Wire, 1]];
+  // A rail of any shape gives the rail as the picker has it.
+  const rl = railOf(block);
+  if (rl) return [[rl.powered ? Block.PoweredRail : Block.Rail, 1]];
   const gate = gateOf(block);
   if (gate) return [[gate.kind === 'inverter' ? Block.Inverter : Block.Delay, 1]];
   if (furnaceOf(block)) return [[Block.Furnace, 1]];

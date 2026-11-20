@@ -65,7 +65,8 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { bedOf, Block, BLOCKS, chestOf, furnace, furnaceOf, hotbarFrom, slab, stairs, wheat, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { railPlacement } from './world/rails';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
 import { blockBoxes, isShape, shapePlacement } from './world/shapes';
@@ -275,6 +276,62 @@ function scatter(n: number, x: number, z: number): void {
     while (y > 1 && BLOCKS[world.getBlock(gx, y - 1, gz)].passable) y--;
     ground.drop(gx + 0.5, y + 4, gz + 0.5, { item: kinds[i % kinds.length], count: 1 }, Math.random() - 0.5, 2, Math.random() - 0.5);
   }
+}
+
+/** `?railway`: a loop of rails round the player once the ground is there (for measuring). */
+let railwayParam = params.has('railway');
+
+/**
+ * A loop of rails 40 x 20 blocks round (x, z), about 116 rails, on a bed of stone a block above the
+ * highest ground under it (air cleared two blocks over the rails): a hump two blocks high on the near
+ * side, sloped up and down; on the far side ten powered rails with a wire beside them and a switch,
+ * on. Laid one rail at a time as a player would (`railPlacement`), then made at once.
+ */
+function buildRailway(x: number, z: number): void {
+  const x0 = Math.floor(x) - 20;
+  const z0 = Math.floor(z) - 10;
+  const x1 = x0 + 39;
+  const z1 = z0 + 19;
+  const path: [number, number][] = [];
+  for (let gx = x0; gx < x1; gx++) path.push([gx, z0]);
+  for (let gz = z0; gz < z1; gz++) path.push([x1, gz]);
+  for (let gx = x1; gx > x0; gx--) path.push([gx, z1]);
+  for (let gz = z1; gz > z0; gz--) path.push([x0, gz]);
+  const top = (gx: number, gz: number) => {
+    let y = 200;
+    while (y > 1 && BLOCKS[world.getBlock(gx, y, gz)].passable) y--;
+    return y;
+  };
+  const bed = Math.min(200, Math.max(...path.map(([gx, gz]) => top(gx, gz)), ...path.map(([gx, gz]) => top(gx, gz + (gz === z1 ? 1 : 0)))) + 1);
+  // What's been set so far, read before the world.
+  const set = new Map<string, Block>();
+  const at = (gx: number, gy: number, gz: number) => set.get(`${gx},${gy},${gz}`) ?? world.getBlock(gx, gy, gz);
+  const put = (gx: number, gy: number, gz: number, b: Block) => set.set(`${gx},${gy},${gz}`, b);
+  const overlay = { getBlock: at };
+  // The hump: x0 + 12 to x0 + 18 on the near side a block up, x0 + 14 to x0 + 16 two.
+  const lift = (gx: number, gz: number) => (gz !== z0 ? 0 : gx >= x0 + 14 && gx <= x0 + 16 ? 2 : gx >= x0 + 12 && gx <= x0 + 18 ? 1 : 0);
+  for (const [gx, gz] of path) {
+    const h = bed + lift(gx, gz);
+    for (let gy = bed; gy <= h; gy++) put(gx, gy, gz, Block.Stone);
+    for (let gy = h + 1; gy <= h + 3; gy++) put(gx, gy, gz, Block.Air);
+  }
+  // Powered rails on the far side, the wire beside them on its own bed, and a switch, on.
+  const powered = (gx: number, gz: number) => gz === z1 && gx >= x0 + 15 && gx < x0 + 25;
+  for (let gx = x0 + 14; gx <= x0 + 25; gx++) {
+    put(gx, bed, z1 + 1, Block.Stone);
+    put(gx, bed + 1, z1 + 1, gx === x0 + 14 ? Block.SwitchOn : wire(0));
+  }
+  for (const [gx, gz] of path) {
+    const y = bed + lift(gx, gz) + 1;
+    for (const [px, py, pz, pb] of railPlacement(overlay, gx, y, gz, powered(gx, gz) ? Block.PoweredRail : Block.Rail, 0)) put(px, py, pz, pb);
+  }
+  const changes: [number, number, number, Block][] = [];
+  for (const [k, b] of set) {
+    const [gx, gy, gz] = k.split(',').map(Number);
+    changes.push([gx, gy, gz, b]);
+  }
+  applyChanges(changes);
+  for (const [gx, gy, gz, b] of changes) if (isLogic(b)) logic.wake(gx, gy, gz);
 }
 
 /** `?farm`: a field of wheat round the player once the ground is there (for measuring). */
@@ -1530,6 +1587,18 @@ function place(target: RayHit): void {
     }
     return;
   }
+  if (railOf(selectedBlock)) {
+    // A rail on a top, in air, on something solid: joined to the rails beside it (which may turn to it).
+    if (target.ny <= 0 || !BLOCKS[world.getBlock(target.x, target.y, target.z)].opaque || world.getBlock(x, y, z) !== Block.Air) return;
+    for (const [px, py, pz, pb] of railPlacement(world, x, y, z, selectedBlock, facingFromYaw(input.yaw))) edit(px, py, pz, pb);
+    sound.play({ name: 'place', material: BLOCKS[selectedBlock].sound, gain: 1 });
+    swing();
+    if (survival) {
+      pack.takeOne(selected);
+      renderHotbar();
+    }
+    return;
+  }
   if (isShape(selectedBlock)) {
     // A slab in the half clicked (or made whole), stairs the way the player looks.
     const placed = shapePlacement(world, selectedBlock, target, input.yaw);
@@ -1739,6 +1808,10 @@ function frame(now: number): void {
   if (farmParam && !player.waiting && !guest) {
     plantField(player.body.x, player.body.z);
     farmParam = false;
+  }
+  if (railwayParam && !player.waiting && !guest) {
+    buildRailway(player.body.x, player.body.z);
+    railwayParam = false;
   }
   if (shapesParam && !player.waiting && !guest) {
     buildShapes(player.body.x, player.body.z);

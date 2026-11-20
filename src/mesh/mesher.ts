@@ -39,8 +39,9 @@
 // up is an edit, which remeshes the chunk. Far chunks (`flatFaces`) are one group.
 
 import { TUNING } from '../config';
-import { bedOf, Block, BLOCKS, FACINGS, gateOf } from '../world/blocks';
+import { bedOf, Block, BLOCKS, FACINGS, gateOf, railOf } from '../world/blocks';
 import { CHUNK_SIZE } from '../world/coords';
+import { RAIL_RISE } from '../world/rails';
 import { connectedBoxes, joins } from '../world/shapes';
 import { textureLayer } from '../world/textures';
 import { NO_REGION, regionMap } from '../world/visibility';
@@ -84,6 +85,8 @@ const WALL_X = new Int8Array(256);
 const WALL_Z = new Int8Array(256);
 /** Which shape (0 cube, 1 torch, 2 wire, 3 switch, 4 button, 5 plate); a switch or button on; a gate's facing. */
 const SHAPE = new Uint8Array(256);
+/** A rail's shape (`world/rails.ts`). */
+const RAIL_SHAPE = new Uint8Array(256);
 const ON = new Uint8Array(256);
 const FACE_X = new Int8Array(256);
 const FACE_Z = new Int8Array(256);
@@ -107,7 +110,9 @@ BLOCKS.forEach((info, b) => {
   TRANSPARENT[b] = info.transparent ? 1 : 0;
   CUTOUT[b] = info.cutout ? 1 : 0;
   SHAPED[b] = info.shape !== 'cube' ? 1 : 0;
-  SHAPE[b] = ['cube', 'torch', 'wire', 'switch', 'button', 'plate', 'panel', 'slab', 'cross'].indexOf(info.shape);
+  SHAPE[b] = ['cube', 'torch', 'wire', 'switch', 'button', 'plate', 'panel', 'slab', 'cross', 'rail'].indexOf(info.shape);
+  const r = railOf(b);
+  if (r) RAIL_SHAPE[b] = r.shape;
   ON[b] = b === Block.SwitchOn || b === Block.ButtonOn ? 1 : 0;
   const gate = gateOf(b);
   if (gate) [FACE_X[b], FACE_Z[b]] = FACINGS[gate.facing];
@@ -409,7 +414,16 @@ export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number
     if (g === NONE) continue;
     opaque.group = cutout.group = transparent.group = g;
     const shape = SHAPE[padded[i]];
-    quads += shape === 1 ? torch(padded, light, i, origin) : shape <= 5 ? logicShape(padded, light, i, origin) : shape === 8 ? cross(padded, light, i, origin) : piece(padded, light, i, origin);
+    quads +=
+      shape === 1
+        ? torch(padded, light, i, origin)
+        : shape <= 5
+          ? logicShape(padded, light, i, origin)
+          : shape === 8
+            ? cross(padded, light, i, origin)
+            : shape === 9
+              ? railSheet(padded, light, i, origin)
+              : piece(padded, light, i, origin);
   }
   for (const i of liquids) quads += water(padded, light, i, origin);
   for (let n = 0; n < steps.length; n += 2) {
@@ -712,6 +726,57 @@ function cross(padded: Uint8Array, light: Uint8Array, i: number, origin: number[
     }
   }
   return 4;
+}
+
+/**
+ * Quarter turns of a rail's texture by shape: straight rails run up the image, a curve from its bottom
+ * edge to its right. Unturned, the image's right is +x and its bottom -z (the shader reads v upwards,
+ * image rows downwards), so the unturned curve joins -z and +x.
+ */
+const RAIL_TURN = [0, 1, 1, 1, 0, 0, 3, 2, 1, 0];
+/** A rail's height above its block's floor. */
+const RAIL_LIFT = 1 / 16;
+/** The corners of a rail's sheet on (x, z), counter-clockwise seen from above. */
+const RAIL_CORNERS = [
+  [0, 0],
+  [0, 1],
+  [1, 1],
+  [1, 0],
+] as const;
+
+/**
+ * A rail at padded index i: one sheet in the cutout pass, a sixteenth over the block's floor, or
+ * slanting up to the next block's for a slope (seen from under it too); the whole texture across
+ * it, turned to the shape. Lit flat by its own block's light. Returns the quads made.
+ */
+function railSheet(padded: Uint8Array, light: Uint8Array, i: number, origin: number[]): number {
+  const b = padded[i];
+  const x = origin[0] + (i % P) - 1;
+  const y = origin[1] + Math.floor(i / (P * P)) - 1;
+  const z = origin[2] + (Math.floor(i / P) % P) - 1;
+  const l = light[i];
+  const sun = (l >> 4) * 17;
+  const glow = Math.max((l & 15) * 17, GLOW[b]);
+  const layer = LAYER[b * 6 + 2];
+  const shade = SHADED[2 * 4 + 3];
+  const shape = RAIL_SHAPE[b];
+  const turn = RAIL_TURN[shape];
+  const rise = RAIL_RISE[shape];
+  const [rx, rz] = rise >= 0 ? FACINGS[rise] : [0, 0];
+  const sides = rise >= 0 ? 2 : 1;
+  for (let side = 0; side < sides; side++) {
+    cutout.reserve(1);
+    for (let k = 0; k < 4; k++) {
+      // From under a slope: the same corners the other way round.
+      const [cx, cz] = RAIL_CORNERS[side ? 3 - k : k];
+      const up = rx > 0 ? cx : rx < 0 ? 1 - cx : rz > 0 ? cz : rz < 0 ? 1 - cz : 0;
+      const u = turn === 0 ? cx : turn === 1 ? 1 - cz : turn === 2 ? 1 - cx : cz;
+      const v = turn === 0 ? cz : turn === 1 ? cx : turn === 2 ? 1 - cz : 1 - cx;
+      cutout.vertex(x + cx, y + RAIL_LIFT + up, z + cz, shade, sun, glow, u, v, layer);
+    }
+    cutout.quad();
+  }
+  return sides;
 }
 
 /** Wheat's two sheets, a little in from the corners. */

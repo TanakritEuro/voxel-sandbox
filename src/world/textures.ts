@@ -95,6 +95,10 @@ export const TEXTURE_NAMES = [
   'parasol_leaves',
   'stone_bricks',
   'mossy_bricks',
+  'rail',
+  'rail_curve',
+  'powered_rail',
+  'powered_rail_on',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -619,6 +623,10 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
       }
   },
   stone_bricks: (c) => bricks(c),
+  rail: (c) => rails(c, IRON_RAIL, null),
+  rail_curve: (c) => curvedRails(c),
+  powered_rail: (c) => rails(c, COPPER, hex(0x5a2a1a)),
+  powered_rail_on: (c) => rails(c, COPPER, hex(0xff5a2a)),
   mossy_bricks(c) {
     bricks(c);
     // Moss creeping over the bricks, thickest along the joints.
@@ -709,6 +717,42 @@ function wheatStage(c: Canvas, stage: number): void {
     // Ears at the tips from stage 4.
     if (stage >= 4) for (let k = 0; k < 3; k++) c.set(x + (k % 2 ? 1 : 0), 15 - h + k, stage === 7 ? hex(0xe8c860) : hex(0xb5b450), 1 + (c.rng() - 0.5) * 0.12);
   }
+}
+
+const IRON_RAIL = hex(0x9a9ea4);
+const SLEEPER = hex(0x6b4a2b);
+
+/**
+ * Rails along the image's columns (up and down it), two of them 2 pixels in from each side, over
+ * wooden sleepers across it every 4 rows; clear between. A powered rail's have a strip down the
+ * middle, dark off and glowing on.
+ */
+function rails(c: Canvas, metal: RGB, strip: RGB | null): void {
+  for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, SLEEPER, 1, 0);
+  for (let y = 0; y < TEXTURE_SIZE; y++) {
+    if (y % 4 === 1 || y % 4 === 2) for (let x = 1; x < 15; x++) c.set(x, y, SLEEPER, 1 + (c.rng() - 0.5) * 0.2);
+    for (const x of [2, 3, 12, 13]) c.set(x, y, metal, (x === 2 || x === 12 ? 1.12 : 0.9) * (1 + (c.rng() - 0.5) * 0.08));
+    if (strip) for (const x of [7, 8]) c.set(x, y, strip, 1 + (c.rng() - 0.5) * 0.1);
+  }
+}
+
+/**
+ * Rails curving a quarter turn from the image's bottom edge to its right edge, about its bottom right
+ * corner, on sleepers laid across the curve; clear elsewhere.
+ */
+function curvedRails(c: Canvas): void {
+  for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) c.set(x, y, SLEEPER, 1, 0);
+  for (let y = 0; y < TEXTURE_SIZE; y++)
+    for (let x = 0; x < TEXTURE_SIZE; x++) {
+      // Distance from the bottom right corner's outside (16, 16), and the angle round it.
+      const r = Math.hypot(16 - (x + 0.5), 16 - (y + 0.5));
+      const a = Math.atan2(16 - (y + 0.5), 16 - (x + 0.5));
+      // Four sleepers round the quarter turn, each across the rails.
+      const along = (a / (Math.PI / 2)) * 4;
+      const sleeper = r > 2 && r < 15 && Math.abs((along % 1) - 0.5) < 0.22;
+      if (sleeper) c.set(x, y, SLEEPER, 1 + (c.rng() - 0.5) * 0.2);
+      if ((r >= 3 && r < 5) || (r >= 12 && r < 14)) c.set(x, y, IRON_RAIL, (r < 4 || (r >= 12 && r < 13) ? 1.12 : 0.9) * (1 + (c.rng() - 0.5) * 0.08));
+    }
 }
 
 /** Stone bricks: courses 4 high, joints offset course to course, mortar darker. */

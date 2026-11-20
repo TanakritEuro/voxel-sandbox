@@ -90,9 +90,20 @@ export enum Block {
   /** Ruins' walls (and crafted from stone). */
   StoneBricks = 180,
   MossyBricks = 181,
+  /**
+   * Getting about (Milestone 18). Rails by shape (182–191: `rail`, `railOf`, `world/rails.ts`): straight
+   * along z and x, four slopes, four curves.
+   */
+  Rail = 182,
+  /** Powered rails by shape (straight and sloped only), off and on (192–203): `poweredRail`, `railOf`. */
+  PoweredRail = 192,
 }
 
 type RGB = [number, number, number];
+
+/** Rail shapes (`world/rails.ts`): 0–1 straight, 2–5 slopes, 6–9 curves; powered rails have the first six. */
+export const RAIL_SHAPES = 10;
+export const POWERED_SHAPES = 6;
 
 /** A box within a block: (x0, y0, z0, x1, y1, z1), 0–1. */
 export type Box = readonly [number, number, number, number, number, number];
@@ -113,7 +124,7 @@ export interface BlockInfo {
    * wall beside it (`wall`), never merged. Or a thin logic block standing on the block below:
    * wire (a 1/16 sheet), a switch, a button, or a gate's plate (1/8).
    */
-  shape: 'cube' | 'torch' | 'wire' | 'switch' | 'button' | 'plate' | 'panel' | 'slab' | 'cross';
+  shape: 'cube' | 'torch' | 'wire' | 'switch' | 'button' | 'plate' | 'panel' | 'slab' | 'cross' | 'rail';
   /**
    * A fence or a pane: its boxes come from its four neighbours (`connectedBoxes`), a post or a
    * sheet and an arm to each fence (or pane) and whole solid block beside it.
@@ -426,7 +437,18 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
   { ...solid('Parasol leaves', 0.3, faces('parasol_leaves'), 0x6f8f35), opaque: false, cutout: true, lightCost: 1 },
   solid('Stone bricks', 2.5, faces('stone_bricks'), 0x83868a),
   solid('Mossy bricks', 2.5, faces('mossy_bricks'), 0x6f8268),
+  // Rails: a sheet of sleepers and rails lying on the block below (or slanting up a block), walked
+  // through, in the cutout pass. The picker offers the first shape; it joins up as it's placed.
+  ...Array.from({ length: RAIL_SHAPES }, (_, shape) => railBlock('Rail', shape >= 6 ? 'rail_curve' : 'rail', 0x8a7a66, shape === 0, 'rail')),
+  ...Array.from({ length: POWERED_SHAPES }, (_, shape) =>
+    [false, true].map((on) => railBlock('Powered rail', on ? 'powered_rail_on' : 'powered_rail', 0xb87333, shape === 0 && !on, 'powered_rail')),
+  ).flat(),
 ];
+
+/** A rail block of either kind: thin, walked through, in the cutout pass, broken quickly. */
+function railBlock(name: string, texture: TextureName, colour: number, pickable: boolean, icon: TextureName): Omit<BlockInfo, 'sound'> {
+  return { ...solid(name, 0.7, faces(texture), colour), opaque: false, passable: true, shape: 'rail', cutout: true, pickable, icon };
+}
 
 /** Each block's sound; stone (and the ores, sandstone) unless listed. */
 const SOUNDS: Partial<Record<Block, BlockSound>> = {
@@ -610,6 +632,21 @@ export const stairs = (material: number, facing: number, down: boolean): Block =
 export function stairsOf(block: Block): { material: number; facing: number; down: boolean } | null {
   const i = block - Block.Stairs;
   return i >= 0 && i < 24 ? { material: i >> 3, facing: (i >> 1) & 3, down: (i & 1) === 1 } : null;
+}
+
+// --- Rails ------------------------------------------------------------------------------------
+
+/** A plain rail of `shape`. */
+export const rail = (shape: number): Block => (Block.Rail + shape) as Block;
+
+/** A powered rail of `shape` (0–5), off or on. */
+export const poweredRail = (shape: number, on: boolean): Block => (Block.PoweredRail + shape * 2 + (on ? 1 : 0)) as Block;
+
+/** A rail's shape, whether it's powered and whether it's on; null for any other block. */
+export function railOf(block: Block): { shape: number; powered: boolean; on: boolean } | null {
+  if (block >= Block.Rail && block < Block.Rail + RAIL_SHAPES) return { shape: block - Block.Rail, powered: false, on: false };
+  const i = block - Block.PoweredRail;
+  return i >= 0 && i < POWERED_SHAPES * 2 ? { shape: i >> 1, powered: true, on: (i & 1) === 1 } : null;
 }
 
 /** Wheat at `stage` (0 sown, 7 ripe). */

@@ -26,6 +26,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 18 (getting about: boats, rails and carts with powered rails, a map) in progress, plan approved
+(`docs/milestone-18.md`); step 1 (rails) built.
 Milestones 1–17 built (`docs/milestone-1.md` to `docs/milestone-17.md`), waiting for playtests
 (Milestone 17, creatures, part two: the ambler on the savanna and the wader in the swamp; an animal fed its food
 (wheat, seeds or berries) is kept, saved with the world and never despawned, up to 128; kept animals fed again fall
@@ -159,14 +161,17 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   water levels 1–7 and falling water are ids 27–34, never picked; logic blocks 35–97, each state an id, then furnaces 98–105 by facing, out and burning (`furnace`,
   `furnaceOf`; a block's `front` texture on the side it faces), chests 106–109, doors 110–125, beds
   126–133, farmland 134, wheat 135–142, slabs 143–148 and stairs 149–172 in `SHAPE_MATERIALS`, fence 173, glass pane 174 (`connects`: boxes from
-  their neighbours), dry grass 175, mud 176, reeds 177 (crossed sheets), parasol wood and leaves 178–179, stone and mossy bricks 180–181 (`chest`, `door`,
+  their neighbours), dry grass 175, mud 176, reeds 177 (crossed sheets), parasol wood and leaves 178–179, stone and mossy bricks 180–181, rails 182–191 by shape and powered rails 192–203 by
+  shape, off and on (`rail`, `poweredRail`, `railOf`, `RAIL_SHAPES`), `chest`, `door`,
   `doorSide`, `bed`, `wheat`, `slab`, `stairs` and their `…Of`; `boxes`: what a body bumps into when it
   isn't the whole block, a door's panel, a bed's half, a slab, stairs' two):
   `wire`/`wirePower`, `inverter`, `delay`, `gateOf`, `FACINGS`, `facingFromYaw`, `logicPlacement`,
   `useBlock`, `isThinLogic`), textures and sound per face, the default
   hotbar, `PLACEABLE`, `hotbarFrom`; `torchFor` the torch for a face clicked, `torchSupport` (torches,
   thin logic blocks, wheat and a door's lower half)),
-  `torches.ts` (`torchesHeldBy`: the torches, thin logic blocks, wheat and doors a block holds up), `parts.ts` (blocks in pairs: a door's
+  `torches.ts` (`torchesHeldBy`: the torches, thin logic blocks, wheat, doors and rails a block holds up), `rails.ts`
+  (rail shapes' ends and slopes, `RAIL_ENDS`, `RAIL_RISE`, `shapeWith`; `joinedEnds`; `railPlacement`: a rail laid
+  joining the rails beside it, those open turning to it, a slope up to one a block higher; breaking leaves the rest), `parts.ts` (blocks in pairs: a door's
   halves, a bed's; `pairPlacement`, `partnerOf`, `useAt`: a click's blocks, a door's two halves), `shapes.ts`
   (`shapePlacement`: a slab in the half clicked or made whole, stairs the way the player looks; `joins`,
   `joinsAt`, `connectedBoxes`: a fence's post and rails (1.5 high to bump into), a pane's sheet;
@@ -197,7 +202,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   returned for the caller to make; unloaded land a wall; `wakeColumn` when a column loads; pure), `wake.ts` (what moves on its own
   woken when a column loads: in it if saved, on its neighbours' faces), `logic.ts` (logic blocks' signals: `LogicFlow` ticks woken blocks, wire networks worked out
   at once from their sources, lamps lit, gates' outputs queued a tick (inverter) or 1–4 (delay) on,
-  buttons let go, doors opened while signalled (each door's last signal kept, so a click lasts until it changes); changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with boxes hit only where they are, the nearest; the hit point), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
+  buttons let go, powered rails on while signalled as lamps are, doors opened while signalled (each door's last signal kept, so a click lasts until it changes); changes returned for the caller to make; `wakeLogicColumn`, `isLogic`; pure), `raycast.ts` (grid traversal; a block with boxes hit only where they are, the nearest; the hit point), `physics.ts` (a box of any size, the player's by default: swept collision against whole blocks and
   blocks' boxes, every box of a block, fences' and panes' from their neighbours (looked for inside the blocks
   the body is in, and a block lower for a fence's top, only with one about, `nearBox`), walking, jumping,
   stepping up half a block on the ground (`moveStepping`, players and mobs),
@@ -256,7 +261,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   thin logic blocks as boxes (a gate's top turned to its facing), doors' panels, beds, slabs and stairs
   as their boxes, fences and panes (in the transparent pass) as theirs from the padded neighbours (`piece`:
   faces on another of the block's boxes left out, texture cropped to where each face is, in eighths both ways), wheat as two crossed
-  sheets in the cutout pass (`cross`),
+  sheets in the cutout pass (`cross`), rails as one sheet a sixteenth over the floor or slanting up a block, the texture
+  turned to the shape (`railSheet`),
   flowing water block by block at its depth, sides between waters only above the shallower; opaque, cutout (leaves) and transparent passes;
   every quad in the group of the region it's seen from (the chunk's region map worked out from the padded copy), or a border group,
   shapes in their own block's; faces seen only from a pocket left out; `flatFaces` for far chunks, one group), `lod.ts` (far chunks: the padded input coarsened in place into
@@ -366,7 +372,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
-  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?railway` lays a loop of rails 40 x 20 round you
+  on a stone bed (a hump with slopes, ten powered rails with a wire and a switch), `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

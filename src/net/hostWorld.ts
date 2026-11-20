@@ -11,7 +11,7 @@ import { TUNING } from '../config';
 import { encodeRle } from '../save/rle';
 import type { WorldSaver } from '../save/saver';
 import type { SavedChunk } from '../workers/protocol';
-import { bed, Block, BLOCKS, chest, delay, door, FACINGS, furnace, inverter, isTorch, wheat } from '../world/blocks';
+import { bed, Block, BLOCKS, chest, delay, door, FACINGS, furnace, inverter, isTorch, railOf, wheat } from '../world/blocks';
 import { sowable, tillable } from '../survival/farming';
 import { useAt } from '../world/parts';
 import { MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk } from '../world/coords';
@@ -78,7 +78,9 @@ export const settable = (block: number): boolean =>
   (BLOCKS[block] !== undefined && isTorch(block as Block)) ||
   PLACED_GATES.has(block) ||
   block === Block.Farmland ||
-  block === wheat(0);
+  block === wheat(0) ||
+  // Rails as laid (any shape: laying one turns its neighbours); a powered one only off (signals turn it on).
+  (railOf(block as Block) !== null && !railOf(block as Block)!.on);
 
 export function hostWorld(world: World, saver: WorldSaver, game: HostGame): HostWorld {
   return {

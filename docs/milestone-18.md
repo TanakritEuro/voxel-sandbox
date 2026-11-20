@@ -1,6 +1,6 @@
 # Milestone 18: getting about
 
-**Status:** plan, to check (2026-11-20).
+**Status:** plan approved (2026-11-20); step 1 built.
 
 ## Goal
 
@@ -202,7 +202,7 @@ saving and the map are tested headless; how riding feels is left for playtests.
 ## Steps
 
 1. **Rails.** Blocks, shapes from neighbours, meshing flat and sloped, held up, recipes, powered rails
-   with logic; tests.
+   with logic; tests. Done (2026-11-20).
 2. **Carts.** Vehicles, their manager, rail physics, riding, chest carts, drawing, saving; `?railway`;
    tests.
 3. **Boats.** Water physics, rowing, placing on water, drawing; `?boat`; tests.
@@ -228,3 +228,72 @@ saving and the map are tested headless; how riding feels is left for playtests.
    - rails are iron-hungry (6 iron for 16), powered rails need copper;
    - boats are 5 planks;
    - maps are 8 paper (from reeds) and a copper.
+
+## Step 1: rails (2026-11-20)
+
+**What's in:**
+- **Blocks:**
+  - rails 182–191 by shape: straight along z and x, four slopes, four curves (`rail`, `railOf`);
+  - powered rails 192–203: the six straight and sloped shapes, off and on (`poweredRail`).
+  - Each is a sheet, walked through, in the cutout pass, held up by the block under it (broken with
+    it), broken in 0.7 s (a pick is the right tool, any tier).
+  - The picker and inventories have one of each kind; any shape gives that back when broken.
+- **`world/rails.ts`:**
+  - each shape's two ends and the side it rises towards (`RAIL_ENDS`, `RAIL_RISE`, `shapeWith`);
+  - two rails join when each has an end towards the other, level, or with the lower rising to the
+    higher; `joinedEnds`;
+  - `railPlacement`: a rail laid joins the rails beside it (level, a block up, a block down):
+    - those already pointing at it first;
+    - then any that are open (joined at most once), which turn to it, keeping the end they have;
+    - two if it can (straight before curved, curves not for powered rails);
+    - it rises towards one a block up, and one a block down rises to it;
+    - with nothing beside it, it lies the way the player looks.
+  - A straight line or a loop comes out the same in any order it's laid in (tested over 12 and 20
+    orders).
+- **Meshing (`railSheet`):** one quad a sixteenth over the floor, or slanting up a block for a slope (two
+  quads, one seen from under it). The texture is turned to the shape:
+  - straight rails run up the image;
+  - a curve goes from the image's bottom edge to its right.
+- **Textures:** `rail` (grey rails on brown sleepers, clear between), `rail_curve`, `powered_rail` and
+  `powered_rail_on` (copper rails, a strip down the middle, dark off and glowing on).
+- **Logic:** powered rails are on while a lamp in their place would be lit (a powered wire, a source on, a
+  gate on facing in, beside, above or under them). They're logic blocks, so a loaded column wakes them.
+- **Recipes:** 16 rails from 6 iron and a stick; 6 powered rails from 6 iron, a copper and a stick.
+- **Laying in the game:** a rail goes on the top of an opaque block, into air; it and the neighbours that
+  turn are edits, so a guest's go to the host. `settable` takes any rail shape and powered rails only off.
+- **`?railway`:**
+  - a loop of 116 rails, 40 x 20, round the player;
+  - on a stone bed a block over the highest ground under it, air cleared over the rails;
+  - a hump on the near side, slopes up a block and up again;
+  - ten powered rails on the far side, a wire beside them and a switch, on.
+  - Laid a rail at a time with `railPlacement`, as a player would, then made at once.
+- **Tests (11 new, 1 updated):**
+  - shapes;
+  - blocks, drops, the picker and `settable`;
+  - recipes;
+  - laying: alone, beside one, a straight line and a loop in any order, slopes laid either way, a rail
+    joined at both ends left alone, powered rails not curving;
+  - powered rails with a switch and a charged block;
+  - the mesh of a flat rail and each slope's corner heights.
+  - The picker's count updated.
+
+**Measured:** the bench's meshing makes the same triangles as before (1924k greedy for the 724 chunks).
+Every time was 15–17% lower than Milestone 17's last run, generation too, which this step didn't touch:
+the machine is faster today.
+
+**In the browser** (`?seed=20261022&railway&nolock`, flying over it):
+- the loop on its bed, sides straight;
+- the hump's slopes each rising a block;
+- the powered stretch glowing beside its powered wire;
+- no console errors.
+- **A bug found there:** every curve's texture was a half turn out, bending round the outer corner. The
+  shader reads v upwards and image rows downwards, so the image's bottom is -z, not +z. The turns are
+  fixed, and the corner now curves round the inside.
+
+**Changed from the plan:**
+- **Breaking a rail leaves the rails beside it as they are,** rather than turning them back: the next rail
+  laid there joins them again, and nothing else turns unexpectedly.
+- **"The same in any order"** holds for lines and loops; at a junction of three, the first two laid win.
+- **Rails are clicked as a whole block,** as wire is, not by a thin box: no new click shape.
+- **`?railway`** came in this step without its cart, to look at the rails.
+
