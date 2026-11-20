@@ -99,6 +99,18 @@ function joinedAt(blocks: BlockSource, p: P, s: number, d: number): boolean {
   return n !== null && joinsAcross(p, s, d, n.q, n.shape);
 }
 
+/**
+ * The rail joined to the rail at (x, y, z) (shape `s`) through its end `d`: where it is and its shape
+ * (it's entered through its end `d ^ 1`); null if that end isn't joined to anything.
+ */
+export function nextRail(blocks: BlockSource, x: number, y: number, z: number, s: number, d: number): { x: number; y: number; z: number; shape: number } | null {
+  if (!hasEnd(s, d)) return null;
+  const p: P = [x, y, z];
+  const n = besideAlong(blocks, p, d);
+  if (!n || !joinsAcross(p, s, d, n.q, n.shape)) return null;
+  return { x: n.q[0], y: n.q[1], z: n.q[2], shape: n.shape };
+}
+
 /** The ends of the rail at `p` (shape `s`) that are joined to a rail. */
 export function joinedEnds(blocks: BlockSource, p: P, s: number): number[] {
   return RAIL_ENDS[s].filter((d) => joinedAt(blocks, p, s, d));

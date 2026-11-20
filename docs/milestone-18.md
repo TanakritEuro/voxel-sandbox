@@ -1,6 +1,6 @@
 # Milestone 18: getting about
 
-**Status:** plan approved (2026-11-20); step 1 built.
+**Status:** plan approved (2026-11-20); steps 1 and 2 built.
 
 ## Goal
 
@@ -204,7 +204,7 @@ saving and the map are tested headless; how riding feels is left for playtests.
 1. **Rails.** Blocks, shapes from neighbours, meshing flat and sloped, held up, recipes, powered rails
    with logic; tests. Done (2026-11-20).
 2. **Carts.** Vehicles, their manager, rail physics, riding, chest carts, drawing, saving; `?railway`;
-   tests.
+   tests. Done (2026-11-20).
 3. **Boats.** Water physics, rowing, placing on water, drawing; `?boat`; tests.
 4. **The map.** Paper and maps, explored tiles, the panel and full-screen map, saving; tests.
 5. **Together.** Vehicles to guests, riders moving their own, `mount` and `dismount`, chest carts,
@@ -296,4 +296,88 @@ the machine is faster today.
 - **"The same in any order"** holds for lines and loops; at a junction of three, the first two laid win.
 - **Rails are clicked as a whole block,** as wire is, not by a thin box: no new click shape.
 - **`?railway`** came in this step without its cart, to look at the rails.
+
+## Step 2: carts (2026-11-20)
+
+**What's in:**
+- **`vehicles/vehicle.ts`:** a `Vehicle` has:
+  - a kind (cart or chest cart) and a body 0.9 wide and 0.7 high;
+  - its facing and pitch;
+  - where it is on a rail (`OnRail`: the rail's block and how far along its path) and its speed along it;
+  - its rider, its hits, and a chest cart's 27 slots.
+- **`vehicles/cart.ts`** (pure):
+  - **a rail's path:** straight from the middle of one end's side to the other's, rising a block on a
+    slope, a quarter circle of half a block round the corner on a curve (`railPoint`, `railTangent`,
+    `railLength`);
+  - **`stepCart`:**
+    - gravity down slopes (14 blocks a second², times the slope);
+    - a powered rail that's on pushes it up to 8 a second the way it's going (from a standstill, away
+      from a dead end); one that's off brakes it;
+    - drag (7% of its speed a second and 0.05 more), so from top speed it rolls 80–130 blocks on the level;
+    - a rider's W starts it from a near standstill (up to 1.5) the way they look;
+    - on through each end into the rail joined there (`nextRail`, new in `rails.ts`), entering it from
+      either end; stopping at a dead end;
+  - **off rails** a box falling and sliding to a stop, landing back on a rail it comes down on
+    (`putOnRail`).
+- **`vehicles/manager.ts`** (`VehicleManager`):
+  - carts put only on rails, at most 256 a world;
+  - stepped at 60 Hz, drawn between steps;
+  - riding: one rider each, never a chest cart;
+  - three hits within 2 seconds break one (one in creative), giving the cart back, a chest cart its chest
+    and contents too;
+  - stored when their column unloads (not while ridden), given back when it loads;
+  - saved in the record's `vehicles`, cleaned on load.
+- **Items and recipes:** a cart from 5 iron; a chest cart from a cart and a chest. Pictures: an iron tub on
+  wheels, the chest cart wooden with a lid.
+- **In the game:**
+  - right-clicking a rail with a cart (survival) puts it there;
+  - right-clicking a cart gets in; a chest cart opens as a chest;
+  - left-clicking hits it; Shift gets out, beside it, off the track where there's room;
+  - riding, the player's body sits where the cart is drawn (`Player.seat`), its own physics waiting, a
+    sitting eye, no footsteps, no falls counted;
+  - dying or lying in bed gets you out.
+  - Carts are the host's or a lone player's for now: guests don't see them until step 5.
+- **Drawing** (`render/vehicleRenderer.ts`): as the mobs are drawn:
+  - an iron tub (floor, four sides) on four small wheels; a chest cart has a chest in it;
+  - one InstancedMesh a box, lit by the world's light, fogged;
+  - facing along the rail, tipped on slopes.
+- **`?railway`** now puts you in a cart at the end of the powered stretch with a start, and has seven
+  powered rails before the hump each way (fed by a charged block through a wire), so the cart has the
+  speed to climb it every lap. **`?railway=60`** reports frame times after a minute of riding.
+- **Tests (12 new, 1 updated):**
+  - each shape's path, its ends, and its tangent along it;
+  - rolling to a stop on the level from top speed (80–130 blocks);
+  - stopping at a dead end;
+  - rolling down a slope from a standstill;
+  - laps of a loop kept to the rails, pushed by powered rails on and stopped by them off;
+  - starting off a powered rail away from a dead end, and a rider's push;
+  - falling onto a rail;
+  - the same steps however the frames fall;
+  - carts only on rails, the cap, chest carts' slots, one rider each;
+  - breaking, and what it gives;
+  - storing by column (not a ridden one);
+  - saving and loading, with junk cleaned.
+  - Updated: the item test's last item.
+
+**In the browser** (`?seed=20261022&railway=60&nolock`):
+- riding laps of the loop, the cart's iron sides round you, over the hump and round the corners;
+- **riding for 60 s:** 7195 frames, p50 8.3 ms, p95 8.5, p99 8.5, max 17.2, none over 20 ms;
+- getting out with Shift: beside the track, the cart rolling on alone;
+- from above, the cart going round;
+- no console errors.
+- **Found there:**
+  - the first `?railway` cart stood on the powered stretch's west end going west, got one block of push
+    and stopped 26 blocks on. It now starts at the east end, through all ten.
+  - From 8 blocks a second a cart can't climb the two-block hump 55 blocks on (it needs about 7.5 at its
+    foot), so `?railway` has powered rails before it each way.
+  - Getting out first put the rider on the next rail along the track (it's room to stand). Spots without
+    a rail come first now.
+- **Not tried in the browser:** putting a cart down from the inventory, a chest cart, breaking one (the
+  tests cover them).
+
+**Changed from the plan:**
+- **Creative players have no cart item:** the creative hotbar holds only blocks. In creative there's
+  `?railway`'s cart for now; carts in the creative picker are a question for the playtest.
+- **The rider's W** only starts a cart from a near standstill (up to 1.5 blocks a second), as planned, and
+  carts don't steer at junctions (there are none).
 

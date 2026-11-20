@@ -36,6 +36,8 @@ const SEED = palette(0xa08a4a, 0x5e4f24, 0xd8c47a);
 const GRAIN = palette(0xd8b54a, 0x8a6a1e, 0xf6e08a);
 const CRUST = palette(0xc0803a, 0x7a4a1c, 0xe8b46a);
 const MOSS = palette(0x5f8f3a, 0x35552a, 0x9cc46a);
+const CART_IRON = palette(0x9a9ea4, 0x55595e, 0xd0d4d8);
+const CHEST_WOOD = palette(0x9a6a3a, 0x5a3a1e, 0xc89058);
 
 // Masks, row 0 at the top: '.' empty, m/d/l the material's main, dark and light, h a handle.
 const PICK = [
@@ -183,6 +185,44 @@ const LOAF = [
   '................',
   '................',
 ];
+/** A cart from the side: an open tub on two wheels. */
+const CART = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '.llllllllllllll.',
+  '.lmmmmmmmmmmmmd.',
+  '.lmddddddddddmd.',
+  '.lmmmmmmmmmmmmd.',
+  '.lmddddddddddmd.',
+  '.lmmmmmmmmmmmmd.',
+  '..dddddddddddd..',
+  '...dd......dd...',
+  '..dmmd....dmmd..',
+  '...dd......dd...',
+  '................',
+];
+/** A chest cart: the cart with a chest's lid over its top. */
+const CHEST_CART = [
+  '................',
+  '................',
+  '..mmmmmmmmmmmm..',
+  '..mlllllllllld..',
+  '..mmmmmddmmmmd..',
+  '.llllllllllllll.',
+  '.lmmmmmmmmmmmmd.',
+  '.lmddddddddddmd.',
+  '.lmmmmmmmmmmmmd.',
+  '.lmddddddddddmd.',
+  '.lmmmmmmmmmmmmd.',
+  '..dddddddddddd..',
+  '...dd......dd...',
+  '..dmmd....dmmd..',
+  '...dd......dd...',
+  '................',
+];
 /** A soft tuft, ragged at the edges. */
 const TUFT = [
   '................',
@@ -290,6 +330,8 @@ const ART: Record<number, [string[], Palette]> = {
   [Item.Wheat]: [SHEAF, GRAIN],
   [Item.Bread]: [LOAF, CRUST],
   [Item.Moss]: [TUFT, MOSS],
+  [Item.Cart]: [CART, CART_IRON],
+  [Item.ChestCart]: [CHEST_CART, CHEST_WOOD],
 };
 
 /** Item `item`'s picture: 16 × 16 RGBA, row 0 at the top, transparent where empty; null for a block (it has its own icon). */

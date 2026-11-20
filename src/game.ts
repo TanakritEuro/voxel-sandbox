@@ -50,7 +50,11 @@ import { WaterView, waterFlow } from './render/water';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import type { Mob } from './mobs/brain';
-import { mobOnRay } from './mobs/hit';
+import { mobOnRay, rayBox } from './mobs/hit';
+import { type Push } from './vehicles/cart';
+import { VehicleManager } from './vehicles/manager';
+import { rideable, type Vehicle, VehicleKind } from './vehicles/vehicle';
+import { VehicleRenderer } from './render/vehicleRenderer';
 import { KINDS, MobKind } from './mobs/kinds';
 import { type MobSound, MobManager } from './mobs/mobs';
 import { BlockCache } from './mobs/blockCache';
@@ -65,7 +69,7 @@ import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
-import { bedOf, Block, BLOCKS, chestOf, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
+import { bedOf, Block, BLOCKS, chestOf, FACINGS, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, logicPlacement, torchFor, useBlock } from './world/blocks';
 import { railPlacement } from './world/rails';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
@@ -259,6 +263,83 @@ if (mobView) {
   renderer.compile(mobView.group, camera);
 }
 let mobsRead = performance.now();
+// Vehicles (`vehicles/`): carts on rails, saved with the world, waiting in the record for their
+// columns to load. The host's or a lone player's (guests don't have them yet).
+const vehicles = guest ? null : new VehicleManager(world);
+vehicles?.load(record.vehicles);
+const vehicleView = new VehicleRenderer(TUNING.vehicles.most);
+scene.add(vehicleView.group);
+renderer.compile(vehicleView.group, camera);
+
+/** The vehicle this player rides, if any. */
+const riding = (): Vehicle | undefined => vehicles?.ridden(0);
+
+/** Get in `v`: this player sits in it (`Player.seat`) until getting out. */
+function ride(v: Vehicle): void {
+  if (!vehicles?.ride(v, 0)) return;
+  player.seat = () => {
+    const now = vehicles.ridden(0);
+    if (!now) return null;
+    const at = vehicles.drawnAt(now);
+    return { x: at.x, y: at.y + TUNING.vehicles.seat, z: at.z };
+  };
+  sound.play({ name: 'place', material: 'stone', gain: 0.5 });
+}
+
+/**
+ * Get out of whatever this player rides, beside it where there's room to stand (off the track if
+ * there's room there, a block up or down if need be), or where they sit if there's none: standing,
+ * so no fall is counted.
+ */
+function getOut(): void {
+  const v = riding();
+  player.seat = null;
+  if (!v || !vehicles) return;
+  vehicles.leave(0);
+  const b = v.body;
+  const W = 0.3;
+  const fits = (x: number, y: number, z: number) => {
+    for (let by = Math.floor(y); by <= Math.floor(y + 1.79); by++)
+      for (let bz = Math.floor(z - W); bz <= Math.floor(z + W); bz++)
+        for (let bx = Math.floor(x - W); bx <= Math.floor(x + W); bx++) {
+          const info = BLOCKS[world.getBlock(bx, by, bz)];
+          if (!info.passable || info.liquid) return false;
+        }
+    return !BLOCKS[world.getBlock(Math.floor(x), Math.floor(y) - 1, Math.floor(z))].passable;
+  };
+  const feet = Math.floor(b.y + 0.01);
+  const spots: [number, number, number][] = [];
+  for (const [dx, dz] of FACINGS) for (const dy of [0, 1, -1]) spots.push([Math.floor(b.x) + dx + 0.5, feet + dy, Math.floor(b.z) + dz + 0.5]);
+  const onTrack = ([x, y, z]: [number, number, number]) => railOf(world.getBlock(Math.floor(x), y, Math.floor(z))) !== null;
+  const spot = spots.find((p) => !onTrack(p) && fits(...p)) ?? spots.find((p) => fits(...p)) ?? [b.x, b.y + TUNING.vehicles.seat, b.z];
+  player.moveTo(spot[0], spot[1], spot[2]);
+  player.body.onGround = true;
+}
+
+/** The vehicle on the crosshair within `reach` (not the one ridden), and how far. */
+function vehicleOnRay(origin: THREE.Vector3, dir: THREE.Vector3, reach: number): { vehicle: Vehicle; distance: number } | null {
+  let best: { vehicle: Vehicle; distance: number } | null = null;
+  for (const v of vehicles?.vehicles ?? []) {
+    if (v.rider === 0) continue;
+    const b = v.body;
+    const w = b.halfWidth;
+    const d = rayBox(origin, dir, b.x - w, b.y, b.z - w, b.x + w, b.y + b.height, b.z + w);
+    if (d <= reach && (!best || d < best.distance)) best = { vehicle: v, distance: d };
+  }
+  return best;
+}
+
+/** A hit on vehicle `v` (once in creative breaks it): broken, it's given back on the ground (survival), a chest cart's contents too. */
+function hitVehicle(v: Vehicle): void {
+  if (!vehicles) return;
+  swing();
+  const b = v.body;
+  const gives = vehicles.hit(v, !survival);
+  sound.play({ name: gives ? 'break' : 'dig', material: 'stone', gain: 1 });
+  if (!gives) return;
+  particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow));
+  if (survival) for (const st of gives) ground.drop(b.x, b.y + 0.5, b.z, st, (Math.random() - 0.5) * 2, TUNING.survival.ground.hop, (Math.random() - 0.5) * 2);
+}
 /** `?litter[=256]`: that many items dropped round the player once the ground is there (for measuring). */
 let litter = params.has('litter') ? Math.min(TUNING.survival.ground.cap, Number(params.get('litter')) || TUNING.survival.ground.cap) : 0;
 
@@ -278,14 +359,37 @@ function scatter(n: number, x: number, z: number): void {
   }
 }
 
-/** `?railway`: a loop of rails round the player once the ground is there (for measuring). */
+/**
+ * `?railway`: a loop of rails round the player once the ground is there, and the player in a cart on
+ * it. `?railway=60` reports frame times after that many seconds riding (for measuring).
+ */
 let railwayParam = params.has('railway');
+const railwaySeconds = Number(params.get('railway')) || 0;
+/** Frame times (ms) while riding the railway, until the report. */
+const railwayFrames: number[] = [];
+let railwayReported = false;
+
+/** `?railway=seconds`: once that long has been ridden, frame times to the console and the screen. */
+function railwayReport(interval: number): void {
+  if (!railwaySeconds || railwayReported || !riding()) return;
+  railwayFrames.push(interval);
+  if (railwayFrames.reduce((a, b) => a + b, 0) < railwaySeconds * 1000) return;
+  railwayReported = true;
+  const sorted = [...railwayFrames].sort((a, b) => a - b);
+  const at = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
+  const report = { seconds: railwaySeconds, frames: sorted.length, p50: at(0.5), p95: at(0.95), p99: at(0.99), max: sorted[sorted.length - 1], over20: sorted.filter((t) => t > 20).length };
+  const text = `railway: ${report.frames} frames in ${report.seconds} s riding; p50 ${report.p50.toFixed(1)}, p95 ${report.p95.toFixed(1)}, p99 ${report.p99.toFixed(1)}, max ${report.max.toFixed(1)} ms; over 20 ms: ${report.over20}`;
+  console.log(`[railway]\n${text}\n${JSON.stringify(report)}`);
+  say(text);
+}
 
 /**
  * A loop of rails 40 x 20 blocks round (x, z), about 116 rails, on a bed of stone a block above the
  * highest ground under it (air cleared two blocks over the rails): a hump two blocks high on the near
- * side, sloped up and down; on the far side ten powered rails with a wire beside them and a switch,
- * on. Laid one rail at a time as a player would (`railPlacement`), then made at once.
+ * side, sloped up and down, with seven powered rails before it each way fed by a charged block
+ * through a wire beside them (so a cart has the speed to climb it); on the far side ten powered rails
+ * with a wire beside them and a switch, on. Laid one rail at a time as a player would
+ * (`railPlacement`), then made at once. The player goes in a cart on the far side, given a start.
  */
 function buildRailway(x: number, z: number): void {
   const x0 = Math.floor(x) - 20;
@@ -302,7 +406,7 @@ function buildRailway(x: number, z: number): void {
     while (y > 1 && BLOCKS[world.getBlock(gx, y, gz)].passable) y--;
     return y;
   };
-  const bed = Math.min(200, Math.max(...path.map(([gx, gz]) => top(gx, gz)), ...path.map(([gx, gz]) => top(gx, gz + (gz === z1 ? 1 : 0)))) + 1);
+  const bed = Math.min(200, Math.max(...path.map(([gx, gz]) => top(gx, gz)), ...path.map(([gx, gz]) => top(gx, gz + (gz === z1 ? 1 : gz === z0 ? -1 : 0)))) + 1);
   // What's been set so far, read before the world.
   const set = new Map<string, Block>();
   const at = (gx: number, gy: number, gz: number) => set.get(`${gx},${gy},${gz}`) ?? world.getBlock(gx, gy, gz);
@@ -316,7 +420,14 @@ function buildRailway(x: number, z: number): void {
     for (let gy = h + 1; gy <= h + 3; gy++) put(gx, gy, gz, Block.Air);
   }
   // Powered rails on the far side, the wire beside them on its own bed, and a switch, on.
-  const powered = (gx: number, gz: number) => gz === z1 && gx >= x0 + 15 && gx < x0 + 25;
+  const powered = (gx: number, gz: number) => (gz === z1 && gx >= x0 + 15 && gx < x0 + 25) || (gz === z0 && ((gx >= x0 + 4 && gx <= x0 + 10) || (gx >= x0 + 20 && gx <= x0 + 26)));
+  // Before the hump each way: a wire beside the powered rails, a charged block at its far end.
+  for (const [from, to, charge] of [[x0 + 4, x0 + 10, x0 + 3], [x0 + 20, x0 + 26, x0 + 27]]) {
+    for (let gx = Math.min(from, charge); gx <= Math.max(to, charge); gx++) {
+      put(gx, bed, z0 - 1, Block.Stone);
+      put(gx, bed + 1, z0 - 1, gx === charge ? Block.ChargedBlock : wire(0));
+    }
+  }
   for (let gx = x0 + 14; gx <= x0 + 25; gx++) {
     put(gx, bed, z1 + 1, Block.Stone);
     put(gx, bed + 1, z1 + 1, gx === x0 + 14 ? Block.SwitchOn : wire(0));
@@ -332,6 +443,13 @@ function buildRailway(x: number, z: number): void {
   }
   applyChanges(changes);
   for (const [gx, gy, gz, b] of changes) if (isLogic(b)) logic.wake(gx, gy, gz);
+  // A cart on the last powered rail, and the player in it, going west through the whole stretch
+  // (along the rail's path, from its east end to its west, is forwards).
+  const cart = vehicles?.placeCart(VehicleKind.Cart, x0 + 24, bed + 1, z1, input.yaw);
+  if (cart) {
+    cart.speed = 3;
+    ride(cart);
+  }
 }
 
 /** `?farm`: a field of wheat round the player once the ground is there (for measuring). */
@@ -434,6 +552,7 @@ let logicWorst = 0;
 loader.onColumnAdded = (cx, cz, saved) => {
   if (guest) return guest.columnAdded(cx, cz);
   mobs?.columnLoaded(cx, cz);
+  vehicles?.columnLoaded(cx, cz);
   wakeColumn(flow, world, cx, cz, saved);
   wakeLogicColumn(logic, world, cx, cz, saved);
 };
@@ -1029,6 +1148,7 @@ function useBed(x: number, y: number, z: number): void {
   if (check === 'day') return say('You can only sleep at night.');
   if (check === 'near') return say("You can't sleep with something near.");
   // Lie down on the foot, still.
+  getOut();
   asleep = { foot, for: 0 };
   player.moveTo(foot[0] + 0.5, foot[1] + TUNING.sleep.onBed, foot[2] + 0.5);
   sleepEl.classList.add('on');
@@ -1321,6 +1441,7 @@ function die(): void {
 }
 
 function startAgain(): void {
+  getOut();
   dead = false;
   deathRoot.classList.add('hidden');
   health.reset();
@@ -1509,6 +1630,15 @@ function editing(dt: number): void {
     const holding = survival ? pack.slots[selected] : null;
     if (survival && !shift && holding && (holding.item === Item.Seeds || toolOf(holding.item)?.kind === 'spade') && farm(target, holding.item === Item.Seeds)) {
       // Tilled or sown.
+    } else if (survival && holding && (holding.item === Item.Cart || holding.item === Item.ChestCart) && railOf(target.block)) {
+      // A cart put on the rail clicked (the host's or a lone player's; guests can't yet).
+      const kind = holding.item === Item.Cart ? VehicleKind.Cart : VehicleKind.ChestCart;
+      if (vehicles?.placeCart(kind, target.x, target.y, target.z, input.yaw)) {
+        pack.takeOne(selected);
+        renderHotbar();
+        sound.play({ name: 'place', material: 'stone', gain: 1 });
+        swing();
+      }
     } else if (!shift && bedOf(target.block)) {
       useBed(target.x, target.y, target.z);
     } else if (survival && !shift && chestOf(target.block)) {
@@ -1742,6 +1872,15 @@ function frame(now: number): void {
   fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
 
   // Paused: the player and the clock stand still; the world goes on loading.
+  // Vehicles first: a rider's seat follows theirs. W pushes a cart from a standstill the way the rider looks.
+  if (vehicles) {
+    const pushes = new Map<number, Push>();
+    if (riding() && !paused() && input.isHeld('KeyW')) pushes.set(0, [-Math.sin(input.yaw), -Math.cos(input.yaw)]);
+    vehicles.update(worldRuns() ? dt : 0, pushes);
+    // Crouching gets out.
+    if (riding() && !paused() && (input.isHeld('ShiftLeft') || input.isHeld('ShiftRight'))) getOut();
+  }
+  railwayReport(interval);
   if (autofly?.active) autofly.update(now, dt, interval);
   else if (!paused()) {
     player.update(dt);
@@ -1749,7 +1888,7 @@ function frame(now: number): void {
     if (survival) live(dt);
     // Footsteps, landing, splashing and digging, from how the player moved this frame.
     const b = player.body;
-    const moved = Math.hypot(b.x - lastFeet.x, b.z - lastFeet.z);
+    const moved = player.seat ? 0 : Math.hypot(b.x - lastFeet.x, b.z - lastFeet.z);
     const digging = mining.target ? BLOCKS[mining.target.block].sound : null;
     const ground = underfoot(world, b.x, b.y, b.z);
     for (const e of cues.frame({ dt, moved, vy: b.vy, onGround: b.onGround, flying: player.flying, inWater: b.inWater, ground, digging })) {
@@ -1831,7 +1970,20 @@ function frame(now: number): void {
   lastAimed = aimed?.mob ?? null;
   // Right click on an animal holding its food: fed (before eating it, or using it on a block).
   if (aimed && survival && !dead && KINDS[aimed.mob.kind].food === pack.slots[selected]?.item && input.take('Mouse2')) feed(aimed.mob);
-  if (input.take('Mouse0') && aimed) {
+  const aimedVehicle = !paused() ? vehicleOnRay(camera.position, dir, aimed ? aimed.distance : target ? target.distance : TUNING.edit.reach) : null;
+  if (aimedVehicle) {
+    target = null;
+    if (input.take('Mouse0')) hitVehicle(aimedVehicle.vehicle);
+    if (input.take('Mouse2')) {
+      const v = aimedVehicle.vehicle;
+      // A chest cart opens as a chest does (survival); the rest are got into.
+      if (v.slots && survival) {
+        backpack.showChest(v.slots);
+        input.unlock();
+      } else if (rideable(v)) ride(v);
+    }
+  }
+  if (!aimedVehicle && input.take('Mouse0') && aimed) {
     // A guest's hit is the host's to make: the knockback and any puff come back with the mobs.
     if (guest) {
       swing();
@@ -1890,6 +2042,7 @@ function frame(now: number): void {
     guest.mobs.update(guest.clock());
     mobView.update(guest.mobs, world, daylightNow, now / 1000);
   }
+  if (vehicles) vehicleView.update(vehicles, world, daylightNow);
   // Animals courting show it: hearts over them now and then.
   if (worldRuns() && (untilLoveHearts -= dt) <= 0) {
     untilLoveHearts = 1.2;
@@ -1984,6 +2137,7 @@ function saveRecord(): Promise<void> {
   record.crops = crops.toJSON();
   // Kept animals, here and stored (with mobs off, as they were).
   if (mobs) record.animals = mobs.keptRecords();
+  if (vehicles) record.vehicles = vehicles.records();
   return saver.saveRecord(playerState(), time);
 }
 

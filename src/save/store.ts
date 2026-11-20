@@ -58,6 +58,8 @@ export interface WorldRecord {
   generation?: number;
   /** Kept animals (`mobs/kept.ts`, cleaned by `KeptAnimals.from`); missing until one is kept. */
   animals?: unknown[];
+  /** Vehicles (Milestone 18): carts, here and in unloaded columns (`VehicleManager.records`). */
+  vehicles?: unknown[];
 }
 
 /** A chunk's place and its RLE-encoded blocks. */

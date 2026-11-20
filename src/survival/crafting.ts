@@ -41,6 +41,8 @@ export const RECIPES: readonly Recipe[] = [
   // Getting about (Milestone 18).
   r(Block.Rail, 16, [Item.Iron, 6], [Item.Stick, 1]),
   r(Block.PoweredRail, 6, [Item.Iron, 6], [Item.Copper, 1], [Item.Stick, 1]),
+  r(Item.Cart, 1, [Item.Iron, 5]),
+  r(Item.ChestCart, 1, [Item.Cart, 1], [Block.Chest, 1]),
   r(Block.Pane, 16, [Block.Glass, 6]),
   r(Block.Sandstone, 1, [Block.Sand, 4]),
   r(Block.Lamp, 1, [Block.Glass, 4], [Item.Crystal, 1]),

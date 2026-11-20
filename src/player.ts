@@ -27,6 +27,12 @@ export class Player {
   waiting = true;
   /** The camera is inside a liquid block: draw the underwater view. */
   eyeInWater = false;
+  /**
+   * Riding (Milestone 18): where the seat is now, drawn between the vehicle's steps, or null once the
+   * ride is over. The body sits there, standing still on it (so falls start afresh), its own physics
+   * waiting; the eye is a sitting one's.
+   */
+  seat: (() => { x: number; y: number; z: number } | null) | null = null;
   /** Time spent on physics steps in the last update (ms), and how many steps, for `?stats`. */
   physicsMs = 0;
   physicsSteps = 0;
@@ -57,6 +63,24 @@ export class Player {
   update(dt: number): void {
     const input = this.input;
     this.time += dt;
+    const seat = this.seat?.() ?? null;
+    if (this.seat && !seat) this.seat = null;
+    if (seat) {
+      this.flying = this.sprinting = false;
+      this.physicsMs = this.physicsSteps = 0;
+      this.waiting = false;
+      const b = this.body;
+      b.x = seat.x;
+      b.y = seat.y;
+      b.z = seat.z;
+      b.vx = b.vy = b.vz = 0;
+      b.onGround = true;
+      this.eye = TUNING.vehicles.sitEye;
+      this.stepLag = 0;
+      this.keepPosition();
+      this.placeCamera(1);
+      return;
+    }
     if (!this.canFly) this.flying = false;
     if (input.take('KeyF') && this.canFly) this.flying = !this.flying;
     const space = input.take('Space');
@@ -130,9 +154,9 @@ export class Player {
     return new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.input.pitch, this.input.yaw, 0, 'YXZ'));
   }
 
-  /** Shift while walking crouches; while flying it goes down. */
+  /** Shift while walking crouches; while flying it goes down (riding, it gets out: the game's). */
   crouching(): boolean {
-    return !this.flying && (this.input.isHeld('ShiftLeft') || this.input.isHeld('ShiftRight'));
+    return !this.flying && !this.seat && (this.input.isHeld('ShiftLeft') || this.input.isHeld('ShiftRight'));
   }
 
   private moveInput(): MoveInput {

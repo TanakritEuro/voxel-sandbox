@@ -30,7 +30,7 @@ export function mobOnRay(mobs: readonly Mob[], origin: V3, dir: V3, reach: numbe
 }
 
 /** Where a ray enters a box (0 from inside it), or infinity if it misses (slabs, one axis at a time). */
-function rayBox(o: V3, d: V3, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): number {
+export function rayBox(o: V3, d: V3, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): number {
   let near = 0;
   let far = Number.POSITIVE_INFINITY;
   const axes: [number, number, number, number][] = [

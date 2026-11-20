@@ -377,4 +377,30 @@ export const TUNING = {
     calls: [8, 24] as [number, number],
     hearing: 24,
   },
+  /** Vehicles (Milestone 18, `src/vehicles/`). */
+  vehicles: {
+    /** Stepped at this fixed rate (seconds). */
+    step: 1 / 60,
+    /** Most vehicles a world has. */
+    most: 256,
+    /** Hits that break one (survival; in creative one does it), forgotten after this long (seconds). */
+    hits: 3,
+    hitMemory: 2,
+    /** A rider's feet above the vehicle's, and their eye above their feet, sitting. */
+    seat: 0.35,
+    sitEye: 1.2,
+    /** Carts (`vehicles/cart.ts`), in blocks and seconds: their box; top speed; gravity along a slope; rolling drag (a part of the speed a second, and a constant); a powered rail's push and an off one's brake; a rider's push from a near standstill, up to this speed. */
+    cart: {
+      halfWidth: 0.45,
+      height: 0.7,
+      max: 8,
+      gravity: 14,
+      drag: 0.07,
+      roll: 0.05,
+      boost: 12,
+      brake: 20,
+      push: 3,
+      pushUpTo: 1.5,
+    },
+  },
 };
