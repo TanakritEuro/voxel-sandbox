@@ -26,9 +26,13 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 20 (a better-looking UI) in progress, plan approved (`docs/milestone-20.md`); steps 1–4 (the look, the HUD, the menus, the picker and survival's screens) built.
-Milestones 1–19 built (`docs/milestone-1.md` to `docs/milestone-19.md`), waiting for playtests
-(Milestone 19, underground, for worlds made from now on (generation version 3; older worlds keep their land): lava,
+Milestones 1–20 built (`docs/milestone-1.md` to `docs/milestone-20.md`), waiting for playtests
+(Milestone 20, a better-looking UI: one look for every screen (slate panels and buttons with a bevel, amber for
+what's chosen, titles in Pixelify Sans), the live world drifting behind the world list, world cards with pictures, a
+loading panel, health, hunger and air as gems, loaves and bubbles, the selected thing's name over the hotbar, the debug
+line only with F3, the pause menu's keys as keycaps, settings in sections with a UI size, the block picker in tabs with
+a search, tooltips, crafting in groups with a "can make" filter, the map in a frame, UI clicks;
+Milestone 19, underground, for worlds made from now on (generation version 3; older worlds keep their land): lava,
 a second liquid of the same automaton, spreading 3, glowing, burning and swum in slowly, basalt or stone where it meets
 water, lakes of it at y 10 and below; deep cave biomes below y 40, crystal caverns (glowing clusters, crystal ore) and
 mushroom grottoes (giant mushrooms with glowing caps); dungeons, buried brick rooms with better loot and more delvers

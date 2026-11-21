@@ -1,6 +1,6 @@
 # Milestone 20: a better-looking UI
 
-**Status:** plan approved (2026-11-21); steps 1–4 built.
+**Status:** built (2026-11-21), waiting for playtests.
 
 ## Goal
 
@@ -149,7 +149,7 @@ frame time (some of it costs a little today: the health row is rebuilt every fra
    settings in sections, UI size, UI sounds. Done (2026-11-21).
 4. **Picker and survival screens:** tabs and search, tooltips, crafting groups, furnace and chest, the map's frame,
    small shapes' icons. Done (2026-11-21).
-5. **Measurements,** screenshots, notes, playtest questions.
+5. **Measurements,** screenshots, notes, playtest questions. Done (2026-11-21).
 
 ## Decisions to agree
 
@@ -298,4 +298,55 @@ changed).
 - **The number keys don't pick a slot while the picker is open:** they type into the search box; a click on the picker's
   hotbar does it.
 - **Only box-shaped blocks' icons are fitted** (the lantern); a button's or a rail's are drawn other ways and left as they are.
+
+## Step 5: measurements (2026-11-21)
+
+**The furnace and the chest, looked at at last** (`docs/milestone-20/5-…`): a furnace placed from `?kit` and opened, raw iron
+and coal shift-clicked in, smelting; a chest crafted, placed and opened. **Found and fixed:** the furnace's long help line
+made its column too wide, so it wrapped under the inventory; the right-hand column is now at most 300 px wide (its help
+wraps) and sits beside the inventory. A chest's nine columns still go under it, which suits it.
+
+**Measured** (`?seed=20261022`, the same sitting, warm dev server; "before" is `688738b`, the plan's commit, before step 1):
+
+| | Before the milestone | After |
+| --- | --- | --- |
+| Standing in survival with the HUD (`?survival&kit&stats`, 12 s after loading, twice each) | main thread 2.8 and 2.8 ms a frame, GPU 3.2 and 3.3 | main thread 2.0 and 2.0 ms, GPU 3.2 and 3.2 |
+| Sprint flight (`?autofly=30`) | 1 frame over 20 ms (max 25.1), main p50 3.6, p99 10.0 | none over 20 ms (max 16.8), main p50 3.6, p99 10.3 |
+| Title screen: page start to the first world card (dev server, step 3) | — | 60–84 ms with the backdrop or without |
+| The backdrop itself (step 3) | — | 30 fps, main thread 1.0 ms, GPU 5.8 ms a frame |
+
+- **Standing in survival costs 0.8 ms less of the main thread** with the new UI, in both runs; I haven't found which change
+  it is. (A candidate: the old crosshair blended with the page by `mix-blend-mode: difference` over the canvas; the new one
+  has a drop shadow.) The GPU's time is the same.
+- **Flying is the same,** within a frame.
+
+**Screenshots** of every screen before and after are in `docs/milestone-20/`: `0-…-before` (world list, pause menu, settings,
+picker, inventory), `1-…` (the look), `2-…` (HUD, loading, death), `3-…` (world list with the backdrop, the backdrop, new
+world, settings, pause menu, a world's card with its picture), `4-…` (picker, a tab, a search, inventory, a tooltip, "can
+make", the maps), `5-…` (furnace, chest).
+
+## What changed from the plan, over the milestone
+
+- **The health row wasn't rebuilt every frame** (the plan said it was); the debug line was written every frame, and now
+  isn't while it's hidden.
+- **The backdrop is in the morning,** among mountains, not in the early evening.
+- **Crafting has Light and Logic groups** too.
+- **The number keys don't pick a slot while the picker is open** (they type into its search); a click on its hotbar does.
+- **Only box-shaped blocks' icons are fitted** (the lantern).
+- **The furnace's column narrowed** so it sits beside the inventory (found in step 5).
+
+## Playtest questions
+
+1. **The look:** does it feel like one game now? Too dark, too heavy? Is the pixel font right for titles, or too much?
+2. **The title screen:** is the drifting world behind the list a good first sight, or a distraction? Would an evening
+   light, or another place, look better? Does it slow your machine down while you choose a world?
+3. **World cards:** do the pictures help you tell worlds apart? Is the picture taken at the right moment (when you save
+   and quit)?
+4. **The HUD:** are gems and loaves easy to read at a glance, at their size? Is the item name over the hotbar useful, or
+   noise? Do you miss the debug line (F3 brings it back)?
+5. **The pause menu's keycaps:** clear, or too much to read?
+6. **The block picker:** do the tabs put blocks where you'd look for them? Is the search box being focused on opening
+   right, given the number keys then type into it?
+7. **Survival's screens:** are the tooltips worth having? Does "Can make" help? Do the groups make sense?
+8. **UI size:** does 80–130 % cover your screens? **Sounds:** are the clicks pleasant, or should they go?
 

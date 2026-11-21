@@ -1131,6 +1131,15 @@ kbd.wide {
   gap: 10px;
 }
 
+/* Crafting or a furnace beside the inventory (their help wrapping, not widening the column); a chest's 9 columns may go under. */
+.backpack-right {
+  max-width: 300px;
+}
+
+.backpack-right:has(.backpack-grid) {
+  max-width: none;
+}
+
 .backpack-grid {
   display: grid;
   grid-template-columns: repeat(9, 44px);
