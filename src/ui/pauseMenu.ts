@@ -2,22 +2,12 @@
 // Esc). Play captures it again; Settings opens the settings; quitting saves and goes back to
 // the world list (a guest leaves). Playing together has a part of its own (`together`: open to
 // friends, the code, who's in), and so does the world's mode (creative or survival, and switching).
-// The keys are listed under it.
+// The keys are listed under it as keycaps, in groups, for the world's mode (`keys.ts`).
 
 import type { Settings } from '../settings';
 import { button, el } from './dom';
+import { keysFor } from './keys';
 import { settingsControls } from './settingsPanel';
-
-export const KEYS = [
-  'WASD walk · Space jump / swim up · Shift crouch · tap Ctrl to sprint · F or Space twice to fly (Space / Shift up / down)',
-  'Hold left button to break · Right click place · 1–9 or wheel pick a block · E blocks · N map · M mute · Esc pause · F3 stats',
-];
-
-/** The keys in survival: no flying, and E for the inventory. */
-export const SURVIVAL_KEYS = [
-  'WASD walk · Space jump / swim up · Shift crouch · tap Ctrl to sprint',
-  'Hold left button to break · Right click place · 1–9 or wheel pick a slot · E inventory · N map (with a map) · M mute · Esc pause · F3 stats',
-];
 
 export interface PauseEvents {
   onPlay(): void;
@@ -28,8 +18,8 @@ export interface PauseEvents {
   together?(panel: HTMLElement, refresh: () => void): void;
   /** Draws the world's mode, and switching it, into the menu each time it's shown. */
   mode?(panel: HTMLElement, refresh: () => void): void;
-  /** The keys to list (`KEYS` if not given). */
-  keys?(): readonly string[];
+  /** The mode whose keys to list (creative if not given). */
+  keys?(): 'creative' | 'survival';
 }
 
 export interface PauseOptions {
@@ -85,7 +75,7 @@ export class PauseMenu {
     if (note) el(this.panel, 'p', 'menu-help', note);
     else if (!saved) el(this.panel, 'p', 'menu-help', 'This world isn’t saved: links with ?seed, ?at or ?autofly start afresh each time.');
     const actions = el(this.panel, 'div', 'menu-row');
-    const play = button(actions, 'Play', this.events.onPlay, 'menu-go');
+    const play = button(actions, 'Resume', this.events.onPlay, 'menu-go');
     const settings = button(actions, 'Settings', () => this.showSettings());
     const quit = button(actions, quitLabel ?? (saved ? 'Save and quit to the world list' : 'Quit to the world list'), this.events.onQuit);
     if (this.events.mode && !this.quitting_) this.events.mode(el(this.panel, 'div', 'menu-mode'), () => this.refresh());
@@ -94,7 +84,22 @@ export class PauseMenu {
       play.disabled = settings.disabled = quit.disabled = true;
       quit.textContent = 'Saving…';
     }
-    for (const line of this.events.keys?.() ?? KEYS) el(this.panel, 'p', 'menu-help', line);
+    this.keys();
+  }
+
+  /** The keys as keycaps, a column a group. */
+  private keys(): void {
+    const box = el(this.panel, 'div', 'keys');
+    for (const [group, lines] of keysFor(this.events.keys?.() ?? 'creative')) {
+      const column = el(box, 'div', 'keys-group');
+      el(column, 'div', 'keys-heading', group);
+      for (const line of lines) {
+        const row = el(column, 'div', 'keys-line');
+        const caps = el(row, 'span', 'keys-caps');
+        for (const cap of line.caps) el(caps, 'kbd', cap.length > 3 ? 'wide' : '', cap);
+        el(row, 'span', 'keys-what', line.what);
+      }
+    }
   }
 
   private showSettings(): void {

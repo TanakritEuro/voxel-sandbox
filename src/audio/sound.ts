@@ -128,6 +128,15 @@ export class Sound {
       case 'pickup':
         this.glide('triangle', 620, 1050, 0.07, e.gain * 0.18, 4000);
         break;
+      case 'click':
+        // A button pressed: a soft wooden tock.
+        this.thump(380, 0.035, e.gain * 0.22);
+        this.glide('triangle', 1300, 900, 0.03, e.gain * 0.05, 3000);
+        break;
+      case 'tick':
+        // A slot or tab changed: a tiny tick.
+        this.glide('triangle', 1900, 1600, 0.02, e.gain * 0.045, 5000);
+        break;
     }
   }
 

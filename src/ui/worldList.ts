@@ -1,16 +1,20 @@
-// The world list, shown at start: the saved worlds, last played first. Play one, make a new
-// one (a name, and a seed or a random one), rename or delete one. Plain DOM over the page, in
-// the style of the earlier games' menus. Playing loads the page again with `?world=<id>`, so
-// each world starts in a fresh page, workers and GPU memory included.
+// The world list, shown at start: the saved worlds, last played first, each a card with its picture.
+// Play one, make a new one (a name, a seed or a random one, creative or survival), rename or delete
+// one. Plain DOM over the page; behind it, once it's up, the live world (`backdrop.ts`). Playing loads
+// the page again with `?world=<id>`, so each world starts in a fresh page, workers and GPU memory included.
 
+import { Sound } from '../audio/sound';
 import { TUNING } from '../config';
-import { IndexedDbStore, modeOf, newWorldRecord, type WorldMode, type WorldRecord, type WorldStore } from '../save/store';
+import { IndexedDbStore, modeOf, newWorldRecord, thumbOf, type WorldMode, type WorldRecord, type WorldStore } from '../save/store';
 import { ago, byLastPlayed, freeName, newWorldId, seedFromText } from '../save/worlds';
 import { cleanRoomCode } from '../net/roomCode';
 import { cleanName } from '../net/protocol';
 import { loadSettings, saveSettings } from '../settings';
-import { button, choice, el, field } from './dom';
+import { showBackdrop } from './backdropFrame';
+import { button, el, field } from './dom';
 import { settingsControls } from './settingsPanel';
+import { applyTheme, menuClicks } from './theme';
+import { worldPicture } from './worldPicture';
 
 /** A random number from the browser's generator (seeds and ids of new worlds; not world code). */
 const random32 = (): number => crypto.getRandomValues(new Uint32Array(1))[0];
@@ -24,6 +28,9 @@ const go = (query: string) => {
 /** Show the world list over the page. */
 export async function showWorldList(): Promise<void> {
   document.body.classList.add('menu-mode');
+  const settings = loadSettings();
+  applyTheme(settings);
+  menuClicks(new Sound(settings.volume, settings.muted));
   const root = el(document.body, 'div', 'menu-root');
   const panel = el(root, 'div', 'menu');
   let store: WorldStore;
@@ -31,13 +38,15 @@ export async function showWorldList(): Promise<void> {
     store = await IndexedDbStore.open();
   } catch (e) {
     console.warn('No IndexedDB:', e);
-    el(panel, 'div', 'menu-title', 'VOXEL SANDBOX');
+    el(panel, 'div', 'menu-title', 'Voxel Sandbox');
     el(panel, 'p', 'menu-help', "This browser window can't keep worlds (private browsing, or storage turned off). You can still play one that isn't saved.");
     const row = el(panel, 'div', 'menu-row');
     button(row, 'Play without saving', () => go(`?seed=${random32()}`), 'menu-go');
     return;
   }
   new WorldList(panel, store, await store.listWorlds());
+  // The live world behind the list, once the list is up.
+  showBackdrop();
 }
 
 /**
@@ -80,8 +89,14 @@ class WorldList {
       const card = button(list, '', () => this.select(w.id), 'world-card');
       card.classList.toggle('selected', w.id === this.selected);
       card.dataset.id = w.id;
-      el(card, 'span', 'menu-card-name', w.name);
-      el(card, 'span', 'menu-card-sub', `${modeOf(w)} · seed ${w.seed} · played ${ago(w.played, Date.now())}`);
+      const picture = el(card, 'img', 'world-picture');
+      picture.src = worldPicture(w.seed, thumbOf(w.thumb));
+      picture.alt = '';
+      const words = el(card, 'span', 'world-words');
+      const top = el(words, 'span', 'world-top');
+      el(top, 'span', 'menu-card-name', w.name);
+      el(top, 'span', `badge ${modeOf(w)}`, modeOf(w) === 'survival' ? 'Survival' : 'Creative');
+      el(words, 'span', 'menu-card-sub', `Played ${ago(w.played, Date.now())} · seed ${w.seed}`);
       card.addEventListener('dblclick', () => go(`?world=${encodeURIComponent(w.id)}`));
     }
     const actions = el(panel, 'div', 'menu-row');
@@ -140,15 +155,22 @@ class WorldList {
     };
     const nameInput = field(panel, 'Name', freeName('New world', this.worlds.map((w) => w.name)), '', () => void make(), back);
     const seedInput = field(panel, 'Seed', '', 'random (or a number, or any word)', () => void make(), back);
-    const mode = choice<WorldMode>(
-      panel,
-      'Mode',
-      [
-        ['creative', 'Creative: every block, flying'],
-        ['survival', 'Survival: gather, craft, take care'],
-      ],
-      'creative',
-    );
+    // The two modes as two cards side by side.
+    let chosen: WorldMode = 'creative';
+    const mode = () => chosen;
+    const cards = el(panel, 'div', 'mode-cards');
+    for (const [value, title, words] of [
+      ['creative', 'Creative', 'Every block to build with, and flying.'],
+      ['survival', 'Survival', 'Gather, craft and take care: health, hunger, the dark.'],
+    ] as const) {
+      const card = button(cards, '', () => {
+        chosen = value;
+        for (const c of cards.children) c.classList.toggle('selected', c === card);
+      }, `mode-card ${value}`);
+      card.classList.toggle('selected', value === chosen);
+      el(card, 'span', 'mode-title', title);
+      el(card, 'span', 'mode-words', words);
+    }
     const actions = el(panel, 'div', 'menu-row');
     button(actions, 'Create and play', () => void make(), 'menu-go');
     if (this.worlds.length) button(actions, 'Cancel', back);
@@ -206,7 +228,7 @@ class WorldList {
   /** Empty the panel and give it the title (and a heading for sub-pages). */
   private reset(heading?: string): HTMLElement {
     this.panel.replaceChildren();
-    el(this.panel, 'div', 'menu-title', 'VOXEL SANDBOX');
+    el(this.panel, 'div', 'menu-title', 'Voxel Sandbox');
     if (this.notice) el(this.panel, 'p', 'menu-notice', this.notice);
     this.notice = null;
     if (heading) el(this.panel, 'div', 'menu-heading', heading);

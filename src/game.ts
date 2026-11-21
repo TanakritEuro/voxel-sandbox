@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { heard, SoundCues, underfoot } from './audio/cues';
 import { Sound } from './audio/sound';
 import { Autofly } from './autofly';
+import { Backdrop, BACKDROP_FPS } from './backdrop';
 import { Flood } from './flood';
 import { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
@@ -17,10 +18,10 @@ import { Input } from './input';
 import { Player } from './player';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import { WorldSaver } from './save/saver';
-import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type PlayerState, type SurvivalRecord, type WorldStore } from './save/store';
+import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type PlayerState, type SurvivalRecord, type WorldStore, thumbOf } from './save/store';
 import { isUnsavedUrl } from './save/worlds';
 import { Inventory } from './ui/inventory';
-import { KEYS, PauseMenu, SURVIVAL_KEYS } from './ui/pauseMenu';
+import { PauseMenu } from './ui/pauseMenu';
 import { Backpack } from './ui/backpack';
 import { itemArt, itemIcons } from './render/itemIcons';
 import { digTime } from './survival/drops';
@@ -73,6 +74,7 @@ import { GuestSession, HostSession } from './net/session';
 import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
 import { ItemName, Loading, Vitals } from './ui/hud';
+import { applyTheme, menuClicks } from './ui/theme';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
 import { bedOf, Block, BLOCKS, chestOf, FACINGS, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, isWater, lanternFor, logicPlacement, torchFor, useBlock } from './world/blocks';
@@ -242,6 +244,7 @@ let time = timeHeld ? Number(timeParam) : record.time;
 const world = new World(record.seed, { generation: generationOf(record.generation) });
 // Sounds wait for the first click or key (browsers allow audio only after a gesture).
 const sound = new Sound(settings.volume, settings.muted);
+menuClicks(sound);
 const cues = new SoundCues();
 window.addEventListener('pointerdown', () => sound.unlock());
 window.addEventListener('keydown', () => sound.unlock());
@@ -1120,6 +1123,11 @@ const autofly =
         stats.note = text;
         console.log(`[autofly]\n${text}\n${JSON.stringify(report)}`);
       });
+// `?backdrop`: the title screen's live backdrop, in a frame behind the world list (`backdrop.ts`).
+const backdrop = params.has('backdrop')
+  ? new Backdrop(player, loader, (x, z) => world.generator.height(x, z), () => window.parent.postMessage('backdrop-ready', location.origin))
+  : null;
+if (backdrop) document.body.classList.add('backdrop');
 // `?flood`: the sea let into a room under it at once, to measure the worst case (`flood.ts`).
 const flood = params.has('flood')
   ? new Flood(world, flow, (changes) => applyLiquid(changes, flow), (report, text) => {
@@ -1926,12 +1934,14 @@ window.addEventListener('keydown', (e) => {
   }
   const n = Number(e.key);
   if (n >= 1 && n <= hotbar.length) {
+    if (selected !== n - 1 && input.locked) sound.play({ name: 'tick', gain: 1 });
     selected = n - 1;
     renderHotbar();
   }
 });
 window.addEventListener('wheel', (e) => {
   selected = (selected + Math.sign(e.deltaY) + hotbar.length) % hotbar.length;
+  if (e.deltaY && input.locked) sound.play({ name: 'tick', gain: 1 });
   renderHotbar();
 });
 // Paused whenever the mouse isn't captured (at the start, and after Esc), except under `?autofly`.
@@ -1946,7 +1956,7 @@ const pauseMenu = new PauseMenu(
     onSettings: applySettings,
     together: togetherMenu,
     ...(guest ? {} : { mode: modeMenu }),
-    keys: () => (survival ? SURVIVAL_KEYS : KEYS),
+    keys: () => (survival ? 'survival' : 'creative'),
   },
 );
 
@@ -1997,7 +2007,7 @@ function togetherMenu(panel: HTMLElement, refresh: () => void): void {
   });
 }
 applySettings(settings);
-const paused = () => !input.locked && !autofly;
+const paused = () => !input.locked && !autofly && !backdrop;
 // The picker frees the mouse too, without the pause menu.
 const showPause = () => (pauseMenu.visible = paused() && !inventory.open && !backpack.open && !mapView.open && !dead);
 document.addEventListener('pointerlockchange', showPause);
@@ -2011,6 +2021,11 @@ let lastFeet = { x: player.body.x, z: player.body.z };
 let fps = 60;
 
 function frame(now: number): void {
+  // The backdrop is scenery: at most `BACKDROP_FPS` frames a second.
+  if (backdrop && now - last < 1000 / BACKDROP_FPS - 2) {
+    requestAnimationFrame(frame);
+    return;
+  }
   const start = performance.now();
   renderer.info.reset();
   const interval = now - last;
@@ -2037,6 +2052,7 @@ function frame(now: number): void {
   }
   railwayReport(interval);
   if (autofly?.active) autofly.update(now, dt, interval);
+  else if (backdrop) backdrop.update(dt);
   else if (!paused()) {
     player.update(dt);
     sleeping(dt);
@@ -2267,7 +2283,7 @@ function frame(now: number): void {
   const art = heldItem === undefined || isBlockItem(heldItem) ? null : artOf(heldItem);
   if (art) held.setItem(heldItem!, art, brightness(eyeLight, daylightNow));
   else held.set(heldBlock(), eyeLight, sky.sunlight);
-  held.render(renderer, camera.aspect, !autofly);
+  if (!backdrop) held.render(renderer, camera.aspect, !autofly);
   stats.gpuEnd();
   const work = performance.now() - start;
   stats.frame(now, interval, work, player.physicsMs, player.physicsSteps);
@@ -2294,7 +2310,8 @@ function applySettings(s: Settings): void {
   camera.updateProjectionMatrix();
   TUNING.fly.mouseSensitivity = s.sensitivity / 1000;
   input.invertY = s.invertY;
-  sound.setVolume(s.volume, s.muted);
+  sound.setVolume(s.volume, s.muted || params.has('backdrop'));
+  applyTheme(s);
 }
 
 // --- Saving ----------------------------------------------------------------------------------
@@ -2363,9 +2380,41 @@ async function quit(): Promise<void> {
   }
   closeToFriends();
   pauseMenu.quitting();
+  const thumb = takePicture();
+  if (thumb) record.thumb = thumb;
   await saver.writeDirty();
   await saveRecord();
   location.href = location.pathname;
+}
+
+/**
+ * A small picture of the world as it's seen now, for its card in the world list: the scene drawn once
+ * more (the world only: no held block, no outline) and copied at once, cropped to 16:9, 192 x 108 JPEG.
+ */
+function takePicture(): string | undefined {
+  try {
+    const shown = outline.visible;
+    outline.visible = false;
+    renderer.render(scene, camera);
+    outline.visible = shown;
+    const src = renderer.domElement;
+    const w = 192;
+    const h = 108;
+    let sw = src.width;
+    let sh = (src.width * h) / w;
+    if (sh > src.height) {
+      sh = src.height;
+      sw = (sh * w) / h;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d')!.drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, 0, 0, w, h);
+    return thumbOf(canvas.toDataURL('image/jpeg', 0.82));
+  } catch (e) {
+    console.warn('No picture of the world:', e);
+    return undefined;
+  }
 }
 
 /** IndexedDB, or (where it's unavailable, as in some private windows) memory, with a warning. */

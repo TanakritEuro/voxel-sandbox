@@ -62,6 +62,17 @@ export interface WorldRecord {
   vehicles?: unknown[];
   /** The world's map (Milestone 18): explored columns' tiles (`WorldMap.toJSON`). */
   map?: unknown;
+  /** A small picture of the world (Milestone 20), taken on save and quit, for its card (`thumbOf` checks it). */
+  thumb?: string;
+}
+
+/** The most a world's picture may be, in characters of its data URL (a 192 x 108 JPEG is about 8 KB). */
+export const THUMB_MAX = 60_000;
+
+/** A record's picture if it's a JPEG or PNG data URL of a sensible size; otherwise none. */
+export function thumbOf(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > THUMB_MAX) return undefined;
+  return /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(value) ? value : undefined;
 }
 
 /** A chunk's place and its RLE-encoded blocks. */

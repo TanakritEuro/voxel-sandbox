@@ -26,7 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 20 (a better-looking UI) in progress, plan approved (`docs/milestone-20.md`); steps 1 (the look) and 2 (the HUD) built.
+Milestone 20 (a better-looking UI) in progress, plan approved (`docs/milestone-20.md`); steps 1 (the look), 2 (the HUD) and 3 (the menus) built.
 Milestones 1–19 built (`docs/milestone-1.md` to `docs/milestone-19.md`), waiting for playtests
 (Milestone 19, underground, for worlds made from now on (generation version 3; older worlds keep their land): lava,
 a second liquid of the same automaton, spreading 3, glowing, burning and swum in slowly, basalt or stone where it meets
@@ -159,7 +159,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 
 ## Layout
 
-- `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name) in localStorage,
+- `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name, UI size) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, stepping up, light, day length, sleep, sky, mobs (kept animals, breeding), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), lava (tick, drop search, its view, swimming, burning), logic, survival (stacks, tool speeds and
@@ -348,7 +348,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
   inventory, health and bed), `furnaces`, `containers` (chests), `crops`, `guests` (guests' survival states by name), `generation` (missing in older worlds: 1)
-  `animals` (kept animals), `vehicles` and `map`), `saver.ts` (`WorldSaver`: which chunks a world
+  `animals` (kept animals), `vehicles`, `map` and `thumb` (a picture taken on save and quit; `thumbOf` checks it)), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -402,15 +402,20 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   flowing water (a tick every 0.25 s, its changes made the frame after: blocks and light at once,
   saved, remeshed in the workers), logic (a tick every 0.1 s, its changes made at once the same way;
   water washing a logic block away wakes it), HUD, frame loop, pause, autosave.
-- `src/ui/` — `worldList.ts` (play, new, rename, delete, settings, join a friend, why a game
-  ended), `pauseMenu.ts` (play, settings, save and quit or leave, keys, a part for playing together), `inventory.ts` (the block picker), `backpack.ts` (survival's inventory screen: slots, a stack
-  following the pointer, crafting, or a furnace or chest opened from the world), `settingsPanel.ts` (sliders and toggles), `hud.ts` (`Vitals`: health, hunger and air as icons, redrawn only on
+- `src/ui/` — `worldList.ts` (worlds as cards with their pictures and a mode badge; play, new (two mode cards),
+  rename, delete, settings, join a friend, why a game ended), `worldPicture.ts` (a world's picture: its `thumb`, or
+  `seedScene`, a landscape drawn from its seed), `backdropFrame.ts` (the live world behind the list: the game in
+  `?backdrop` mode in a frame, faded in when its view is in; none with reduced motion or `?nobackdrop`), `keys.ts` (every
+  key in one table, `keysFor` a mode, checked against what the game reads), `theme.ts` (`applyTheme`: the UI size;
+  `menuClicks`), `pauseMenu.ts` (resume, settings, save and quit or leave, the keys as keycaps, a part for playing together), `inventory.ts` (the block picker), `backpack.ts` (survival's inventory screen: slots, a stack
+  following the pointer, crafting, or a furnace or chest opened from the world), `settingsPanel.ts` (in sections: Display, Controls, Sound, You), `hud.ts` (`Vitals`: health, hunger and air as icons, redrawn only on
   change, `vitalFills`; `ItemName`: the selected thing's name over the hotbar; `Loading`: the panel while the ground comes in),
   `hudIcons.ts` (gems, loaves and bubbles from masks, full, half or empty; `hudArt` pure), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css` (Milestone 20: colours and shapes as variables at the top, panels and buttons
   bevelled, titles in Pixelify Sans, bundled; less motion when the system asks).
 - `src/stats.ts` — `?stats` overlay (F3), with GPU time per frame (`render/gpuTimer.ts`). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
-  sprint flight that reports frame times and holes. `src/flood.ts` — `?flood`, the sea let into a
+  sprint flight that reports frame times and holes. `src/backdrop.ts` — `?backdrop`, the game as the title screen's
+  backdrop: no HUD, input, sound or saving, a camera drifting slowly over the land, at most 30 frames a second. `src/flood.ts` — `?flood`, the sea let into a
   32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,

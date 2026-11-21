@@ -1,6 +1,6 @@
 # Milestone 20: a better-looking UI
 
-**Status:** plan approved (2026-11-21); steps 1 and 2 built.
+**Status:** plan approved (2026-11-21); steps 1–3 built.
 
 ## Goal
 
@@ -146,7 +146,7 @@ frame time (some of it costs a little today: the health row is rebuilt every fra
 2. **The HUD:** hotbar and item name, health, hunger and air icons (rebuilt only on change), the debug line with stats
    only, toasts, death, loading. Done (2026-11-21).
 3. **Menus:** world cards with pictures and the live backdrop, the new-world panel, the pause menu with keycaps,
-   settings in sections, UI size, UI sounds.
+   settings in sections, UI size, UI sounds. Done (2026-11-21).
 4. **Picker and survival screens:** tabs and search, tooltips, crafting groups, furnace and chest, the map's frame,
    small shapes' icons.
 5. **Measurements,** screenshots, notes, playtest questions.
@@ -219,4 +219,46 @@ now isn't while it's hidden.
 - no console errors.
 
 **Measured:** a sprint flight (`?autofly=30`, warm server): no frame over 20 ms, main thread p50 3.6 ms, p99 9.4.
+
+## Step 3: the menus (2026-11-21)
+
+**What's in:**
+- **The live backdrop** (`backdrop.ts`, `ui/backdropFrame.ts`): once the world list is up, a frame behind it opens the game
+  as `?backdrop&seed=20261022&at=-40,360&radius=6&mobs=0&time=0.31&workers=2`: snowy mountains and spruce forest in the
+  morning. In that mode there's nothing on screen but the world (no HUD, menus, held block or sound, no saving), the
+  camera drifts at 3.2 blocks a second, 26 blocks over the highest ground 36 blocks ahead, eased, swaying ±0.7 rad
+  either side of its heading over 22 s, and the page draws at most 30 frames a second. It tells the list when its view
+  is in, and the frame fades in over 1.2 s. None with reduced motion or `?nobackdrop`.
+- **World cards:** each world's picture (96 x 54), its name, a Creative or Survival badge, "Played … · seed …". The
+  picture is taken on **save and quit** (the world drawn once more without the outline or held block, cropped to 16:9,
+  192 x 108 JPEG at 82 %, kept in the record as `thumb`, `thumbOf` dropping anything that isn't a small JPEG or PNG data
+  URL); a world never quit from gets a landscape drawn from its seed (`seedScene`: sky, far hills, near hills of grass
+  and earth, the sea where the land dips).
+- **New world:** name and seed, and the modes as two cards ("Creative: every block to build with, and flying",
+  "Survival: gather, craft and take care: health, hunger, the dark").
+- **The pause menu:** Resume first (was Play); the keys as keycaps in three columns (Moving, Building, Screens) for the
+  world's mode, from `ui/keys.ts`.
+- **Settings in sections:** Display (view distance, field of view, resolution, **UI size**, antialiasing), Controls
+  (mouse speed, invert), Sound (volume, mute), You (your name, which before could only be set when joining).
+- **UI size** (`settings.uiScale`, 80–130 %): a `--ui` variable that panels and the HUD's parts `zoom` by; panels'
+  limits divided by it so they still fit the window (at 120 % the settings panel first ran off the top).
+- **UI sounds:** a soft synthesised tock on any menu button (world list and game), a tiny tick when the hotbar's slot
+  changes by key or wheel.
+- **Tests (3 new, 1 updated):** the keys table against every key the source reads (it found right Ctrl and the mouse
+  buttons missing from the first table); `thumbOf` (JPEG and PNG kept, too big, HTML, script and broken ones dropped);
+  `seedScene` (the same for a seed, different for another, sky over land); UI size cleaned to 80–130 %.
+
+**Measured:**
+- **The list comes up as fast as before:** 60–84 ms from the page starting to the first world card, with the backdrop
+  or with `?nobackdrop` alike (three loads each, dev server); the backdrop is only added after.
+- **The backdrop:** 30 frames a second, main thread 1.0 ms a frame, GPU 5.8 ms (`?backdrop…&stats`, after its view
+  was in).
+
+**In the browser:** the list over the gradient, then the mountains fading in behind it and drifting; the new-world
+panel; settings in sections at 100 % and 120 %; the pause menu's keycaps; save and quit giving the world's card its
+picture; no console errors. Screenshots `docs/milestone-20/3-…`.
+
+**Changed from the plan:**
+- **The backdrop is in the morning** (time 0.31), not the plan's early evening; evening light wasn't tried, a playtest question.
+- **Ticks only for the hotbar** (tabs come in step 4).
 

@@ -26,6 +26,8 @@ export interface Settings {
   muted: boolean;
   /** The name others see when playing together. */
   name: string;
+  /** Everything on screen (menus and HUD) at this size, 0.8–1.3. */
+  uiScale: number;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   volume: 0.8,
   muted: false,
   name: 'Player',
+  uiScale: 1,
 };
 
 /** Allowed range and step of each number. */
@@ -47,6 +50,7 @@ export const RANGES = {
   resolution: { min: 0.5, max: 1, step: 0.05 },
   sensitivity: { min: 0.5, max: 6, step: 0.1 },
   volume: { min: 0, max: 1, step: 0.05 },
+  uiScale: { min: 0.8, max: 1.3, step: 0.05 },
 } as const;
 
 /** Above this view distance the panel warns it may be slow on a laptop. */
