@@ -5,8 +5,9 @@
 // right click picks up half or puts down one; Shift and a click moves a stack between the hotbar and
 // the rest (with a furnace open: into the furnace, fuel to its fuel and the rest to be smelted, and
 // back out). Each recipe is a button, bright when it can be made: a click makes it once, Shift and
-// a click as many times as it can. A furnace's output only gives; its fuel slot takes only fuel.
-// Closing with a stack picked up puts it back. Plain DOM, as the picker is.
+// a click as many times as it can; they're in groups (`categories.ts`), and a toggle shows only what
+// can be made. A slot's tooltip says what's in it (`tooltip.ts`). A furnace's output only gives; its
+// fuel slot takes only fuel. Closing with a stack picked up puts it back. Plain DOM, as the picker is.
 //
 // A guest's furnace or chest is the host's (`FurnaceAsk`): the screen shows it as last heard, and a
 // click puts the stack held (or Shift-clicked) into it, or asks for what's in a slot; the host
@@ -18,7 +19,9 @@ import { FUEL, Furnace, FUELS, INPUT, OUTPUT, SMELTS } from '../survival/furnace
 import { CHEST_SLOTS } from '../survival/chest';
 import { HOTBAR_SLOTS, type Inventory, SLOTS, type Stack } from '../survival/inventory';
 import { itemInfo } from '../survival/items';
-import { el } from './dom';
+import { groupOf, RECIPE_GROUPS } from './categories';
+import { button, el } from './dom';
+import { Tooltip } from './tooltip';
 
 /** A furnace or chest that is someone else's to change (a guest's view of the host's). */
 export interface FurnaceAsk {
@@ -57,6 +60,10 @@ export class Backpack {
   private furnaceShown = '';
   /** The furnace open is someone else's: changes are asked for (`FurnaceAsk`). */
   private ask: FurnaceAsk | null = null;
+  private readonly tooltip: Tooltip;
+  /** Crafting shows only what can be made. */
+  private onlyCan = false;
+  private readonly groupEls = new Map<string, HTMLElement>();
 
   constructor(
     parent: HTMLElement,
@@ -66,6 +73,7 @@ export class Backpack {
     private readonly events: BackpackEvents,
   ) {
     this.root = el(parent, 'div', 'menu-root backpack hidden');
+    this.tooltip = new Tooltip(this.root);
     const panel = el(this.root, 'div', 'menu backpack-panel');
     const columns = el(panel, 'div', 'backpack-columns');
     const left = el(columns, 'div', 'backpack-left');
@@ -73,28 +81,53 @@ export class Backpack {
     const pack = el(left, 'div', 'backpack-grid');
     const bar = el(left, 'div', 'backpack-grid backpack-hotbar');
     // The rest (slots 9–35) above, the hotbar (0–8) at the bottom, as on screen.
-    for (let i = 0; i < SLOTS; i++) this.slotEls[i] = this.slotButton(i < HOTBAR_SLOTS ? bar : pack, (e) => this.click(i, e.button === 2, e.shiftKey));
+    for (let i = 0; i < SLOTS; i++)
+      this.slotEls[i] = this.slotButton(
+        i < HOTBAR_SLOTS ? bar : pack,
+        (e) => this.click(i, e.button === 2, e.shiftKey),
+        () => this.inventory.slots[i],
+      );
     el(left, 'p', 'menu-help', 'Click: pick up, put down · Right click: half, or one · Shift click: to or from the hotbar · E, Tab or Esc close');
     // Crafting, or a furnace.
     this.crafting = el(columns, 'div', 'backpack-right');
-    el(this.crafting, 'div', 'menu-heading', 'Crafting');
+    const head = el(this.crafting, 'div', 'crafting-head');
+    el(head, 'div', 'menu-heading', 'Crafting');
+    const only = button(head, 'Can make', () => {
+      this.onlyCan = !this.onlyCan;
+      only.classList.toggle('on', this.onlyCan);
+      this.refresh();
+    }, 'crafting-filter');
     const list = el(this.crafting, 'div', 'recipe-list');
-    for (const recipe of RECIPES) this.recipeEls.push(this.recipeButton(list, recipe));
+    // In groups, each under its heading, in the order the groups are listed (recipes in theirs).
+    const placed = new Map<number, HTMLButtonElement>();
+    for (const g of RECIPE_GROUPS) {
+      this.groupEls.set(g, el(list, 'div', 'recipe-group', g));
+      RECIPES.forEach((recipe, i) => {
+        if (groupOf(recipe) === g) placed.set(i, this.recipeButton(list, recipe));
+      });
+    }
+    RECIPES.forEach((recipe, i) => this.recipeEls.push(placed.get(i) ?? this.recipeButton(list, recipe)));
     el(this.crafting, 'p', 'menu-help', 'Click: make one · Shift click: as many as you can');
     this.furnacePart = el(columns, 'div', 'backpack-right hidden');
     el(this.furnacePart, 'div', 'menu-heading', 'Furnace');
     const works = el(this.furnacePart, 'div', 'furnace-works');
     const ins = el(works, 'div', 'furnace-column');
-    this.furnaceEls[INPUT] = this.slotButton(ins, (e) => this.clickFurnace(INPUT, e.button === 2, e.shiftKey));
+    const furnaceAt = (slot: number) => () => this.furnace?.slots.slots[slot] ?? null;
+    this.furnaceEls[INPUT] = this.slotButton(ins, (e) => this.clickFurnace(INPUT, e.button === 2, e.shiftKey), furnaceAt(INPUT));
     this.flame = el(el(ins, 'div', 'furnace-flame'), 'div');
-    this.furnaceEls[FUEL] = this.slotButton(ins, (e) => this.clickFurnace(FUEL, e.button === 2, e.shiftKey));
+    this.furnaceEls[FUEL] = this.slotButton(ins, (e) => this.clickFurnace(FUEL, e.button === 2, e.shiftKey), furnaceAt(FUEL));
     this.arrow = el(el(works, 'div', 'furnace-arrow'), 'div');
-    this.furnaceEls[OUTPUT] = this.slotButton(works, (e) => this.clickFurnace(OUTPUT, e.button === 2, e.shiftKey));
+    this.furnaceEls[OUTPUT] = this.slotButton(works, (e) => this.clickFurnace(OUTPUT, e.button === 2, e.shiftKey), furnaceAt(OUTPUT));
     el(this.furnacePart, 'p', 'menu-help', 'Top: what to smelt or cook (raw copper, raw iron, sand, raw meat). Bottom: fuel (coal, embers, wood, planks, sticks). Shift click puts things in and takes them out.');
     this.chestPart = el(columns, 'div', 'backpack-right hidden');
     el(this.chestPart, 'div', 'menu-heading', 'Chest');
     const chestGrid = el(this.chestPart, 'div', 'backpack-grid');
-    for (let i = 0; i < CHEST_SLOTS; i++) this.chestEls[i] = this.slotButton(chestGrid, (e) => this.clickChest(i, e.button === 2, e.shiftKey));
+    for (let i = 0; i < CHEST_SLOTS; i++)
+      this.chestEls[i] = this.slotButton(
+        chestGrid,
+        (e) => this.clickChest(i, e.button === 2, e.shiftKey),
+        () => this.chest?.slots[i] ?? null,
+      );
     el(this.chestPart, 'p', 'menu-help', 'Shift click moves a stack between the chest and your inventory.');
     this.cursor = el(this.root, 'div', 'backpack-cursor slot');
     this.root.addEventListener('mousemove', (e) => this.follow(e));
@@ -145,6 +178,7 @@ export class Backpack {
   /** Close it; a stack picked up goes back into the inventory. */
   hide(): void {
     this.isOpen = false;
+    this.tooltip.hide();
     this.furnace = null;
     this.chest = null;
     this.root.classList.add('hidden');
@@ -161,7 +195,13 @@ export class Backpack {
     this.inventory.slots.forEach((s, i) => this.drawSlot(this.slotEls[i], s));
     this.drawSlot(this.cursor, this.held);
     this.cursor.classList.toggle('hidden', !this.held);
-    RECIPES.forEach((r, i) => this.recipeEls[i].classList.toggle('can', canMake(this.inventory, r)));
+    RECIPES.forEach((r, i) => {
+      const can = canMake(this.inventory, r);
+      this.recipeEls[i].classList.toggle('can', can);
+      this.recipeEls[i].hidden = this.onlyCan && !can;
+    });
+    // A group's heading only while something under it shows.
+    for (const [g, heading] of this.groupEls) heading.hidden = !RECIPES.some((r, i) => groupOf(r) === g && !this.recipeEls[i].hidden);
     this.chest?.slots.forEach((s, i) => this.drawSlot(this.chestEls[i], s));
     this.tick();
   }
@@ -180,9 +220,10 @@ export class Backpack {
     this.arrow.style.width = `${Math.min(100, arrow)}%`;
   }
 
-  private slotButton(parent: HTMLElement, onClick: (e: MouseEvent) => void): HTMLButtonElement {
+  private slotButton(parent: HTMLElement, onClick: (e: MouseEvent) => void, stackAt: () => Stack | null): HTMLButtonElement {
     const b = el(parent, 'button', 'slot');
     b.type = 'button';
+    this.tooltip.attach(b, stackAt, () => this.held !== null);
     b.addEventListener('mousedown', (e) => {
       e.preventDefault();
       onClick(e);
@@ -306,11 +347,9 @@ export class Backpack {
   private drawSlot(e: HTMLElement, s: Stack | null): void {
     if (!s) {
       e.replaceChildren();
-      e.title = '';
       return;
     }
     const info = itemInfo(s.item);
-    e.title = info.name;
     const look = document.createElement('span');
     look.style.backgroundImage = `url(${this.icon(s.item)})`;
     const parts: HTMLElement[] = [look];

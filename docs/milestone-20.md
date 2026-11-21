@@ -1,6 +1,6 @@
 # Milestone 20: a better-looking UI
 
-**Status:** plan approved (2026-11-21); steps 1–3 built.
+**Status:** plan approved (2026-11-21); steps 1–4 built.
 
 ## Goal
 
@@ -148,7 +148,7 @@ frame time (some of it costs a little today: the health row is rebuilt every fra
 3. **Menus:** world cards with pictures and the live backdrop, the new-world panel, the pause menu with keycaps,
    settings in sections, UI size, UI sounds. Done (2026-11-21).
 4. **Picker and survival screens:** tabs and search, tooltips, crafting groups, furnace and chest, the map's frame,
-   small shapes' icons.
+   small shapes' icons. Done (2026-11-21).
 5. **Measurements,** screenshots, notes, playtest questions.
 
 ## Decisions to agree
@@ -261,4 +261,41 @@ picture; no console errors. Screenshots `docs/milestone-20/3-…`.
 **Changed from the plan:**
 - **The backdrop is in the morning** (time 0.31), not the plan's early evening; evening light wasn't tried, a playtest question.
 - **Ticks only for the hotbar** (tabs come in step 4).
+
+## Step 4: the picker and survival's screens (2026-11-21)
+
+**What's in:**
+- **`ui/categories.ts`:** every placeable block named in a tab (Building, Nature, Home, Light, Logic, Travel, Deep; slabs
+  and stairs Building) and every recipe in a group (Basics, Tools, Building, Light, Logic, Travel, Food), with no
+  default, so a new block or recipe must be given a place (tests check); `nameMatches`: any part of a name, any case.
+- **The block picker:** a search box beside the title, focused when it opens (typing stays in it: E closes only while it's
+  empty, Tab and Esc always); tabs, All first; the grid a fixed height, scrolling, so the panel doesn't jump as a tab or
+  search changes; "No block by that name" when nothing matches; the hotbar along the bottom (a click picks the slot);
+  the panel kept clear of the game's hotbar.
+- **Tooltips** (`ui/tooltip.ts`) on every slot of the inventory, a chest and a furnace: the name (× count), a tool's uses
+  left with a bar (orange under a quarter), "Eat for N hunger", "Smelts into …", "Fuel: smelts N things"; hidden while a
+  stack is carried; kept on screen. The slots' browser titles are gone.
+- **Crafting** under group headings, a "Can make" toggle hiding what can't be made (and headings left empty), the list
+  as tall as the inventory beside it, so the panel no longer has a gap under the slots.
+- **Furnace:** the flame shaped as a flame. The chest and furnace use the same frame as the rest (step 1).
+- **The map:** the held one in a wooden frame with a round N at the top (north is up); the full-screen one with a title
+  bar (Map, its size and columns explored, its keys as keycaps).
+- **Small shapes' icons** (`fitted`): boxes spanning under three quarters of a block scaled about their middle (at most
+  1.8 times) to fill it, standing on its floor: the lantern's icon is no longer a speck. A slab or stairs are as they were.
+- **A fix found on the way:** `hidden` lost to a menu button's own `display`, so the first filtering hid nothing; inside
+  menus `[hidden]` now always wins.
+- **Tests (5 new):** every block a tab and every tab some blocks; search; every recipe a group; tooltips for a worn tool,
+  food, something to smelt, fuel and a plain block; small shapes fitted, slabs left alone.
+
+**In the browser** (`docs/milestone-20/4-…`): the picker's All, Deep and a search for "brick" (stone and mossy bricks); the
+Light tab with the lantern's larger icon; survival's inventory and crafting side by side; the iron pick's tooltip (250 of
+250 uses left, a full bar); "Can make" hiding spruce and parasol planks; the full-screen map's title bar; the held map's
+frame and N; no console errors. Not looked at in the browser: the furnace's and a chest's screens (only their styles
+changed).
+
+**Changed from the plan:**
+- **Crafting has Light and Logic groups** as well as the five planned.
+- **The number keys don't pick a slot while the picker is open:** they type into the search box; a click on the picker's
+  hotbar does it.
+- **Only box-shaped blocks' icons are fitted** (the lantern); a button's or a rail's are drawn other ways and left as they are.
 

@@ -26,7 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 20 (a better-looking UI) in progress, plan approved (`docs/milestone-20.md`); steps 1 (the look), 2 (the HUD) and 3 (the menus) built.
+Milestone 20 (a better-looking UI) in progress, plan approved (`docs/milestone-20.md`); steps 1–4 (the look, the HUD, the menus, the picker and survival's screens) built.
 Milestones 1–19 built (`docs/milestone-1.md` to `docs/milestone-19.md`), waiting for playtests
 (Milestone 19, underground, for worlds made from now on (generation version 3; older worlds keep their land): lava,
 a second liquid of the same automaton, spreading 3, glowing, burning and swum in slowly, basalt or stone where it meets
@@ -311,8 +311,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
   only the face directions that can point at the camera (`facing`), of the groups to draw (`drawRanges`), kept per entry until those change. `blockMaterial.ts` — the texture
   array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
-  textures (a slab's or stairs' boxes each drawn, cropped). `mapView.ts` — the map shown: a panel in the corner while one is held, full screen with N (zoomed with the
-  wheel, dragged about), the player an arrow. `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
+  textures (a slab's or stairs' boxes each drawn, cropped; a small shape's scaled up to fill its square, `fitted`). `mapView.ts` — the map shown: a panel in the corner in a wooden frame with N marked while one is held, full screen with N
+  (a title bar with its keys; zoomed with the wheel, dragged about), the player an arrow. `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
   icons. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
   `clouds.ts` — the blocky cloud layer and its tiling pattern. `fog.ts` — fog colour and
@@ -407,8 +407,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `seedScene`, a landscape drawn from its seed), `backdropFrame.ts` (the live world behind the list: the game in
   `?backdrop` mode in a frame, faded in when its view is in; none with reduced motion or `?nobackdrop`), `keys.ts` (every
   key in one table, `keysFor` a mode, checked against what the game reads), `theme.ts` (`applyTheme`: the UI size;
-  `menuClicks`), `pauseMenu.ts` (resume, settings, save and quit or leave, the keys as keycaps, a part for playing together), `inventory.ts` (the block picker), `backpack.ts` (survival's inventory screen: slots, a stack
-  following the pointer, crafting, or a furnace or chest opened from the world), `settingsPanel.ts` (in sections: Display, Controls, Sound, You), `hud.ts` (`Vitals`: health, hunger and air as icons, redrawn only on
+  `menuClicks`), `pauseMenu.ts` (resume, settings, save and quit or leave, the keys as keycaps, a part for playing together), `inventory.ts` (the block picker: tabs by kind,
+  a search box, the hotbar along the bottom), `categories.ts` (`kindOf` a block's tab, `nameMatches`, `groupOf` a recipe's
+  group; every one named, tests check), `tooltip.ts` (`tooltipOf`: an item's name, a tool's uses left, food, smelting, fuel;
+  `Tooltip`), `backpack.ts` (survival's inventory screen: slots with tooltips, a stack
+  following the pointer, crafting in groups with a "can make" filter, or a furnace or chest opened from the world), `settingsPanel.ts` (in sections: Display, Controls, Sound, You), `hud.ts` (`Vitals`: health, hunger and air as icons, redrawn only on
   change, `vitalFills`; `ItemName`: the selected thing's name over the hotbar; `Loading`: the panel while the ground comes in),
   `hudIcons.ts` (gems, loaves and bubbles from masks, full, half or empty; `hudArt` pure), `dom.ts` (small DOM
   helpers). Plain DOM, styled in `style.css` (Milestone 20: colours and shapes as variables at the top, panels and buttons

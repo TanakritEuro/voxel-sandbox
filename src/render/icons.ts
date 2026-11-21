@@ -51,7 +51,7 @@ export function blockIcons(pixels: Uint8Array = makeTextures()): string[] {
     // A fence or pane as if joined on either side along x.
     const boxes = info.connects ? connectedBoxes(info.connects, 3) : info.boxes;
     if (boxes) {
-      drawBoxes(ctx, info, boxes, layer);
+      drawBoxes(ctx, info, info.connects ? boxes : fitted(boxes), layer);
       return canvas.toDataURL();
     }
     for (const { map, shade, face } of FACES) {
@@ -67,6 +67,24 @@ export function blockIcons(pixels: Uint8Array = makeTextures()): string[] {
     }
     return canvas.toDataURL();
   });
+}
+
+/**
+ * A small shape's boxes (a lantern) scaled up about their middle to fill most of the block, standing on its
+ * floor, so its icon isn't a speck; a shape filling much of the block (a slab, stairs, a bed) as it is.
+ */
+export function fitted(boxes: readonly Box[]): readonly Box[] {
+  const lo = [0, 1, 2].map((a) => Math.min(...boxes.map((b) => b[a])));
+  const hi = [3, 4, 5].map((a) => Math.max(...boxes.map((b) => b[a])));
+  const size = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  if (size >= 0.75) return boxes;
+  const k = Math.min(1.8, 0.9 / size);
+  const mx = (lo[0] + hi[0]) / 2;
+  const mz = (lo[2] + hi[2]) / 2;
+  const x = (v: number) => Math.max(0, Math.min(1, 0.5 + (v - mx) * k));
+  const z = (v: number) => Math.max(0, Math.min(1, 0.5 + (v - mz) * k));
+  const y = (v: number) => Math.max(0, Math.min(1, (v - lo[1]) * k));
+  return boxes.map((b) => [x(b[0]), y(b[1]), z(b[2]), x(b[3]), y(b[4]), z(b[5])] as Box);
 }
 
 /**

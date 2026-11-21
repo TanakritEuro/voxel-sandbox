@@ -13,6 +13,7 @@ const PANEL_EVERY = 0.25;
 const ZOOMS = [0.5, 1, 2, 4, 8];
 
 export class MapView {
+  private readonly frame: HTMLDivElement;
   private readonly panel: HTMLCanvasElement;
   private readonly root: HTMLDivElement;
   private readonly full: HTMLCanvasElement;
@@ -35,11 +36,26 @@ export class MapView {
     /** Called when the full-screen map closes (the game takes the mouse back). */
     private readonly onClose: () => void,
   ) {
-    this.panel = el(parent, 'canvas', 'map-panel hidden');
+    // The held map: in a frame with north marked (north is up: -z).
+    this.frame = el(parent, 'div', 'map-frame hidden');
+    this.panel = el(this.frame, 'canvas', 'map-panel');
     this.panel.width = this.panel.height = PANEL;
+    el(this.frame, 'div', 'map-north', 'N');
     this.root = el(document.body, 'div', 'map-root hidden');
+    const bar = el(this.root, 'div', 'map-bar');
+    el(bar, 'div', 'map-title', 'Map');
+    this.label = el(bar, 'div', 'map-label');
+    const keys = el(bar, 'div', 'map-keys');
+    for (const [cap, what] of [
+      ['Wheel', 'zoom'],
+      ['Drag', 'look about'],
+      ['N', 'close'],
+    ]) {
+      const k = el(keys, 'span', 'keys-line');
+      el(k, 'kbd', cap.length > 3 ? 'wide' : '', cap);
+      el(k, 'span', 'keys-what', what);
+    }
     this.full = el(this.root, 'canvas', 'map-full');
-    this.label = el(this.root, 'div', 'map-label');
     this.full.addEventListener('wheel', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -84,7 +100,7 @@ export class MapView {
    * when it has moved. (x, z) is where the player is, `yaw` the way they look.
    */
   update(dt: number, holding: boolean, x: number, z: number, yaw: number): void {
-    this.panel.classList.toggle('hidden', !holding || this.open);
+    this.frame.classList.toggle('hidden', !holding || this.open);
     this.sincePanel += dt;
     if (holding && !this.open && this.sincePanel >= PANEL_EVERY) {
       this.sincePanel = 0;
@@ -107,7 +123,7 @@ export class MapView {
     const [cx, cz] = this.centre ?? [x, z];
     this.paint(this.full, cx, cz, ZOOMS[this.zoom], yaw, x, z);
     const blocks = Math.round(size * ZOOMS[this.zoom]);
-    this.label.textContent = `${blocks} × ${blocks} blocks · ${this.map.size} columns explored · wheel to zoom, drag to look about, N or Esc to close`;
+    this.label.textContent = `${blocks} × ${blocks} blocks · ${this.map.size} columns explored`;
   }
 
   /** The map round (cx, cz) at `scale` blocks a pixel into `canvas`, the player at (px, pz) an arrow. */

@@ -294,6 +294,11 @@ body.backdrop > :not(#game) {
   display: none;
 }
 
+/* Hidden is hidden, whatever display a menu's rule gives it (filtered blocks and recipes). */
+.menu [hidden] {
+  display: none !important;
+}
+
 .menu {
   /* Limits in the panel's own (zoomed) pixels, so it fits the window at any UI size. */
   width: min(560px, calc((100vw - 32px) / var(--ui)));
@@ -315,8 +320,7 @@ body.backdrop > :not(#game) {
 .vitals,
 .item-name,
 .events,
-.loading-panel,
-.map-panel {
+.loading-panel {
   zoom: var(--ui);
 }
 
@@ -758,6 +762,101 @@ kbd.wide {
 
 .menu-root.inventory {
   background: rgba(8, 12, 18, 0.4);
+  /* Clear of the game's hotbar. */
+  padding-bottom: 72px;
+}
+
+.menu.picker {
+  width: min(640px, calc((100vw - 32px) / var(--ui)));
+  max-height: calc((100vh - 104px) / var(--ui));
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.picker-head .menu-heading {
+  font-size: 20px;
+  color: var(--title);
+}
+
+.menu input.picker-search {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--well);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  box-shadow: var(--sink);
+  padding: 6px 10px;
+}
+
+.menu input.picker-search::placeholder {
+  color: var(--text-faint);
+}
+
+.menu input.picker-search:focus {
+  border-color: var(--accent-lo);
+  outline: none;
+}
+
+.picker-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.menu button.picker-tab {
+  font-size: 12px;
+  padding: 4px 10px 5px;
+}
+
+.menu button.picker-tab.selected {
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: inset 0 2px 0 var(--accent-hi), inset 0 -3px 0 var(--accent-lo);
+}
+
+/* The same height whatever shows, so the panel doesn't jump as a tab or a search changes. */
+.menu.picker .block-grid {
+  flex: none;
+  height: min(340px, calc((100vh - 330px) / var(--ui)));
+  min-height: 140px;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.picker-none {
+  grid-column: 1 / -1;
+  padding: 20px 0;
+}
+
+/* The hotbar along the bottom of the picker. */
+.picker-bar {
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+  padding-top: 10px;
+  border-top: 2px solid var(--panel-lo);
+}
+
+.menu .picker-bar button.slot {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid var(--outline);
+  border-radius: 3px;
+  background: var(--well);
+  box-shadow: var(--sink);
+}
+
+.menu .picker-bar button.slot.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent-lo);
 }
 
 .block-grid {
@@ -1079,6 +1178,53 @@ kbd.wide {
   display: none;
 }
 
+/* A slot's tooltip: the item's name, and what's worth knowing about it. */
+.tooltip {
+  position: fixed;
+  z-index: 12;
+  max-width: 240px;
+  padding: 6px 10px 7px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  background: #12161f;
+  box-shadow: var(--bevel), 0 6px 18px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  zoom: var(--ui);
+}
+
+.tooltip.hidden {
+  display: none;
+}
+
+.tooltip-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--title);
+}
+
+.tooltip-line {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.tooltip-bar {
+  height: 5px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--well);
+  overflow: hidden;
+}
+
+.tooltip-bar div {
+  height: 100%;
+  background: #5fd35f;
+}
+
+.tooltip-bar div.low {
+  background: #e0763e;
+}
+
 /* A furnace on the inventory screen: what to smelt over its flame and fuel, an arrow to what's made. */
 .furnace-works {
   display: flex;
@@ -1109,7 +1255,8 @@ kbd.wide {
 
 .furnace-flame div {
   width: 100%;
-  background: linear-gradient(#fff0c0, #ffa848);
+  background: linear-gradient(#fff0c0, #ffa848 55%, #e8641c);
+  clip-path: polygon(50% 0, 70% 25%, 100% 45%, 100% 100%, 0 100%, 0 45%, 30% 25%);
 }
 
 .furnace-arrow {
@@ -1127,14 +1274,43 @@ kbd.wide {
   background: var(--accent);
 }
 
+.crafting-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.menu button.crafting-filter {
+  font-size: 12px;
+  padding: 3px 9px 4px;
+}
+
 .recipe-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
   width: 300px;
-  max-height: 60vh;
+  height: 252px;
   overflow-y: auto;
   padding: 2px 4px 2px 2px;
+}
+
+.recipe-group {
+  margin-top: 6px;
+  font-family: var(--font-title);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--title);
+}
+
+.recipe-group:first-child {
+  margin-top: 0;
+}
+
+.recipe-group[hidden],
+.menu button.recipe[hidden] {
+  display: none;
 }
 
 .menu button.recipe {
@@ -1248,10 +1424,35 @@ kbd.wide {
 
 /* --- The map (Milestone 18): a panel while one is held, and full screen (N) ----------------------------- */
 
-.map-panel {
+.map-frame {
   position: absolute;
   right: 14px;
   bottom: 14px;
+  zoom: var(--ui);
+}
+
+.map-frame.hidden {
+  display: none;
+}
+
+.map-north {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  border: 2px solid #3b2d18;
+  border-radius: 50%;
+  background: #e8dcbc;
+  color: #7a2a1a;
+  font: 700 12px/18px var(--font-title);
+  text-align: center;
+  text-shadow: none;
+}
+
+.map-panel {
+  display: block;
   width: 256px;
   height: 256px;
   image-rendering: pixelated;
@@ -1288,8 +1489,32 @@ kbd.wide {
   cursor: grab;
 }
 
+.map-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 14px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  background: rgba(29, 35, 48, 0.9);
+  box-shadow: var(--bevel);
+  zoom: var(--ui);
+}
+
+.map-title {
+  font-family: var(--font-title);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--title);
+}
+
 .map-label {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  color: var(--text-dim);
+}
+
+.map-keys {
+  display: flex;
+  gap: 12px;
 }
 
 .map-panel.hidden,

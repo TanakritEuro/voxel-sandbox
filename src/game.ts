@@ -1184,13 +1184,21 @@ record.hotbar = hotbar;
 const icons = blockIcons();
 
 // The block picker: choosing a block puts it in the selected slot, and the world remembers it.
-const inventory = new Inventory(document.body, icons, (block) => {
-  hotbar[selected] = block;
-  renderHotbar();
-  void saveRecord();
-});
+const inventory = new Inventory(
+  document.body,
+  icons,
+  (block) => {
+    hotbar[selected] = block;
+    renderHotbar();
+    void saveRecord();
+  },
+  (slot) => {
+    selected = slot;
+    renderHotbar();
+  },
+);
 function openInventory(): void {
-  inventory.show(selected, hotbar[selected]);
+  inventory.show(selected, hotbar);
   input.unlock();
 }
 function closeInventory(): void {
@@ -1364,7 +1372,7 @@ function heldBlock(): Block {
 }
 
 function renderHotbar(): void {
-  inventory.refresh(selected, hotbar[selected]);
+  inventory.refresh(selected, hotbar);
   // The selected thing's name over the hotbar when it changes.
   const held = survival ? pack.slots[selected] : null;
   itemName.show(survival ? (held ? itemInfo(held.item).name : '') : BLOCKS[hotbar[selected]].name);
