@@ -147,8 +147,8 @@ body {
 
 .slot {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: 2px solid var(--outline);
   border-radius: 3px;
   background: var(--well);
@@ -167,8 +167,8 @@ body {
 }
 
 .slot span {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -183,6 +183,10 @@ body {
   font-style: normal;
   color: var(--text-faint);
   text-shadow: none;
+}
+
+#hotbar .slot.selected {
+  transform: translateY(-3px);
 }
 
 .slot.selected em {
@@ -600,15 +604,16 @@ body.menu-mode #hud {
   text-align: center;
 }
 
-/* --- Survival's vitals: pips over the hotbar (a pip for two points), air bubbles under water ------------ */
+/* --- Survival's vitals: gems for health, loaves for hunger (filling from the right), bubbles for air ------- */
 
 .vitals {
   position: absolute;
-  bottom: 74px;
+  bottom: 82px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 4px;
   pointer-events: none;
 }
@@ -619,62 +624,127 @@ body.menu-mode #hud {
 
 .vitals-row {
   display: flex;
-  gap: 18px;
+  justify-content: space-between;
+  gap: 24px;
 }
 
-.pips,
-.bubbles {
+.vitals-air {
   display: flex;
-  gap: 3px;
+  justify-content: flex-end;
 }
 
-/* Hunger fills from the right, in the colour of bread crust. */
-.pips.food {
+.pips {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5));
+}
+
+.pips.hunger {
   flex-direction: row-reverse;
 }
 
-.pips.food .pip {
-  border-radius: 6px;
-}
-
-.pips.food .pip.full {
-  background: var(--hunger);
-  box-shadow: inset 0 2px 0 #f0b870;
-}
-
-.pips.food .pip.half {
-  background: linear-gradient(270deg, var(--hunger) 50%, rgba(40, 10, 10, 0.55) 50%);
-}
-
 .pip {
-  width: 14px;
-  height: 12px;
-  border-radius: 3px;
-  border: 2px solid rgba(0, 0, 0, 0.65);
-  background: rgba(40, 10, 10, 0.55);
+  display: block;
+  image-rendering: pixelated;
 }
 
-.pip.full {
-  background: var(--health);
-  box-shadow: inset 0 2px 0 #f28a8d;
+/* The selected thing's name over the hotbar, fading in when it changes. */
+.item-name {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  transform: translate(-50%, 4px);
+  padding: 3px 10px 4px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  background: rgba(29, 35, 48, 0.86);
+  box-shadow: var(--bevel);
+  font-size: 14px;
+  font-weight: 600;
+  text-shadow: none;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    opacity 0.4s,
+    transform 0.4s;
+  pointer-events: none;
 }
 
-.pip.half {
-  background: linear-gradient(90deg, var(--health) 50%, rgba(40, 10, 10, 0.55) 50%);
-}
-
-.bubble {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, 0.45);
-  opacity: 0.25;
-}
-
-.bubble.full {
-  background: var(--air);
-  box-shadow: inset 0 2px 0 #e4f6ff;
+.item-name.on {
   opacity: 1;
+  transform: translate(-50%, 0);
+  transition-duration: 0.12s;
+}
+
+.item-name.raised {
+  bottom: 130px;
+}
+
+.item-name:empty {
+  display: none;
+}
+
+/* While the world is being built: a panel with a bar. */
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.5s;
+}
+
+.loading.done {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.5s,
+    visibility 0s 0.5s;
+}
+
+.loading-panel {
+  width: min(360px, calc(100vw - 32px));
+  padding: 18px 22px 16px;
+  border: 2px solid var(--outline);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: var(--bevel), var(--drop);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text);
+  animation: rise var(--pop) both;
+}
+
+.loading-panel .menu-heading {
+  font-size: 18px;
+  color: var(--title);
+}
+
+.loading-track {
+  height: 14px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  background: var(--well);
+  box-shadow: var(--sink);
+  overflow: hidden;
+}
+
+.loading-bar {
+  width: 0;
+  height: 100%;
+  background: var(--go);
+  box-shadow: inset 0 2px 0 var(--go-hi), inset 0 -2px 0 var(--go-lo);
+  transition: width 0.25s;
+}
+
+.loading-words {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
 }
 
 .sleep-dim {
@@ -1042,8 +1112,19 @@ body.menu-mode #hud {
 
 @media (prefers-reduced-motion: reduce) {
   .menu,
-  .event {
+  .event,
+  .loading-panel {
     animation: none;
+  }
+
+  .item-name,
+  #hotbar .slot.selected {
+    transition: none;
+    transform: translate(-50%, 0);
+  }
+
+  #hotbar .slot.selected {
+    transform: none;
   }
 
   .burn-tint.on {

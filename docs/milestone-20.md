@@ -1,6 +1,6 @@
 # Milestone 20: a better-looking UI
 
-**Status:** plan approved (2026-11-21); step 1 built.
+**Status:** plan approved (2026-11-21); steps 1 and 2 built.
 
 ## Goal
 
@@ -144,7 +144,7 @@ frame time (some of it costs a little today: the health row is rebuilt every fra
 1. **The look:** variables, the font, panels, buttons, sliders, scrollbars, motion, focus; every screen restyled with
    its layout as it is. Done (2026-11-21).
 2. **The HUD:** hotbar and item name, health, hunger and air icons (rebuilt only on change), the debug line with stats
-   only, toasts, death, loading.
+   only, toasts, death, loading. Done (2026-11-21).
 3. **Menus:** world cards with pictures and the live backdrop, the new-world panel, the pause menu with keycaps,
    settings in sections, UI size, UI sounds.
 4. **Picker and survival screens:** tabs and search, tooltips, crafting groups, furnace and chest, the map's frame,
@@ -186,4 +186,37 @@ frame time (some of it costs a little today: the health row is rebuilt every fra
 **In the browser:** the world list, pause menu, settings, block picker and survival inventory looked at, before and
 after, saved in `docs/milestone-20/` (`0-…-before`, `1-…`); no console errors. The build's CSS is 8 KB larger with
 the font's faces referenced; the faces load only when a title is drawn.
+
+## Step 2: the HUD (2026-11-21)
+
+**A correction to the plan:** it said the health row was rebuilt every frame. It wasn't: `renderVitals` already
+skipped redrawing when health, hunger and air were unchanged. What was written every frame was the debug line, which
+now isn't while it's hidden.
+
+**What's in:**
+- **`ui/hudIcons.ts`:** health as a cut red gem (9 x 9 pixels), hunger as a scored loaf (10 x 7), air as a bubble with a
+  glint (8 x 8), each full, half or empty (the same shape, dull when used up; a half loaf fills from the right, as hunger
+  fills from the right), from masks; `hudArt` pure, `hudIcons` data URLs, made the first time they're shown, drawn at
+  twice their size, crisp.
+- **`ui/hud.ts`:** `Vitals` (the rows of icons, redrawn only when a value changes; bubbles over them under water),
+  `ItemName` (the selected thing's name in a small panel over the hotbar, fading in when it changes and out after 2 s;
+  higher in survival, over the vitals), `Loading` (a panel saying the world is being built, a green bar filling as the
+  5 x 5 columns round the player come in, fading away once there's ground to stand on; not over a menu).
+- **The hotbar:** slots 44 px (from 40), the selected one raised 3 px as well as amber.
+- **The debug line** (fps, place, chunks, tris, the block looked at) only with the stats (F3 or `?stats`), and not
+  written at all while hidden.
+- **Death:** the vignette, title and cause from step 1; the icons show it (no gems left).
+- **Tests (2 new):** the rows' fills for any points; each picture the same shape full, half and empty, half filling one
+  side (hunger's the right).
+
+**In the browser:**
+- survival (`?survival&kit`): ten gems, six loaves of twelve points filling from the right, "Torch" over the hotbar when
+  slot 4 was picked, fading after 2 s; `docs/milestone-20/2-hud.jpg`;
+- a world far from anything loaded (`?seed=424242&at=3000,3000`): "Building the world" with the bar at 16 %, gone once
+  the land was in; `2-loading.jpg`;
+- F3 brings the debug line back and takes it away again;
+- death in lava: "You died / You burned." over the vignette; `2-death.jpg`;
+- no console errors.
+
+**Measured:** a sprint flight (`?autofly=30`, warm server): no frame over 20 ms, main thread p50 3.6 ms, p99 9.4.
 

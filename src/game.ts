@@ -72,6 +72,7 @@ import { cleanRoomCode } from './net/roomCode';
 import { GuestSession, HostSession } from './net/session';
 import { Traffic } from './net/traffic';
 import { button, el, field } from './ui/dom';
+import { ItemName, Loading, Vitals } from './ui/hud';
 import { PlayerRenderer } from './render/playerRenderer';
 import { MobRenderer } from './render/mobRenderer';
 import { bedOf, Block, BLOCKS, chestOf, FACINGS, facingFromYaw, furnace, furnaceOf, hotbarFrom, railOf, slab, stairs, wheat, wire, isThinLogic, isTorch, isWater, lanternFor, logicPlacement, torchFor, useBlock } from './world/blocks';
@@ -1356,6 +1357,9 @@ function heldBlock(): Block {
 
 function renderHotbar(): void {
   inventory.refresh(selected, hotbar[selected]);
+  // The selected thing's name over the hotbar when it changes.
+  const held = survival ? pack.slots[selected] : null;
+  itemName.show(survival ? (held ? itemInfo(held.item).name : '') : BLOCKS[hotbar[selected]].name);
   if (!survival) {
     hotbarEl.innerHTML = hotbar.map(
       (b, i) =>
@@ -1479,7 +1483,11 @@ function setMode(toSurvival: boolean): void {
 
 // Health (survival): pips over the hotbar, bubbles under water, a red flash when hurt, and a screen
 // to start again after dying (back at the spawn, with everything still carried).
-const vitalsEl = el(document.body, 'div', 'vitals hidden');
+const vitals = new Vitals(document.body);
+/** The selected thing's name, over the hotbar (in the HUD, hidden with it in menus). */
+const itemName = new ItemName(hotbarEl.parentElement!);
+/** While the ground round the player is being made. */
+const loading = new Loading(document.body);
 const hurtEl = el(document.body, 'div', 'hurt-flash');
 /** A red-orange tint over the screen while burning. */
 const burnEl = el(document.body, 'div', 'burn-tint');
@@ -1493,33 +1501,30 @@ const deathWhy = el(deathPanel, 'p', 'menu-help');
 el(deathPanel, 'p', 'menu-help', 'Everything you carried is still with you.');
 button(el(deathPanel, 'div', 'menu-row'), 'Start again', () => startAgain(), 'menu-go');
 const CAUSES = { fall: 'You fell too far.', drowning: 'You ran out of air.', cactus: 'A cactus got you.', burning: 'You burned.', starving: 'You starved.', gloamer: 'A gloamer got you.', delver: 'A delver got you.' } as const;
-/** What the HUD shows now, so it's redrawn only when that changes. */
-let vitalsShown = '';
-
+/** Health, hunger and air over the hotbar in survival (redrawn only when they change: `ui/hud.ts`). */
 function renderVitals(): void {
   const S = TUNING.survival;
-  const bubbles = health.air < S.air ? Math.ceil((health.air / S.air) * 10) : -1;
-  const key = survival ? `${health.health},${health.hunger},${bubbles}` : '';
-  if (key === vitalsShown) return;
-  vitalsShown = key;
-  vitalsEl.classList.toggle('hidden', !survival);
-  if (!survival) return;
-  // Health on the left, hunger on the right (its pips filling from the right), a pip for two points.
-  const pips = (points: number, most: number, kind: string) => {
-    let row = `<div class="pips ${kind}">`;
-    for (let i = 0; i < most / 2; i++) {
-      const left = points - i * 2;
-      row += `<span class="pip${left >= 2 ? ' full' : left === 1 ? ' half' : ''}"></span>`;
-    }
-    return row + '</div>';
-  };
-  let html = `<div class="vitals-row">${pips(health.health, S.maxHealth, 'health')}${pips(health.hunger, S.maxHunger, 'food')}</div>`;
-  if (bubbles >= 0) {
-    html += '<div class="bubbles">';
-    for (let i = 0; i < 10; i++) html += `<span class="bubble${i < bubbles ? ' full' : ''}"></span>`;
-    html += '</div>';
-  }
-  vitalsEl.innerHTML = html;
+  itemName.raised = survival;
+  vitals.show(
+    survival
+      ? {
+          health: health.health,
+          maxHealth: S.maxHealth,
+          hunger: health.hunger,
+          maxHunger: S.maxHunger,
+          bubbles: health.air < S.air ? Math.ceil((health.air / S.air) * 10) : null,
+        }
+      : null,
+  );
+}
+
+/** How much of the ground round (x, z) is in: the 5 x 5 columns about it (the player waits for the middle 3 x 3). */
+function groundIn(x: number, z: number): number {
+  const cx = toChunk(Math.floor(x));
+  const cz = toChunk(Math.floor(z));
+  let n = 0;
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) if (world.hasColumn(cx + dx, cz + dz)) n++;
+  return n / 25;
 }
 
 /** Once a frame while playing in survival: hurt, healed or out of air by how the body is. */
@@ -2239,8 +2244,13 @@ function frame(now: number): void {
     outline.scale.set(box[3] - box[0], box[4] - box[1], box[5] - box[2]);
   }
 
+  // While the ground comes in (not over a menu): the loading panel.
+  loading.update(player.waiting && !paused() && !dead, player.waiting ? groundIn(player.body.x, player.body.z) : 1);
+  // The debug line only with the stats (F3, `?stats`).
+  info.hidden = !stats.visible;
   const p = camera.position;
-  info.textContent =
+  if (stats.visible)
+    info.textContent =
     `${Math.round(fps)} fps · ${paused() ? 'paused' : player.waiting ? 'waiting for the ground to load' : player.flying ? 'flying' : 'walking'} · ` +
     `xyz ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)} · ` +
     `chunk ${toChunk(Math.floor(p.x))} ${toChunk(Math.floor(p.y))} ${toChunk(Math.floor(p.z))} · ` +
