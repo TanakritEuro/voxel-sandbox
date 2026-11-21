@@ -6,3 +6,4 @@ and synthesised sounds need no row.
 
 | File | Source | Author | Licence |
 | ---- | ------ | ------ | ------- |
+| Pixelify Sans (titles and headings; `@fontsource/pixelify-sans`, latin 500 and 700, bundled by Vite) | https://github.com/eifetx/Pixelify-Sans | The Pixelify Sans Project Authors | SIL Open Font License 1.1 |

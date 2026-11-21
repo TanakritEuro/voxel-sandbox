@@ -26,6 +26,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 20 (a better-looking UI) in progress, plan approved (`docs/milestone-20.md`); step 1 (the look) built.
 Milestones 1–19 built (`docs/milestone-1.md` to `docs/milestone-19.md`), waiting for playtests
 (Milestone 19, underground, for worlds made from now on (generation version 3; older worlds keep their land): lava,
 a second liquid of the same automaton, spreading 3, glowing, burning and swum in slowly, basalt or stone where it meets
@@ -404,7 +405,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/ui/` — `worldList.ts` (play, new, rename, delete, settings, join a friend, why a game
   ended), `pauseMenu.ts` (play, settings, save and quit or leave, keys, a part for playing together), `inventory.ts` (the block picker), `backpack.ts` (survival's inventory screen: slots, a stack
   following the pointer, crafting, or a furnace or chest opened from the world), `settingsPanel.ts` (sliders and toggles), `dom.ts` (small DOM
-  helpers). Plain DOM, styled in `style.css`.
+  helpers). Plain DOM, styled in `style.css` (Milestone 20: colours and shapes as variables at the top, panels and buttons
+  bevelled, titles in Pixelify Sans, bundled; less motion when the system asks).
 - `src/stats.ts` — `?stats` overlay (F3), with GPU time per frame (`render/gpuTimer.ts`). `src/autofly.ts` — `?autofly[=seconds]`, a scripted
   sprint flight that reports frame times and holes. `src/flood.ts` — `?flood`, the sea let into a
   32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a

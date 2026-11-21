@@ -1,3 +1,54 @@
+/* The game's look (Milestone 20): one set of colours and shapes for every screen. Panels and buttons have a
+   bevel (a light top edge, a dark bottom edge, a dark outline) so they read as blocks; what's selected is amber,
+   go is green, danger red. Titles in Pixelify Sans (OFL, bundled), everything else in the system font. */
+
+@import '@fontsource/pixelify-sans/latin-500.css';
+@import '@fontsource/pixelify-sans/latin-700.css';
+
+:root {
+  /* Panels: the slate, its bevel and outline. */
+  --panel: #1d2330;
+  --panel-hi: #3a4458;
+  --panel-lo: #121620;
+  --outline: #0b0e14;
+  /* Wells (slots, fields, tracks) sunk into a panel; raised things (buttons) standing out of it. */
+  --well: #161b26;
+  --well-hi: #232a39;
+  --raised: #2c3446;
+  --raised-hover: #364057;
+  --raised-hi: #4a5670;
+  --raised-lo: #1a1f2b;
+  /* Words. */
+  --text: #e9ecf2;
+  --text-dim: #aab2c2;
+  --text-faint: #7d879a;
+  /* Meaning. */
+  --accent: #f0c419;
+  --accent-hi: #f9e07a;
+  --accent-lo: #a8850c;
+  --accent-ink: #2a2105;
+  --title: #f5d34a;
+  --go: #3f9e4d;
+  --go-hover: #48b157;
+  --go-hi: #74cf80;
+  --go-lo: #276633;
+  --danger: #c4433d;
+  --danger-hi: #e8807a;
+  --danger-lo: #7f2623;
+  --health: #e0393e;
+  --hunger: #d08a3a;
+  --air: #9fdcff;
+  /* Shapes. */
+  --radius: 4px;
+  --bevel: inset 0 2px 0 var(--panel-hi), inset 0 -3px 0 var(--panel-lo);
+  --raise: inset 0 2px 0 var(--raised-hi), inset 0 -3px 0 var(--raised-lo);
+  --sink: inset 0 2px 0 rgba(0, 0, 0, 0.45), inset 0 -1px 0 var(--well-hi);
+  --drop: 0 14px 36px rgba(0, 0, 0, 0.45);
+  --font-title: 'Pixelify Sans', system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pop: 140ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -10,7 +61,36 @@ body {
   height: 100%;
   overflow: hidden;
   background: #9fd0ff;
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-body);
+  color: var(--text);
+}
+
+/* Scrollbars, wherever a panel scrolls: a raised thumb in a sunk track. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--raised-hi) var(--well);
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--well);
+  border-radius: var(--radius);
+  box-shadow: var(--sink);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--raised);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  box-shadow: var(--raise);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--raised-hover);
 }
 
 #game {
@@ -18,6 +98,8 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/* --- The HUD ----------------------------------------------------------------------------------------- */
 
 #hud {
   position: fixed;
@@ -35,6 +117,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* A plus, white over a thin dark outline so it shows on snow and sand alike. */
 #crosshair {
   position: absolute;
   top: 50%;
@@ -45,7 +128,7 @@ body {
   background:
     linear-gradient(#fff, #fff) center / 2px 100% no-repeat,
     linear-gradient(#fff, #fff) center / 100% 2px no-repeat;
-  mix-blend-mode: difference;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 1px rgba(0, 0, 0, 0.6));
 }
 
 #hotbar {
@@ -54,24 +137,33 @@ body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.35);
+  gap: 3px;
+  padding: 5px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  background: rgba(29, 35, 48, 0.82);
+  box-shadow: var(--bevel), 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
 .slot {
   position: relative;
   width: 40px;
   height: 40px;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  border-radius: 4px;
+  border: 2px solid var(--outline);
+  border-radius: 3px;
+  background: var(--well);
+  box-shadow: var(--sink);
   display: grid;
   place-items: center;
 }
 
 .slot.selected {
-  border-color: #fff;
+  border-color: var(--accent);
+  background: #2a2a24;
+  box-shadow:
+    inset 0 0 0 2px var(--accent-lo),
+    0 0 0 1px var(--outline),
+    0 0 10px rgba(240, 196, 25, 0.45);
 }
 
 .slot span {
@@ -89,6 +181,12 @@ body {
   left: 3px;
   font-size: 10px;
   font-style: normal;
+  color: var(--text-faint);
+  text-shadow: none;
+}
+
+.slot.selected em {
+  color: var(--accent);
 }
 
 /* Survival: how many, and how worn. */
@@ -97,7 +195,10 @@ body {
   right: 3px;
   bottom: 1px;
   font-size: 12px;
-  text-shadow: 1px 1px 0 #000;
+  color: #fff;
+  text-shadow:
+    1px 1px 0 #000,
+    -1px 0 0 #000;
 }
 
 .slot i {
@@ -106,9 +207,10 @@ body {
   bottom: 3px;
   height: 3px;
   max-width: calc(100% - 8px);
+  border-radius: 1px;
   background: #5fd35f;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }
-
 
 #stats {
   position: absolute;
@@ -118,8 +220,10 @@ body {
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  background: rgba(22, 27, 38, 0.82);
+  box-shadow: var(--bevel);
   text-shadow: none;
 }
 
@@ -132,10 +236,10 @@ body {
   display: none;
 }
 
-/* Menus: the world list at start, the pause menu over the game (after the earlier games'). */
+/* --- Menus: the world list at start, the pause menu over the game ------------------------------------ */
 
 body.menu-mode {
-  background: linear-gradient(#7fb8ec, #cfe6f7 60%, #8fc07a 60%, #6c9a58);
+  background: linear-gradient(#6fa6dd, #b9d9f2 58%, #e7f1f8 60%, #8fc07a 60%, #79a865 72%, #5f8a4f);
 }
 
 body.menu-mode #hud {
@@ -148,12 +252,12 @@ body.menu-mode #hud {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--text);
   z-index: 10;
 }
 
 .menu-root.pause {
-  background: rgba(8, 12, 18, 0.45);
+  background: radial-gradient(ellipse at center, rgba(8, 12, 18, 0.35), rgba(8, 12, 18, 0.7));
 }
 
 .menu-root.hidden {
@@ -165,29 +269,44 @@ body.menu-mode #hud {
   max-height: calc(100vh - 32px);
   overflow-y: auto;
   padding: 22px 26px;
-  border-radius: 12px;
-  background: rgba(14, 20, 30, 0.9);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  border: 2px solid var(--outline);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: var(--bevel), var(--drop);
   display: flex;
   flex-direction: column;
   gap: 12px;
+  animation: rise var(--pop) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
 }
 
 .menu-title {
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  font-family: var(--font-title);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
   text-align: center;
+  color: var(--title);
+  text-shadow:
+    0 3px 0 var(--outline),
+    0 0 18px rgba(245, 211, 74, 0.18);
   overflow-wrap: anywhere;
 }
 
 .menu-heading {
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-family: var(--font-title);
+  font-size: 15px;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-align: center;
-  opacity: 0.7;
+  color: var(--text-dim);
 }
 
 .menu-row {
@@ -198,20 +317,38 @@ body.menu-mode #hud {
   justify-content: center;
 }
 
+/* Buttons: raised blocks that press down. */
 .menu button {
   font: inherit;
   font-size: 14px;
   font-weight: 600;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  padding: 7px 12px;
+  color: var(--text);
+  background: var(--raised);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  box-shadow: var(--raise);
+  padding: 7px 14px 8px;
   cursor: pointer;
+  transition:
+    background-color 80ms,
+    transform 60ms;
 }
 
 .menu button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--raised-hover);
+}
+
+.menu button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 2px 0 var(--raised-lo),
+    inset 0 -1px 0 var(--raised-hi);
+}
+
+.menu button:focus-visible,
+.menu input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .menu button:disabled {
@@ -221,17 +358,46 @@ body.menu-mode #hud {
 
 .menu button.menu-go {
   font-size: 17px;
-  padding: 9px 28px;
-  background: #2fae5a;
-  border-color: #2fae5a;
+  padding: 9px 30px 10px;
+  background: var(--go);
+  box-shadow: inset 0 2px 0 var(--go-hi), inset 0 -3px 0 var(--go-lo);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.menu button.menu-go:hover:not(:disabled) {
+  background: var(--go-hover);
+}
+
+.menu button.menu-go:active:not(:disabled) {
+  box-shadow: inset 0 2px 0 var(--go-lo), inset 0 -1px 0 var(--go-hi);
 }
 
 .menu button.menu-danger {
-  border-color: #d9534f;
+  color: #ffd9d6;
 }
 
 .menu button.menu-danger:hover:not(:disabled) {
-  background: #d9534f;
+  color: #fff;
+  background: var(--danger);
+  box-shadow: inset 0 2px 0 var(--danger-hi), inset 0 -3px 0 var(--danger-lo);
+}
+
+/* What's chosen: amber, a lighter top edge, dark words. */
+.menu button.world-card.selected,
+.menu .menu-choice button.selected,
+.menu button.on,
+.menu button.block-cell.selected {
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: inset 0 2px 0 var(--accent-hi), inset 0 -3px 0 var(--accent-lo);
+  text-shadow: none;
+}
+
+.menu button.world-card.selected:hover,
+.menu .menu-choice button.selected:hover,
+.menu button.on:hover,
+.menu button.block-cell.selected:hover {
+  background: #f5cf3a;
 }
 
 .world-list {
@@ -240,6 +406,7 @@ body.menu-mode #hud {
   gap: 6px;
   max-height: 50vh;
   overflow-y: auto;
+  padding: 2px;
 }
 
 .menu button.world-card {
@@ -247,13 +414,8 @@ body.menu-mode #hud {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
+  padding: 9px 12px 10px;
   text-align: left;
-}
-
-.menu button.world-card.selected {
-  background: #f0c419;
-  border-color: #f0c419;
-  color: #111;
 }
 
 .menu-card-name {
@@ -265,7 +427,11 @@ body.menu-mode #hud {
 .menu-card-sub {
   font-size: 12px;
   font-weight: 500;
-  opacity: 0.8;
+  color: var(--text-dim);
+}
+
+.selected .menu-card-sub {
+  color: #5a4a10;
 }
 
 .menu-field {
@@ -280,31 +446,37 @@ body.menu-mode #hud {
   flex-wrap: wrap;
 }
 
-.menu .menu-choice button.selected {
-  background: #f0c419;
-  border-color: #f0c419;
-  color: #111;
-}
-
 .menu-label {
-  width: 110px;
+  width: 120px;
+  flex: none;
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.7;
+  color: var(--text-dim);
 }
 
-.menu-field input {
+/* Text fields: sunk into the panel. */
+.menu-field input:not([type='range']) {
   flex: 1;
   min-width: 0;
   font: inherit;
   font-size: 15px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 6px;
+  color: var(--text);
+  background: var(--well);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  box-shadow: var(--sink);
   padding: 7px 10px;
+}
+
+.menu-field input::placeholder {
+  color: var(--text-faint);
+}
+
+.menu-field input:not([type='range']):focus {
+  border-color: var(--accent-lo);
+  outline: none;
 }
 
 .menu-text {
@@ -314,18 +486,71 @@ body.menu-mode #hud {
 
 .menu-help {
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--text-dim);
   text-align: center;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
+.menu-help:empty {
+  display: none;
+}
+
+/* Sliders: a sunk track, a raised amber thumb. */
 .menu-field .menu-slider {
   flex: 1;
   min-width: 0;
+  height: 22px;
   padding: 0;
   border: none;
   background: none;
-  accent-color: #f0c419;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.menu-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: var(--radius);
+  background: var(--well);
+  box-shadow: var(--sink), 0 0 0 2px var(--outline);
+}
+
+.menu-slider::-moz-range-track {
+  height: 8px;
+  border-radius: var(--radius);
+  background: var(--well);
+  box-shadow: var(--sink), 0 0 0 2px var(--outline);
+}
+
+.menu-slider::-moz-range-progress {
+  height: 8px;
+  border-radius: var(--radius);
+  background: var(--accent-lo);
+}
+
+.menu-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 20px;
+  margin-top: -6px;
+  border: 2px solid var(--outline);
+  border-radius: 3px;
+  background: var(--accent);
+  box-shadow: inset 0 2px 0 var(--accent-hi), inset 0 -3px 0 var(--accent-lo);
+}
+
+.menu-slider::-moz-range-thumb {
+  width: 12px;
+  height: 16px;
+  border: 2px solid var(--outline);
+  border-radius: 3px;
+  background: var(--accent);
+  box-shadow: inset 0 2px 0 var(--accent-hi), inset 0 -3px 0 var(--accent-lo);
+}
+
+.menu-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .menu-value {
@@ -333,29 +558,20 @@ body.menu-mode #hud {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   text-align: right;
-  opacity: 0.85;
+  color: var(--text-dim);
 }
 
-.menu button.on {
-  background: #f0c419;
-  border-color: #f0c419;
-  color: #111;
-}
-
-.menu-help:empty {
-  display: none;
-}
-
-/* The block picker: a grid of block icons over the game. */
+/* --- The block picker: a grid of block icons over the game ------------------------------------------- */
 
 .menu-root.inventory {
-  background: rgba(8, 12, 18, 0.35);
+  background: rgba(8, 12, 18, 0.4);
 }
 
 .block-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
   gap: 6px;
+  padding: 2px;
 }
 
 .menu button.block-cell {
@@ -363,13 +579,7 @@ body.menu-mode #hud {
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  padding: 6px 2px;
-}
-
-.menu button.block-cell.selected {
-  background: #f0c419;
-  border-color: #f0c419;
-  color: #111;
+  padding: 6px 2px 7px;
 }
 
 .block-cell span {
@@ -379,6 +589,7 @@ body.menu-mode #hud {
   background-repeat: no-repeat;
   background-position: center;
   image-rendering: pixelated;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
 }
 
 .block-cell em {
@@ -389,10 +600,11 @@ body.menu-mode #hud {
   text-align: center;
 }
 
-/* Survival health: pips over the hotbar (a pip for two points), air bubbles under water, a red flash. */
+/* --- Survival's vitals: pips over the hotbar (a pip for two points), air bubbles under water ------------ */
+
 .vitals {
   position: absolute;
-  bottom: 70px;
+  bottom: 74px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -426,39 +638,42 @@ body.menu-mode #hud {
 }
 
 .pips.food .pip.full {
-  background: #d08a3a;
+  background: var(--hunger);
+  box-shadow: inset 0 2px 0 #f0b870;
 }
 
 .pips.food .pip.half {
-  background: linear-gradient(270deg, #d08a3a 50%, rgba(40, 10, 10, 0.55) 50%);
+  background: linear-gradient(270deg, var(--hunger) 50%, rgba(40, 10, 10, 0.55) 50%);
 }
 
 .pip {
   width: 14px;
   height: 12px;
   border-radius: 3px;
-  border: 2px solid rgba(0, 0, 0, 0.55);
+  border: 2px solid rgba(0, 0, 0, 0.65);
   background: rgba(40, 10, 10, 0.55);
 }
 
 .pip.full {
-  background: #e0393e;
+  background: var(--health);
+  box-shadow: inset 0 2px 0 #f28a8d;
 }
 
 .pip.half {
-  background: linear-gradient(90deg, #e0393e 50%, rgba(40, 10, 10, 0.55) 50%);
+  background: linear-gradient(90deg, var(--health) 50%, rgba(40, 10, 10, 0.55) 50%);
 }
 
 .bubble {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(0, 0, 0, 0.45);
   opacity: 0.25;
 }
 
 .bubble.full {
-  background: #9fdcff;
+  background: var(--air);
+  box-shadow: inset 0 2px 0 #e4f6ff;
   opacity: 1;
 }
 
@@ -481,7 +696,7 @@ body.menu-mode #hud {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: rgba(200, 20, 20, 0.35);
+  background: radial-gradient(ellipse at center, rgba(200, 20, 20, 0.12), rgba(200, 20, 20, 0.5));
   opacity: 0;
   transition: opacity 0.35s ease-out;
 }
@@ -520,13 +735,22 @@ body.menu-mode #hud {
   }
 }
 
+/* Death: a dark red vignette round the panel. */
 .menu-root.death {
-  background: rgba(90, 0, 0, 0.45);
+  background: radial-gradient(ellipse at center, rgba(70, 0, 0, 0.35), rgba(40, 0, 0, 0.8));
 }
 
-/* The survival inventory screen: slots, the stack picked up, crafting. */
+.menu-root.death .menu-title {
+  color: #ff8a80;
+  text-shadow:
+    0 3px 0 var(--outline),
+    0 0 18px rgba(255, 90, 80, 0.3);
+}
+
+/* --- Survival's inventory screen: slots, the stack picked up, crafting -------------------------------- */
+
 .menu-root.backpack {
-  background: rgba(8, 12, 18, 0.35);
+  background: rgba(8, 12, 18, 0.4);
 }
 
 .menu.backpack-panel {
@@ -557,15 +781,26 @@ body.menu-mode #hud {
 
 .backpack-hotbar {
   margin-top: 6px;
+  padding-top: 10px;
+  border-top: 2px solid var(--panel-lo);
 }
 
 .menu button.slot {
   width: 44px;
   height: 44px;
   padding: 0;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid var(--outline);
+  border-radius: 3px;
+  background: var(--well);
+  box-shadow: var(--sink);
+}
+
+.menu button.slot:hover {
+  background: var(--well-hi);
+}
+
+.menu button.slot:active {
+  transform: none;
 }
 
 .backpack-cursor {
@@ -575,6 +810,9 @@ body.menu-mode #hud {
   width: 44px;
   height: 44px;
   border-color: transparent;
+  background: none;
+  box-shadow: none;
+  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.5));
 }
 
 .backpack-cursor.hidden,
@@ -601,8 +839,10 @@ body.menu-mode #hud {
 .furnace-flame {
   width: 14px;
   height: 20px;
+  border: 2px solid var(--outline);
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--well);
+  box-shadow: var(--sink);
   display: flex;
   align-items: flex-end;
   overflow: hidden;
@@ -615,15 +855,17 @@ body.menu-mode #hud {
 
 .furnace-arrow {
   width: 56px;
-  height: 10px;
+  height: 12px;
+  border: 2px solid var(--outline);
   border-radius: 5px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--well);
+  box-shadow: var(--sink);
   overflow: hidden;
 }
 
 .furnace-arrow div {
   height: 100%;
-  background: #f0c419;
+  background: var(--accent);
 }
 
 .recipe-list {
@@ -633,15 +875,16 @@ body.menu-mode #hud {
   width: 300px;
   max-height: 60vh;
   overflow-y: auto;
+  padding: 2px 4px 2px 2px;
 }
 
 .menu button.recipe {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 8px;
+  padding: 5px 8px 6px;
   text-align: left;
-  opacity: 0.4;
+  opacity: 0.45;
 }
 
 .menu button.recipe.can {
@@ -670,17 +913,17 @@ body.menu-mode #hud {
 .recipe-cost {
   font-size: 11px;
   font-weight: 500;
-  opacity: 0.75;
+  color: var(--text-dim);
 }
 
-/* Playing together: the pause menu's part, the code, why a game ended, lines on screen. */
+/* --- Playing together: the pause menu's part, the code, why a game ended, lines on screen ------------- */
 
 .menu-together {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 10px;
+  border-top: 2px solid var(--panel-lo);
 }
 
 .menu-together:empty {
@@ -688,16 +931,25 @@ body.menu-mode #hud {
 }
 
 .menu-code {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  align-self: center;
+  font-family: var(--font-title);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  padding: 4px 10px 4px 16px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  background: var(--well);
+  box-shadow: var(--sink);
+  color: var(--title);
   text-align: center;
 }
 
 .menu-notice {
   padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(220, 120, 60, 0.25);
+  border: 2px solid #5a2e16;
+  border-radius: var(--radius);
+  background: rgba(220, 120, 60, 0.2);
   text-align: center;
   line-height: 1.5;
 }
@@ -713,18 +965,30 @@ body.menu-mode #hud {
 }
 
 .event {
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
+  padding: 5px 12px 6px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius);
+  background: rgba(29, 35, 48, 0.88);
+  box-shadow: var(--bevel);
   font-size: 14px;
+  text-shadow: none;
   transition: opacity 1s;
+  animation: slide-in 180ms ease-out both;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
 }
 
 .event.fading {
   opacity: 0;
 }
 
-/* The map (Milestone 18): a panel while one is held, and full screen (N). */
+/* --- The map (Milestone 18): a panel while one is held, and full screen (N) ----------------------------- */
+
 .map-panel {
   position: absolute;
   right: 14px;
@@ -732,9 +996,12 @@ body.menu-mode #hud {
   width: 256px;
   height: 256px;
   image-rendering: pixelated;
-  border: 3px solid #6b5a3a;
+  border: 4px solid #7a6440;
   border-radius: 4px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  outline: 2px solid #3b2d18;
+  box-shadow:
+    inset 0 0 0 2px #a88a5a,
+    0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 .map-root {
@@ -746,15 +1013,19 @@ body.menu-mode #hud {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgba(0, 0, 0, 0.55);
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.75));
   color: #fff;
   font-size: 13px;
 }
 
 .map-full {
   image-rendering: pixelated;
-  border: 4px solid #6b5a3a;
+  border: 5px solid #7a6440;
   border-radius: 4px;
+  outline: 2px solid #3b2d18;
+  box-shadow:
+    inset 0 0 0 2px #a88a5a,
+    0 14px 36px rgba(0, 0, 0, 0.5);
   cursor: grab;
 }
 
@@ -765,4 +1036,21 @@ body.menu-mode #hud {
 .map-panel.hidden,
 .map-root.hidden {
   display: none;
+}
+
+/* --- Less motion when the system asks for it ---------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .menu,
+  .event {
+    animation: none;
+  }
+
+  .burn-tint.on {
+    animation: none;
+  }
+
+  .menu button {
+    transition: none;
+  }
 }

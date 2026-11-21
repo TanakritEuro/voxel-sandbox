@@ -1,6 +1,6 @@
 # Milestone 20: a better-looking UI
 
-**Status:** plan, to check (2026-11-21).
+**Status:** plan approved (2026-11-21); step 1 built.
 
 ## Goal
 
@@ -142,7 +142,7 @@ frame time (some of it costs a little today: the health row is rebuilt every fra
 ## Steps
 
 1. **The look:** variables, the font, panels, buttons, sliders, scrollbars, motion, focus; every screen restyled with
-   its layout as it is.
+   its layout as it is. Done (2026-11-21).
 2. **The HUD:** hotbar and item name, health, hunger and air icons (rebuilt only on change), the debug line with stats
    only, toasts, death, loading.
 3. **Menus:** world cards with pictures and the live backdrop, the new-world panel, the pause menu with keycaps,
@@ -160,3 +160,30 @@ frame time (some of it costs a little today: the health row is rebuilt every fra
 4. **The debug line only with F3 or `?stats`.**
 5. **UI sounds** (clicks and ticks).
 6. **A UI size setting.**
+
+## Step 1: the look (2026-11-21)
+
+**What's in** (`src/style.css`, rewritten; no layout or code changed):
+- **Variables at the top:** the slate panel and its bevel (`--panel`, `--panel-hi`, `--panel-lo`, `--outline`), wells sunk into
+  it (`--well`, slots, fields and tracks), raised things on it (`--raised`, buttons), words (`--text`, `--text-dim`,
+  `--text-faint`), meaning (amber `--accent` for what's chosen, `--go`, `--danger`, `--health`, `--hunger`, `--air`), and the
+  shapes (`--bevel`, `--raise`, `--sink`, `--drop`).
+- **Panels:** slate with a light top edge, a dark bottom edge and a dark outline, a soft drop shadow; rising in over
+  140 ms when shown.
+- **Buttons:** raised, lighter on hover, pressing a pixel down when clicked; Play green, Delete red only on hover;
+  what's chosen (a world, a mode, a toggle, a block) amber with dark words; a keyboard focus ring.
+- **Fields, sliders and scrollbars:** sunk wells; sliders' thumbs raised amber blocks; scrollbars a raised thumb in a
+  sunk track (Chrome and Firefox).
+- **Titles and headings** in Pixelify Sans (SIL OFL; 500 and 700, latin only, bundled: 8 KB a weight as WOFF2),
+  titles amber with a pixel drop shadow.
+- **HUD:** the hotbar a bevelled panel, slots sunk, the selected one amber and glowing; the crosshair outlined so it
+  shows on snow; health, hunger and air pips with a highlight; toasts as small panels sliding in.
+- **Overlays:** the pause menu, death and the full-screen map over a vignette rather than a flat wash; death's title
+  red; the map in a wooden frame; the playing-together code in a sunk box in the display font.
+- **Less motion** when the system asks for it: no rising panels, sliding toasts or flickering burn.
+- `ASSETS.md`: the font's row.
+
+**In the browser:** the world list, pause menu, settings, block picker and survival inventory looked at, before and
+after, saved in `docs/milestone-20/` (`0-…-before`, `1-…`); no console errors. The build's CSS is 8 KB larger with
+the font's faces referenced; the faces load only when a title is drawn.
+
