@@ -4,6 +4,7 @@ import type { ChunkMesh } from '../mesh/mesher';
 import { CHUNK_SIZE } from '../world/coords';
 import { createBlockMaterial, createBlockTextures } from './blockMaterial';
 import { BYTES_PER_QUAD, ChunkPage, type PageEntry } from './chunkPage';
+import { CoverMap } from './coverMap';
 import type { WaterFlow } from './water';
 
 /**
@@ -23,6 +24,8 @@ export class ChunkRenderer {
   private readonly meshes = new Map<string, PageEntry[]>();
   /** The block texture array, shared with the held block. */
   readonly textures = createBlockTextures();
+  /** Where rain gets down to, for weather on the ground. */
+  readonly cover = new CoverMap();
   /** Solid blocks: no alpha test, so the GPU skips hidden pixels before shading them. */
   private readonly opaqueMaterial: THREE.ShaderMaterial;
   /** Leaves, with their holes cut out (alpha test), drawn after the solid blocks. */
@@ -44,14 +47,19 @@ export class ChunkRenderer {
     /** Smaller in tests. */
     private readonly pageQuads = PAGE_QUADS,
   ) {
-    this.opaqueMaterial = createBlockMaterial(this.textures, { alphaTest: 0, transparent: false, lightView });
-    this.cutoutMaterial = createBlockMaterial(this.textures, { alphaTest: 0.5, transparent: false, lightView });
+    this.opaqueMaterial = createBlockMaterial(this.textures, { alphaTest: 0, transparent: false, lightView, cover: this.cover });
+    this.cutoutMaterial = createBlockMaterial(this.textures, { alphaTest: 0.5, transparent: false, lightView, cover: this.cover });
     this.transparentMaterial = createBlockMaterial(this.textures, { alphaTest: 0.01, transparent: true, lightView });
   }
 
   /** Sunlight's colour and brightness for the time of day (`sky.ts`), on every chunk at once. */
   setSunlight([r, g, b]: [number, number, number]): void {
     for (const m of [this.opaqueMaterial, this.cutoutMaterial, this.transparentMaterial]) (m.uniforms.sunlight.value as THREE.Vector3).set(r, g, b);
+  }
+
+  /** How wet the ground is where rain gets to it, 0–1 (`Weather.wet`). */
+  setWetness(wet: number): void {
+    for (const m of [this.opaqueMaterial, this.cutoutMaterial]) if (m.uniforms.wetness) m.uniforms.wetness.value = wet;
   }
 
   /** Where the water's texture has drifted to (`water.ts`). */

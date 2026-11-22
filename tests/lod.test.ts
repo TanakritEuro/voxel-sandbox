@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FACE_ORDER, FACE_STARTS, GROUPS, type MeshData, PARTS } from '../src/mesh/builder';
-import { coarsen, type Lod, prepareLod, SEAM_POS_X } from '../src/mesh/lod';
+import { coarsen, type Lod, LOD_CELL, prepareLod, SEAM_POS_X } from '../src/mesh/lod';
 import { meshChunk } from '../src/mesh/mesher';
 import { PADDED, PADDED_VOLUME, paddedBlocks, paddedIndex, paddedLight } from '../src/mesh/padding';
 import { handleJob } from '../src/workers/jobs';
@@ -102,7 +102,7 @@ function meshAt(cx: number, cy: number, cz: number, lod: Lod, seams = 0): { mesh
   const blocks = paddedBlocks(world, cx, cy, cz);
   const light = paddedLight(world, cx, cy, cz);
   prepareLod(blocks, light, lod, seams);
-  return { mesh: meshChunk(blocks, cx, cy, cz, light, lod > 0), blocks };
+  return { mesh: meshChunk(blocks, cx, cy, cz, light, lod > 0, LOD_CELL[lod]), blocks };
 }
 
 /** Which of the S × S squares of a chunk's face on `axis` (at local `plane`) quads of FACE_ORDER range `k` cover. */

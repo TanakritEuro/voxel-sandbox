@@ -1,9 +1,10 @@
 // What a chunk worker does with a job. Pure apart from a generator per seed, so tests (and a
 // main-thread fallback) can call it directly.
 
-import { prepareLod } from '../mesh/lod';
+import { LOD_CELL, prepareLod } from '../mesh/lod';
 import { meshChunk } from '../mesh/mesher';
 import { decodeRle } from '../save/rle';
+import { coverTile } from '../world/cover';
 import { Generator } from '../world/generate';
 import { lightColumn } from '../world/light';
 import { chunkRegions } from '../world/visibility';
@@ -26,11 +27,12 @@ export function handleJob(job: Job): JobResult {
     for (const s of job.saved) chunks[s.cy - job.cyMin] = decodeRle(s.data);
     const regions = chunks.map((c) => (c ? chunkRegions(c) : null));
     const light = lightColumn(chunks);
-    return { kind: 'generate', id: job.id, cx: job.cx, cz: job.cz, cyMin: job.cyMin, chunks, regions, light, ms: performance.now() - t0 };
+    const cover = coverTile(chunks, job.cx, job.cz, job.seed, generator.climate);
+    return { kind: 'generate', id: job.id, cx: job.cx, cz: job.cz, cyMin: job.cyMin, chunks, regions, light, cover, ms: performance.now() - t0 };
   }
   // Coarsened and walled in place: the padded copies are the main thread's scratch buffers.
   if (job.lod || job.seams) prepareLod(job.padded, job.paddedLight, job.lod ?? 0, job.seams ?? 0);
-  const mesh = meshChunk(job.padded, job.cx, job.cy, job.cz, job.paddedLight, (job.lod ?? 0) > 0);
+  const mesh = meshChunk(job.padded, job.cx, job.cy, job.cz, job.paddedLight, (job.lod ?? 0) > 0, LOD_CELL[job.lod ?? 0]);
   const { id, cx, cy, cz, version, padded, paddedLight } = job;
   return { kind: 'mesh', id, cx, cy, cz, version, mesh, padded, paddedLight, ms: performance.now() - t0 };
 }

@@ -1,6 +1,6 @@
 # Milestone 21: weather
 
-**Status:** plan approved (2026-11-22), all six decisions as written; step 1 built.
+**Status:** plan approved (2026-11-22), all six decisions as written; steps 1–2 built.
 
 ## Goal
 
@@ -170,6 +170,7 @@ numbers are a playtest question.
    Done (2026-11-22).
 2. **Cover, and the shader's cost:** tiles in the worker and after edits, the texture, wet tops; tests; the GPU
    measured against the limits.
+   Done (2026-11-22).
 3. **What falls and lies:** rain, splashes, flakes, settled snow and melting; the far chunks looked at.
 4. **Storms and sound:** lightning, thunder, rain's sound, the setting, the two rules; tests.
 5. **Together:** the messages, guests, sleep; tests.
@@ -232,9 +233,85 @@ To settle before step 3: thin the weather's extra cover as the eye rises over th
 | Sprint flight, frames over 20 ms (two runs each) | 0, 0 | 0, 0 | 0, 0 | no more |
 | Sprint flight, main thread p50 | 2.8, 3.1 ms | 2.7, 2.0 | 2.5, 2.5 | |
 
-- **A storm in the mountains already takes 0.6 ms of GPU over before** (0.8–1.1 over clear on this commit) of the 1.5
+- *(Corrected in step 2: this didn't hold up. Timed again with the builds interleaved over 4–15 runs each, a storm is
+  within 0.2 ms of before, and this view's runs vary by ±0.5 ms by themselves. The allowance isn't partly spent.)*
+  **A storm in the mountains already takes 0.6 ms of GPU over before** (0.8–1.1 over clear on this commit) of the 1.5
   allowed, with nothing falling yet. Presumably the near-full cloud layer drawn over the view (not isolated). That
   leaves 0.4–0.9 ms for drops, wet tops and snow.
 - **The main thread's numbers wander:** two flights of the same code differed by 0.7 ms, so the spawn's 0.8 ms under
   before isn't claimed as a gain. Timed headless,
   a frame's weather (step, look, sky, threshold) is 0.0001 ms clear and 0.001 ms in a storm.
+
+## Step 2: cover, and the shader's cost (2026-11-22)
+
+**Built:**
+- `world/cover.ts`: a tile a column, two bytes a place (the height in half blocks, up to 512, takes ten bits; what falls
+  sits in the bits above), what falls from the climate sampled every 8 blocks and dithered. The generate worker makes it
+  after the saved chunks are put in. `World` keeps it, puts it right on every way of setting a block, and works it out
+  itself for a column that came without one.
+- `render/coverMap.ts`: the 1024 x 1024 RG8 texture wrapped round the world, only changed tiles uploaded.
+- The mesher marks level tops in the colour's spare fourth byte with the cell of their detail (1, 2 or 4 blocks); the
+  solid and cutout shader looks the place up and, where rain falls and gets to, darkens the top to 0.6 (linear) as it
+  wets. Lava, water, glass and sides stay as they are. The lookup is skipped while dry.
+- `?stats` says what falls where you stand.
+
+**Changed from the plan:**
+- **Only what fills its block seen from above shelters** (and liquids). "Anything solid" left a dry stripe under every
+  row of fences and panes, seen in the browser; so fences, panes, doors and lanterns don't stop rain.
+- **The test is "at or above the cover", not "exactly at it":** less half a block near (a stair's lower step), less a
+  cell on far chunks.
+- **Height needs ten bits,** so the two bytes aren't a byte each for height and what falls.
+
+**Found and fixed:**
+- **The shader first cost 0.8 ms of GPU in the mountains in clear weather,** against the 0.3 allowed: 8.6 ms, against 7.8
+  for the same code without the weather's shader (8 runs each, interleaved). The cost was the extra numbers interpolated
+  for every vertex. Packed (the shade one number instead of three, the place two, the top's height not interpolated),
+  it's 8.0 there.
+- **The cover's scan took 0.141 ms a column in the mountains** (0.15 allowed); looking only at places still open on the
+  way down, 0.10.
+
+**Tests:** 16 in `tests/cover.test.ts` (against a scan from the sky on three versions' columns and after 900 random
+edits, what falls with four and six biomes, the worker's tile with saved chunks, the marks at each detail, the texture's
+slots, moves and uploads, a storm editing nothing); three existing tests follow the new argument and transfer. 697 in
+all pass; the build passes.
+
+**Looked at** (`docs/milestone-21/2-…`, the production build): wet grass and sand at the spawn, dry under canopies,
+glass placed leaving dry ground under it and wet again when broken, fences and panes, a desert staying dry, both
+biome edges. No console or shader errors.
+
+**Measured:** the production builds of `9bddd4c` and this step side by side under one server, interleaved, medians,
+752 x 457 at 1.5x unless said:
+
+| GPU (runs each) | Before | Clear | Storm, wet | Limit |
+| --- | --- | --- | --- | --- |
+| The spawn (4) | 3.67 ms | 3.61 | 3.84 | +0.3 clear, +1.5 storm |
+| The mountains (7) | 8.02 | 7.94 | 7.91 | the same |
+| Looking down, wet tops filling the view (4) | 1.63 | 1.60 | 1.73 | the same |
+| The spawn at 1920 x 1080 (6) | 6.81 | 6.52 | 6.44 | the same |
+| Looking down at 1920 x 1080 (6) | 6.32 | 6.21 | 6.22 | the same |
+| The mountains at 1920 x 1080 (6) | 7.39 | 7.70 | 7.04 | the same |
+| The spawn at radius 16 (4) | 8.91 | 7.58 | 8.96 | recorded |
+
+- **Inside the limits,** with one on the line: the mountains at full HD in clear weather, +0.31 against 0.3, where the
+  runs of one build spread over 1–2.5 ms, so it can't be told from noise. Differences below zero are noise too.
+- **A first pass of two runs each read 1–3 ms over** at full HD and radius 16; with controls and more runs (above) it
+  didn't hold. One or two runs of GPU time prove nothing here.
+
+| | Measured | Limit |
+| --- | --- | --- |
+| Main thread standing, means of 4–15 runs | +0.12 ms at the spawn, +0.09 in the mountains, -0.07 looking down | +0.3 |
+| Sprint flights, frames over 20 ms | before none in 17, clear none in 13, storm one frame in one of 14 (not repeated in the 6 storm flights after it) | no more than before |
+| Sprint flight, main thread p50 (means of 6 each, interleaved) | clear 2.03 ms, storm 2.05, before 2.10 | +0.3 |
+| Cover a column, in the generate job | 0.060 ms at the spawn, 0.099 in the mountains | +0.15 |
+| An edit's cover, the dearest kind | 5–13 us | |
+| The texture written whole; crossing a column | 0.9–1.2 ms; 0.05 ms | |
+| Meshing a chunk, marking tops (Vitest) | 1.55 ms, before 1.49 (+4 %) | |
+| Chunks modified or remeshed by weather | none (tested) | none |
+
+This is still this machine's GPU; a laptop's is a playtest question.
+
+**Left for step 3:**
+- **The far chunks' tops** haven't been judged from above.
+- **The biome edges are busy:** the wet and dry dither lies over the ground's own, a patchwork in single blocks
+  (`2-edge-dry.jpg`); a narrower dither may be better.
+- **Snow-topped blocks just outside the snow line get rain** and are darkened like the rest (`2-edge-snow.jpg`).

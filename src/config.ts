@@ -269,6 +269,16 @@ export const TUNING = {
     nightDim: 0.3,
     /** How much darker clouds are than the light under them. */
     thickCloud: 0.15,
+    /**
+     * What falls where (`world/cover.ts`), by the biomes' weights: snow from this much snowy
+     * mountain, nothing from this much desert and savanna together, else rain; the edges
+     * dithered over `dither` of weight.
+     */
+    snowAt: 0.5,
+    dryAt: 0.6,
+    dither: 0.06,
+    /** A wet top's brightness as a share of a dry one's (linear light). */
+    wetShade: 0.6,
   },
   /**
    * Fog by biome (`render/fog.ts`): a tint, how much of it shows by day, and where the fog

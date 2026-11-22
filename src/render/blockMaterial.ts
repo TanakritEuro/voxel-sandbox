@@ -4,30 +4,49 @@
 // copies of its texture drift different ways and are blended, and its brightness ripples
 // slowly (`water.ts` works out the offsets); nothing is remeshed. `?light` draws
 // the light the mesher put in the vertices instead of the textures, for checking it.
+//
+// Weather on the ground is drawn here, not placed (`WEATHER`: the solid and cutout passes of
+// chunks): a level top at or above its place's cover (`world/cover.ts`, `coverMap.ts`) is open
+// to the sky and, where rain falls, darkened by how wet it is. Near, up to half a block under
+// the cover counts (a stair's lower step); far chunks' coarser tops, up to a cell of theirs.
 
 import * as THREE from 'three';
 import { TUNING } from '../config';
+import { type CoverMap, COVER_SIZE } from './coverMap';
 import { makeTextures, TEXTURE_NAMES, TEXTURE_SIZE, textureLayer } from '../world/textures';
 
 const vertexShader = /* glsl */ `
   attribute vec4 color;
   attribute vec4 uvl;
-  varying vec3 vShade;
+  varying float vShade;
   varying vec2 vLight;
   varying vec2 vUv;
   flat varying float vLayer;
+  #ifdef WEATHER
+    // As few interpolated numbers as will do: in the mountains the vertices are the cost. A top
+    // is level, so only its x and z change across it.
+    varying vec2 vPlace;
+    /** The top's cell (0 not a top; else blocks across a cell of the mesh's detail), and its height. */
+    flat varying vec2 vTop;
+  #endif
   #include <fog_pars_vertex>
 
   void main() {
     // The mesher's shade (directional × AO, in red) is meant in display terms, like the flat
     // colours it replaced: squared towards linear so it darkens textures as much as it did them.
-    vShade = vec3(pow(color.r, 2.2));
+    vShade = pow(color.r, 2.2);
     // Sunlight and block light, 0–1 for levels 0–15.
     vLight = color.gb;
     // v in whole blocks, and eighths of one (water's sides end at its depth).
     // The fourth byte: eighths added to v in its low 3 bits, eighths added to u above them.
     vUv = vec2(uvl.x + floor(uvl.w / 8.0) * 0.125, uvl.y + mod(uvl.w, 8.0) * 0.125);
     vLayer = uvl.z;
+    #ifdef WEATHER
+      // Chunk meshes are in world space.
+      vPlace = position.xz;
+      float mark = floor(color.a * 255.0 + 0.5);
+      vTop = vec2(mark < 255.0 ? mark : 0.0, position.y);
+    #endif
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     #include <fog_vertex>
@@ -52,10 +71,29 @@ const fragmentShader = /* glsl */ `
     uniform float lavaLayer;
     uniform vec2 lavaFlow;
   #endif
-  varying vec3 vShade;
+  varying float vShade;
   varying vec2 vLight;
   varying vec2 vUv;
   flat varying float vLayer;
+  #ifdef WEATHER
+    uniform highp sampler2D cover;
+    uniform ivec2 coverOrigin;
+    uniform float wetness;
+    uniform float wetShade;
+    varying vec2 vPlace;
+    flat varying vec2 vTop;
+
+    /** What falls on this fragment (a Fall: 0 nothing), 0 where it's under cover. */
+    float fallsHere() {
+      ivec2 cell = ivec2(floor(vPlace));
+      ivec2 inside = cell - coverOrigin;
+      if (inside.x < 0 || inside.y < 0 || inside.x >= COVER_SIZE || inside.y >= COVER_SIZE) return 0.0;
+      vec2 stored = floor(texelFetch(cover, cell & (COVER_SIZE - 1), 0).rg * 255.0 + 0.5);
+      float height = (stored.x + mod(stored.y, 4.0) * 256.0) * 0.5;
+      float under = vTop.x > 1.5 ? vTop.x : 0.5;
+      return vTop.y >= height - under - 0.01 ? floor(stored.y / 4.0) : 0.0;
+    }
+  #endif
   #include <fog_pars_fragment>
 
   /** The texture at uv (in blocks), repeated every block; v runs up, image rows run down. */
@@ -90,6 +128,16 @@ const fragmentShader = /* glsl */ `
     // everything it draws (solid terrain took twice the GPU time on a laptop with leaves' discard).
     #ifdef ALPHA_TEST
     if (texel.a < alphaTest) discard;
+    #endif
+    #ifdef WEATHER
+    // Dry, the first test is all it costs.
+    if (wetness > 0.0 && vTop.x > 0.0
+      #ifdef LAVA
+        && abs(vLayer - lavaLayer) >= 0.5
+      #endif
+    ) {
+      if (fallsHere() == 1.0) texel.rgb *= mix(1.0, wetShade, wetness);
+    }
     #endif
     #ifdef LIGHT_VIEW
       // The brighter of sunlight and block light as grey, shaded so shapes still read.
@@ -129,10 +177,13 @@ export function createBlockTextures(): THREE.DataArrayTexture {
   return texture;
 }
 
-/** A chunk material: `alphaTest` above 0 cuts holes (leaves); 0 for solid blocks, which never discard. */
+/**
+ * A chunk material: `alphaTest` above 0 cuts holes (leaves); 0 for solid blocks, which never
+ * discard. With `cover`, weather is drawn on its tops.
+ */
 export function createBlockMaterial(
   map: THREE.DataArrayTexture,
-  options: { alphaTest: number; transparent: boolean; lightView?: boolean },
+  options: { alphaTest: number; transparent: boolean; lightView?: boolean; cover?: CoverMap },
 ): THREE.ShaderMaterial {
   // Merged copies the fog uniforms; the texture is set after, since merging would clone it.
   const uniforms = THREE.UniformsUtils.merge([
@@ -151,6 +202,14 @@ export function createBlockMaterial(
     },
   ]);
   uniforms.map = { value: map };
+  const { cover } = options;
+  const weathered = cover !== undefined && !options.transparent && !options.lightView;
+  if (weathered) {
+    uniforms.cover = { value: cover.texture };
+    uniforms.coverOrigin = { value: cover.origin };
+    uniforms.wetness = { value: 0 };
+    uniforms.wetShade = { value: TUNING.weather.wetShade };
+  }
   return new THREE.ShaderMaterial({
     uniforms,
     vertexShader,
@@ -161,6 +220,7 @@ export function createBlockMaterial(
       // Lava only in the solid pass.
       ...(!options.transparent && options.alphaTest === 0 && { LAVA: '' }),
       ...(options.lightView && { LIGHT_VIEW: '' }),
+      ...(weathered && { WEATHER: '', COVER_SIZE }),
     },
     fog: true,
     transparent: options.transparent,

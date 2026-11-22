@@ -50,6 +50,7 @@ import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
 import { fogStartUnder, lookOf, skyUnder, underWeather } from './render/weatherLook';
 import { Weather, weatherKindOf } from './world/weather';
+import { coverFall } from './world/cover';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import type { Mob } from './mobs/brain';
@@ -84,7 +85,7 @@ import { railPlacement } from './world/rails';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
 import { blockBoxes, isShape, shapePlacement } from './world/shapes';
-import { CHUNK_SIZE, toChunk } from './world/coords';
+import { CHUNK_BITS, CHUNK_SIZE, toChunk, toLocal } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock, touches } from './world/physics';
 import { raycast, type RayHit } from './world/raycast';
@@ -1121,7 +1122,7 @@ const stats = new Stats(
     sceneTriangles: chunks.triangles,
     lastEdit,
     time: `${clock(time)}, daylight ${skyAt(time).daylight.toFixed(2)}${timeHeld ? ' (held)' : ''}`,
-    weather: weather.describe(),
+    weather: `${weather.describe()}; here ${fallsHere()}`,
     saving:
       (unsaved ? 'off (this world is not kept)' : `${saver.unsaved} edited chunks to write`) +
       (saver.last ? `; last wrote ${saver.last.chunks} chunks, ${(saver.last.bytes / 1024).toFixed(1)} KB in ${saver.last.ms.toFixed(1)} ms` : ''),
@@ -2113,6 +2114,7 @@ function frame(now: number): void {
   // A guest draws the host's items, where it last heard they lie.
   groundView.update(guest ? guest.ground.map((g) => ({ id: g.id, item: g.item, body: g })) : ground.items, (x, y, z) => brightness(world.getLight(Math.floor(x), Math.floor(y), Math.floor(z)), drawnDaylight), now / 1000);
   chunks.setSunlight(sky.sunlight);
+  chunks.setWetness(weather.wet);
   chunks.setWaterFlow(waterFlow(now / 1000, TUNING.water.flow));
   chunks.setLavaFlow(waterFlow(now / 1000, TUNING.lava.flow));
   // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).
@@ -2127,6 +2129,8 @@ function frame(now: number): void {
   clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, look.cover, TUNING.view.radius * CHUNK_SIZE, eyeUnder);
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
+  chunks.cover.update(world, camera.position.x, camera.position.z);
+  chunks.cover.upload(renderer);
 
   if (!guest && worldRuns()) {
     flowLiquids(dt);
@@ -2357,6 +2361,14 @@ function sendKept(): void {
   if (json === keptSent) return;
   keptSent = json;
   guest.keep(state);
+}
+
+/** What falls where the player stands, for `?stats`. */
+function fallsHere(): string {
+  const x = Math.floor(player.body.x);
+  const z = Math.floor(player.body.z);
+  const tile = world.coverOf(toChunk(x), toChunk(z));
+  return tile ? ['nothing', 'rain', 'snow'][coverFall(tile, (toLocal(z) << CHUNK_BITS) | toLocal(x))] : 'unknown';
 }
 
 /** The record saved: where the player is, the time, and in it the survival inventory and health as they are. */

@@ -228,14 +228,16 @@ const flat = (l: number): number => (l * 0x01010101) | 0;
  * Mesh one chunk from its padded blocks and light. Positions are in world coordinates (chunk
  * origin added), so the mesh needs no transform. Each quad is four consecutive vertices,
  * counter-clockwise seen from outside. Without `light`, everything is in full sun.
+ * `cell` is how many blocks across a cell of that detail is, marked on level tops (`MeshData.colors`).
  * `flatFaces` (for far chunks, `lod.ts`) leaves out AO and smooth light: every face lit evenly
  * by the block it looks at, so a coarse cell's faces merge whole (40 % of the quads they make
  * with AO, measured on mountain chunks).
  */
-export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array = ALL_SUNLIT, flatFaces = false): ChunkMesh {
+export function meshChunk(padded: Uint8Array, cx: number, cy: number, cz: number, light: Uint8Array = ALL_SUNLIT, flatFaces = false, cell = 1): ChunkMesh {
   opaque.reset();
   cutout.reset();
   transparent.reset();
+  opaque.topCell = cutout.topCell = cell;
   shaped.length = 0;
   liquids.length = 0;
   steps.length = 0;

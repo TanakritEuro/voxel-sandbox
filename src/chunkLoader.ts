@@ -20,7 +20,7 @@
 // mesh shown until the new one arrives.
 
 import { TUNING } from './config';
-import { type Lod, prepareLod, SEAM_NEG_X, SEAM_NEG_Z, SEAM_POS_X, SEAM_POS_Z } from './mesh/lod';
+import { type Lod, LOD_CELL, prepareLod, SEAM_NEG_X, SEAM_NEG_Z, SEAM_POS_X, SEAM_POS_Z } from './mesh/lod';
 import { type ChunkMesh, meshChunk } from './mesh/mesher';
 import { paddedBlocks, paddedLight, PADDED_VOLUME } from './mesh/padding';
 import type { JobResult, JobRunner, SavedChunk } from './workers/protocol';
@@ -362,7 +362,7 @@ export class ChunkLoader {
       const padded = paddedBlocks(this.world, cx, cy, cz, this.padded);
       const light = paddedLight(this.world, cx, cy, cz, this.paddedLight);
       if (lod || seams) prepareLod(padded, light, lod, seams);
-      this.renderer.set(key, cx, cy, cz, meshChunk(padded, cx, cy, cz, light, lod > 0));
+      this.renderer.set(key, cx, cy, cz, meshChunk(padded, cx, cy, cz, light, lod > 0, LOD_CELL[lod]));
     }
     this.meshed.set(key, stamp(chunk.version, lod, seams));
   }
@@ -374,7 +374,7 @@ export class ChunkLoader {
       // It, and its neighbours (now perhaps ready), have work again.
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) this.unsettle(result.cx + dx, result.cz + dz);
       if (this.inKeepRange(result.cx, result.cz)) {
-        this.world.addColumn(result.cx, result.cz, result.chunks, result.regions, result.light);
+        this.world.addColumn(result.cx, result.cz, result.chunks, result.regions, result.light, result.cover);
         this.walkSoon = true;
         this.onColumnAdded?.(result.cx, result.cz, this.saves?.has(result.cx, result.cz) ?? false);
       }

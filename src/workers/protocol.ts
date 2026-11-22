@@ -62,6 +62,8 @@ export type JobResult =
       regions: (Regions | null)[];
       /** Each chunk's light, the column lit on its own (`lightColumn`). */
       light: PackedLight[];
+      /** The column's cover (`world/cover.ts`), of the chunks as they are here (saved ones put in). */
+      cover: Uint8Array;
       /** Time the worker spent on the job. */
       ms: number;
     }
@@ -84,7 +86,7 @@ export const jobTransferables = (job: Job): ArrayBuffer[] =>
 
 export function resultTransferables(result: JobResult): ArrayBuffer[] {
   if (result.kind === 'generate') {
-    const arrays = [...result.chunks, ...result.light].filter((a): a is Uint8Array => a instanceof Uint8Array);
+    const arrays = [...result.chunks, ...result.light, result.cover].filter((a): a is Uint8Array => a instanceof Uint8Array);
     // The shared regions (all open, all solid) stay where they are, copied.
     for (const r of result.regions) if (r && !r.shared) arrays.push(r.faces, r.border);
     return arrays.map((a) => a.buffer as ArrayBuffer);

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChunkLoader, type ChunkSink, columnPriority, lodLevel } from '../src/chunkLoader';
 import { TUNING } from '../src/config';
-import { type Lod, prepareLod, SEAM_NEG_X, SEAM_NEG_Z, SEAM_POS_X, SEAM_POS_Z } from '../src/mesh/lod';
+import { type Lod, LOD_CELL, prepareLod, SEAM_NEG_X, SEAM_NEG_Z, SEAM_POS_X, SEAM_POS_Z } from '../src/mesh/lod';
 import { ALL_GROUPS, FACE_STARTS, GROUPS, PARTS } from '../src/mesh/builder';
 import { type ChunkMesh, meshChunk } from '../src/mesh/mesher';
 import { paddedBlocks, paddedLight } from '../src/mesh/padding';
@@ -369,7 +369,7 @@ describe('levels of detail', () => {
     const b = paddedBlocks(world, cx, cy, cz);
     const l = paddedLight(world, cx, cy, cz);
     prepareLod(b, l, lod, seams);
-    return meshChunk(b, cx, cy, cz, l, lod > 0);
+    return meshChunk(b, cx, cy, cz, l, lod > 0, LOD_CELL[lod]);
   };
   /**
    * The level and seams column (cx, cz) should have with the player in column (pcx, pcz), the

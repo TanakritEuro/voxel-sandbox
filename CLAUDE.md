@@ -26,8 +26,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); step 1 (spells, saving, the sky) built: nothing
-falls yet, and a guest's weather is held clear until step 5.
+Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); steps 1–2 (spells, saving, the sky; cover and
+wet ground) built: nothing falls yet, and a guest's weather is held clear until step 5.
 Milestones 1–20 built (`docs/milestone-1.md` to `docs/milestone-20.md`), waiting for playtests
 (Milestone 20, a better-looking UI: one look for every screen (slate panels and buttons with a bevel, amber for
 what's chosen, titles in Pixelify Sans), the live world drifting behind the world list, world cards with pictures, a
@@ -225,6 +225,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `weather.ts` (`Weather`: one for the whole world, spell n from the seed and n (dry 6–14 min, then rain, storm or overcast
   2–6 min); `step` while the world runs, the same however time is divided; `now`: kind and how far come on; settled snow
   and wet ground; `hold` for `?weather`; `from` cleans what was saved; pure),
+  `cover.ts` (a tile a column, 2 bytes a place: how far rain gets down, in half blocks (`RAIN_STOP`: what fills its
+  block from above, and liquids; not fences, panes, doors, lanterns), and what falls there by the climate (`Fall`,
+  `fallOf`); `coverTile` in the generate worker, `updateCover` after an edit: every `setBlock`/`setBlocks` does it,
+  `World.coverOf`, `coverChanged`; pure),
   `liquids.ts` (flowing water and lava, one cellular automaton: `LiquidFlow` for a `Liquid` (`WATER` spreading 7 and looking 4
   for a drop, `LAVA` 3 and 2; to each the other is solid) wakes blocks round edits and ticks them,
   falling, spreading towards the nearest drop, new sources between two, drying up; lava touching water basalt from a
@@ -298,7 +302,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   stored with their column and given back, saved in the record's `vehicles` and cleaned on load, at most
   `TUNING.vehicles.most`).
 - `src/mesh/` — `padding.ts` (the 34³ padded copies of blocks and light, whole rows at a time), `builder.ts` (growable
-  typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light), uvl (u, v in blocks, layer, eighths added to v in the low 3 bits and to u above),
+  typed-array output, `MeshData`: Float32 positions, RGBA8 colour (shade × AO, sunlight, block light, and on a level top the cell of its detail (1, 2, 4), else 255: where weather lies), uvl (u, v in blocks, layer, eighths added to v in the low 3 bits and to u above),
   Uint16 indices, every quad 4q + (0, 1, 2, 0, 2, 3): a flipped quad turns its corners instead;
   quads sorted by group (`GROUPS`: the chunk's 12 regions, then a border group per face of the chunk), then part (`PARTS`: face
   direction in `FACE_ORDER` +x, +y, +z, -x, -y, -z, then the rest); `faceStarts`: where each group's parts start),
@@ -319,13 +323,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (`pageAllocator.ts`, in quads, first fit), one shared index buffer, and a draw list built each
   frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
   only the face directions that can point at the camera (`facing`), of the groups to draw (`drawRanges`), kept per entry until those change. `blockMaterial.ts` — the texture
-  array, the chunk shader (light, water drift). `icons.ts` — isometric block icons from the
+  array, the chunk shader (light, water drift, wet tops; keep its varyings few: 4 more cost 0.8 ms in the mountains). `icons.ts` — isometric block icons from the
   textures (a slab's or stairs' boxes each drawn, cropped; a small shape's scaled up to fill its square, `fitted`). `mapView.ts` — the map shown: a panel in the corner in a wooden frame with N marked while one is held, full screen with N
   (a title bar with its keys; zoomed with the wheel, dragged about), the player an arrow. `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
   icons. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
   `weatherLook.ts` — how weather changes sky, clouds, fog and sunlight for drawing (pure; clear gives them back untouched;
   the rules read `skyAt`'s daylight, never the dimmed one: `daylightNow` against `drawnDaylight` in `game.ts`).
+  `coverMap.ts` — the cover on the GPU: a 1024² RG8 texture wrapped round the world, changed tiles uploaded alone; read by
+  the chunk shader to darken wet tops open to the sky.
   `clouds.ts` — the blocky cloud layer and its tiling pattern, its noise cut by a threshold for the cover. `fog.ts` — fog colour and
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
   and the water texture's drift.

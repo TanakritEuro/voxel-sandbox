@@ -2,7 +2,8 @@
 // Pure simulation (no Three.js), so the same code runs in tests and, later, in workers.
 
 import { Block } from './blocks';
-import { CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
+import { CHUNK_BITS, CHUNK_MASK, CHUNK_VOLUME, chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from './coords';
+import { coverTile, RAIN_STOP, updateCover } from './cover';
 import { Generator, type GeneratorOptions } from './generate';
 import { DARK, FULL_SUN, lightBorders, lightColumn, type PackedLight, sameLight, SUNLIT, unpackLight, updateLight, updateLightAt } from './light';
 import { chunkRegions, OPEN_REGIONS, type Regions, seeThrough, SOLID_REGIONS } from './visibility';
@@ -67,6 +68,10 @@ export class Chunk {
 export class World {
   readonly chunks = new Map<string, Chunk>();
   readonly generator: Generator;
+  /** Columns' cover tiles (`cover.ts`), by "cx,cz": given by the worker, or worked out when first asked for. */
+  private readonly covers = new Map<string, Uint8Array>();
+  /** Columns whose cover changed, came or went, for whoever draws it to take up and clear (`render/coverMap.ts`). */
+  readonly coverChanged = new Map<string, readonly [number, number]>();
 
   constructor(seed: number, options?: GeneratorOptions) {
     this.generator = new Generator(seed, options);
@@ -100,15 +105,24 @@ export class World {
    * here; then light flows across its borders with the loaded columns beside it. Returns the
    * number of blocks that flow lit or brightened.
    */
-  addColumn(cx: number, cz: number, chunks: (Uint8Array | null)[], regions?: (Regions | null)[], light: PackedLight[] = lightColumn(chunks)): number {
+  addColumn(cx: number, cz: number, chunks: (Uint8Array | null)[], regions?: (Regions | null)[], light: PackedLight[] = lightColumn(chunks), cover?: Uint8Array): number {
+    // The cover given is of these chunks: no good if any already loaded stays instead.
+    let asGiven = cover !== undefined;
     chunks.forEach((blocks, i) => {
       const cy = MIN_CHUNK_Y + i;
-      if (this.chunks.has(chunkKey(cx, cy, cz))) return;
+      if (this.chunks.has(chunkKey(cx, cy, cz))) {
+        asGiven = false;
+        return;
+      }
       this.addGenerated(cx, cy, cz, blocks);
       const chunk = this.getChunk(cx, cy, cz)!;
       chunk.light = unpackLight(light[i]);
       if (regions?.[i]) chunk.regions = regions[i];
     });
+    const key = coverKey(cx, cz);
+    if (asGiven) this.covers.set(key, cover!);
+    else this.covers.delete(key);
+    this.coverChanged.set(key, [cx, cz]);
     return lightBorders(this, cx, cz);
   }
 
@@ -128,6 +142,21 @@ export class World {
     if (cy > MAX_CHUNK_Y) return Block.Air;
     const chunk = this.chunks.get(chunkKey(toChunk(x), cy, toChunk(z)));
     return chunk ? (chunk.blocks[localIndex(toLocal(x), toLocal(y), toLocal(z))] as Block) : Block.Air;
+  }
+
+  /** Column (cx, cz)'s cover tile (`cover.ts`), worked out now if it wasn't given; undefined if it isn't loaded. */
+  coverOf(cx: number, cz: number): Uint8Array | undefined {
+    const key = coverKey(cx, cz);
+    let tile = this.covers.get(key);
+    if (tile || !this.hasColumn(cx, cz)) return tile;
+    const chunks: (Uint8Array | null)[] = [];
+    for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
+      const chunk = this.getChunk(cx, cy, cz)!;
+      chunks.push(chunk.empty ? null : chunk.blocks);
+    }
+    tile = coverTile(chunks, cx, cz, this.generator.seed, this.generator.climate);
+    this.covers.set(key, tile);
+    return tile;
   }
 
   /** Light at world (x, y, z), packed (sun << 4 | block light): full sun above the world, none below it or in unloaded chunks. */
@@ -210,6 +239,13 @@ export class World {
       chunk.regions = null;
       chunk.regionsVersion = chunk.version;
     }
+    // Only a block stopping rain otherwise can move the cover (most edits can't: a wire's power, say).
+    if (RAIN_STOP[was] !== RAIN_STOP[block]) {
+      const key = coverKey(chunk.cx, chunk.cz);
+      const tile = this.covers.get(key);
+      if (tile && updateCover(tile, (toLocal(z) << CHUNK_BITS) | toLocal(x), y, block, (below) => this.getBlock(x, below, z)))
+        this.coverChanged.set(key, [chunk.cx, chunk.cz]);
+    }
 
     // Per axis, the chunk offsets whose border reaches this block: 0, and -1 or +1 at an edge.
     const sides = (l: number) => (l === 0 ? [0, -1] : l === CHUNK_MASK ? [0, 1] : [0]);
@@ -244,5 +280,10 @@ export class World {
   /** Remove a chunk's data (when far away). Edited chunks should be saved first (`ChunkSaves.unloading`). */
   unload(chunk: Chunk): void {
     this.chunks.delete(chunk.key);
+    const key = coverKey(chunk.cx, chunk.cz);
+    this.covers.delete(key);
+    this.coverChanged.set(key, [chunk.cx, chunk.cz]);
   }
 }
+
+const coverKey = (cx: number, cz: number): string => `${cx},${cz}`;

@@ -27,7 +27,9 @@ export interface MeshData {
   /**
    * rgba per vertex, 0–255 (normalised in the shader): face shade and AO baked in. Four
    * bytes rather than three because ANGLE on Direct3D has no 3-byte vertex format and
-   * would convert every buffer on the CPU.
+   * would convert every buffer on the CPU. The fourth says whether the quad is a level top
+   * facing up, for weather on the ground: then the blocks across a cell of the mesh's detail
+   * (`topCell`: 1, 2 or 4); else 255.
    */
   colors: Uint8Array;
   /**
@@ -66,6 +68,8 @@ export class MeshBuilder {
   vertexCount = 0;
   /** The group the next quads go in. */
   group = 0;
+  /** The cell the mesh's detail works in, in blocks: what the next level tops are marked with. */
+  topCell = 1;
   /** Quad counts at each `mark()` since `reset()`. */
   private readonly marks: number[] = [];
 
@@ -125,6 +129,13 @@ export class MeshBuilder {
       rotate(this.uvl, b, 4);
     }
     this.groups[b >> 2] = this.group;
+    // Level, and wound to be seen from above: a top, which weather can fall on.
+    const p = this.positions;
+    const a = b * 3;
+    const y = p[a + 1];
+    if (p[a + 4] !== y || p[a + 7] !== y || p[a + 10] !== y) return;
+    if ((p[a + 5] - p[a + 2]) * (p[a + 6] - p[a]) <= (p[a + 3] - p[a]) * (p[a + 8] - p[a + 2])) return;
+    for (let k = b * 4 + 3; k < b * 4 + 16; k += 4) this.colors[k] = this.topCell;
   }
 
   /** Copies of the used part, sorted by group then part, safe to keep or transfer while the builder is reused. */

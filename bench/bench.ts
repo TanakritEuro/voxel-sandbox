@@ -28,6 +28,9 @@ import { Block, BLOCKS, delay, inverter, poweredRail, railOf } from '../src/worl
 import { railPlacement } from '../src/world/rails';
 import { type RiderInput, VehicleManager } from '../src/vehicles/manager';
 import { VehicleKind } from '../src/vehicles/vehicle';
+import { CoverMap } from '../src/render/coverMap';
+import { coverTile, updateCover } from '../src/world/cover';
+import { Weather } from '../src/world/weather';
 import { chunkKey, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toChunk, toLocal } from '../src/world/coords';
 import { DARK, FULL_SUN, lightColumn } from '../src/world/light';
 import { ALL_CONNECTED, chunkRegions, connectivityOf, MAX_REGIONS, NO_REGION, reachableChunks, regionBytes, regionMap, seeThrough, walkRegions } from '../src/world/visibility';
@@ -1427,3 +1430,64 @@ it('lava', () => {
   console.log(lines.join('\n') + '\n');
 });
 
+it('weather', () => {
+  // Cover a column (in the generate job), after an edit, on the texture, and a weather step.
+  const lines = ['', 'weather (median of 5)'];
+  for (const [name, ox, oz] of [['the spawn', 0, 0], ['the mountains', -11, 12]] as const) {
+    const world = new World(SEED, { generation: 3 });
+    const made = columns(RADIUS).map(([cx, cz]) => [cx + ox, cz + oz, world.generator.generateColumn(cx + ox, cz + oz, MIN_CHUNK_Y, MAX_CHUNK_Y)] as const);
+    const cover: number[] = [];
+    let slowest = 0;
+    for (let run = 0; run <= RUNS; run++) {
+      const times: number[] = [];
+      for (const [cx, cz, chunks] of made) {
+        const t0 = performance.now();
+        coverTile(chunks, cx, cz, SEED, world.generator.climate);
+        times.push(performance.now() - t0);
+      }
+      if (run === 0) continue;
+      cover.push(times.reduce((a, b) => a + b, 0) / times.length);
+      slowest = Math.max(slowest, percentile(times, 0.95));
+    }
+    for (const [cx, cz, chunks] of made) world.addColumn(cx, cz, chunks, undefined, undefined, coverTile(chunks, cx, cz, SEED, world.generator.climate));
+
+    const x = ox * 32 + 3;
+    const z = oz * 32 + 3;
+    const i = toLocal(z) * 32 + toLocal(x);
+    const tile = world.coverOf(ox, oz)!.slice();
+    const read = (y: number) => world.getBlock(x, y, z);
+    const edits: number[] = [];
+    for (let run = 0; run <= RUNS; run++) {
+      const t0 = performance.now();
+      // A block over it all and away again: the dearest edit, looking down from the top.
+      for (let n = 0; n < 1000; n++) {
+        updateCover(tile, i, 250, Block.Stone, read);
+        updateCover(tile, i, 250, Block.Air, read);
+      }
+      if (run > 0) edits.push((performance.now() - t0) / 2);
+    }
+
+    const whole: number[] = [];
+    const across: number[] = [];
+    for (let run = 0; run <= RUNS; run++) {
+      const map = new CoverMap();
+      let t0 = performance.now();
+      map.update(world, ox * 32, oz * 32);
+      const ms = performance.now() - t0;
+      t0 = performance.now();
+      map.update(world, (ox + 1) * 32, oz * 32);
+      if (run === 0) continue;
+      whole.push(ms);
+      across.push(performance.now() - t0);
+    }
+    lines.push(
+      `  ${name}: cover ${median(cover).toFixed(3)} ms a column (p95 at most ${slowest.toFixed(3)}), after an edit at most ${median(edits).toFixed(2)} us, ` +
+        `the texture written whole ${median(whole).toFixed(2)} ms, crossing a column ${median(across).toFixed(3)} ms`,
+    );
+  }
+  const weather = new Weather(SEED);
+  const t0 = performance.now();
+  for (let n = 0; n < 1_000_000; n++) weather.step(1 / 60);
+  lines.push(`  a weather step ${((performance.now() - t0) / 1000).toFixed(3)} us`);
+  console.log(lines.join('\n') + '\n');
+});

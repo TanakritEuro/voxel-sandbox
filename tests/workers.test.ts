@@ -34,7 +34,7 @@ describe('chunk worker jobs', () => {
     const own = regions.filter((r) => r && !r.shared).length;
     expect(own).toBeGreaterThan(0);
     const arrays = [...expected, ...light].filter((a) => a instanceof Uint8Array).length + 2 * own;
-    expect(resultTransferables(result)).toHaveLength(arrays);
+    expect(resultTransferables(result)).toHaveLength(arrays + 1); // and the cover
     const received = send(result, resultTransferables(result));
     expect(received.chunks).toEqual(expected);
     expect(received.light).toEqual(light);
