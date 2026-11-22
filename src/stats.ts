@@ -42,6 +42,8 @@ export interface EngineCounters {
   mouse: { now: number; ever: number; raw: boolean; dropped: number };
   /** Time of day and daylight, as text. */
   time: string;
+  /** The weather, as text (`world/weather.ts`). */
+  weather: string;
   /** What saving is doing, as text. */
   saving: string;
 }
@@ -160,6 +162,7 @@ export class Stats {
       `logic: ${c.logic}`,
       `net: ${c.net}`,
       `time ${c.time}`,
+      `weather ${c.weather}`,
       `saving ${c.saving}`,
       `jobs ${c.queued} queued, ${c.inFlight} in flight` + (c.workerBusy === null ? '' : `, workers ${Math.round(c.workerBusy * 100)}% busy`),
       `memory: chunks ${mb(c.chunkBytes)}, light ${mb(c.lightBytes)}, meshes ${mb(c.geometryBytes)}` + (heap ? `, JS heap ${mb(heap)}` : ''),

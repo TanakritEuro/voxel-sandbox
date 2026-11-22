@@ -1,6 +1,6 @@
 # Milestone 21: weather
 
-**Status:** plan, to check (2026-11-22).
+**Status:** plan approved (2026-11-22), all six decisions as written; step 1 built.
 
 ## Goal
 
@@ -167,6 +167,7 @@ numbers are a playtest question.
 ## Steps
 
 1. **The weather and the sky:** spells, saving, `?weather`, gloom, clouds, fog, sun; tests.
+   Done (2026-11-22).
 2. **Cover, and the shader's cost:** tiles in the worker and after edits, the texture, wet tops; tests; the GPU
    measured against the limits.
 3. **What falls and lies:** rain, splashes, flakes, settled snow and melting; the far chunks looked at.
@@ -174,7 +175,7 @@ numbers are a playtest question.
 5. **Together:** the messages, guests, sleep; tests.
 6. **Measurements,** notes, playtest questions.
 
-## Decisions to agree
+## Decisions (agreed 2026-11-22)
 
 1. **Snow is drawn, not blocks:** no saving, remeshing or light work, but it can't be dug, picked up or built with.
 2. **Gloom is only looks:** gloamers don't come out in a storm by day and crops don't slow.
@@ -183,3 +184,57 @@ numbers are a playtest question.
 5. **Weather is on in every world,** with no switch per world: by the spells' averages about 17 % of the time rain,
    7 % storms, 4 % overcast, the rest clear.
 6. **One weather for the whole world:** what falls differs by biome, when it falls doesn't (no fronts moving across).
+
+## Step 1: the weather and the sky (2026-11-22)
+
+**Built:**
+- `world/weather.ts`: spells from the seed and their number, the state stepped while the world runs (the same however
+  time is divided), eased 20 s in and out inside the wet stretch, settled snow and wet ground counted, cleaned on load.
+- `render/weatherLook.ts`: the sky, clouds, fog and sunlight under the weather, clear weather giving back the very
+  values it was given.
+- The clouds' texture keeps the noise (32-bit floats, 64 KB), cut by a threshold. At the clear cover the cells are the
+  same as before (20 checksums over 4 seeds and 5 covers compared, one pinned in the tests).
+- The sun, moon, stars and glow fade, gone when the weather is two thirds come on.
+- `game.ts`: `daylightNow` stays the rules' (crops, sleep, creatures), `drawnDaylight` is what drawing takes. The
+  record's `weather`, `?weather`, `?settled=1`, a `?stats` line.
+
+**Chosen while building, where the plan didn't say:**
+- **At night only 0.3 of the dimming is kept** (a storm leaves 0.865 of moonlight, not 0.55), or a night storm is too
+  dark to walk in. At noon the plan's 0.75 and 0.55 hold.
+- **Overcast:** cloud 80 %, sunlight 0.88, fog from 0.5.
+- **Weather held by `?weather` isn't saved:** the world keeps its own.
+
+**Not yet:** nothing falls, and wet ground and settled snow aren't drawn (steps 2 and 3). A guest's weather is held
+clear until step 5, so a host in rain and its guests see different skies until then. Which biome gets snow, rain or
+nothing comes with the cover tiles in step 2, and so does its test.
+
+**Tests:** 17 in `tests/weather.test.ts`. 681 tests in all pass; the build passes.
+
+**Looked at** (`docs/milestone-21/1-…`): the four kinds by morning at the spawn, storms at dusk, by night and in the
+mountains, the sun gone in a storm, the backdrop still clear. In a real saved world (made for it, deleted after): the
+weather waited while paused, came back after save and quit, and went from clear to rain over 20 s
+(its saved state moved to 2 s before the first rain, to see it); `?weather=storm`
+left its saved weather as it was. No console errors. Joining as a guest wasn't tried in the browser.
+
+**Found, not changed:** the clouds lie at y 192 and mountains rise past them. From a summit at y 207 a storm's 95 %
+cover is a flat pale sheet that hides the valley, and the plan's snow falls up to y 240, so above that sheet too.
+To settle before step 3: thin the weather's extra cover as the eye rises over the layer (recommended), or lift the layer.
+
+**Measured** (752 x 457 at 1.5x, `?seed=20261022&time=0.5&mobs=0`, standing, medians of 10 s, twice each; "before" is
+`551bcb3`, whose code is `9bddd4c`'s, the same sitting):
+
+| | Before | Clear | Storm | Limit |
+| --- | --- | --- | --- | --- |
+| GPU, the spawn | 3.9, 3.9 ms | 3.6, 3.6 | 3.5, 3.5 | +0.3 clear, +1.5 storm |
+| GPU, the mountains | 7.8, 7.7 ms | 7.6, 7.3 | 8.4, 8.4 | the same |
+| Main thread, the spawn | 2.3, 2.4 ms | 1.5, 1.5 | 1.5, 1.4 | +0.3 |
+| Main thread, the mountains | 1.6, 1.6 ms | 1.6, 1.6 | 1.6, 1.6 | +0.3 |
+| Sprint flight, frames over 20 ms (two runs each) | 0, 0 | 0, 0 | 0, 0 | no more |
+| Sprint flight, main thread p50 | 2.8, 3.1 ms | 2.7, 2.0 | 2.5, 2.5 | |
+
+- **A storm in the mountains already takes 0.6 ms of GPU over before** (0.8–1.1 over clear on this commit) of the 1.5
+  allowed, with nothing falling yet. Presumably the near-full cloud layer drawn over the view (not isolated). That
+  leaves 0.4–0.9 ms for drops, wet tops and snow.
+- **The main thread's numbers wander:** two flights of the same code differed by 0.7 ms, so the spawn's 0.8 ms under
+  before isn't claimed as a gain. Timed headless,
+  a frame's weather (step, look, sky, threshold) is 0.0001 ms clear and 0.001 ms in a storm.

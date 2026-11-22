@@ -48,6 +48,8 @@ import { GroundItemView } from './render/groundItems';
 import { clock, skyAt } from './render/sky';
 import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
+import { fogStartUnder, lookOf, skyUnder, underWeather } from './render/weatherLook';
+import { Weather, weatherKindOf } from './world/weather';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import type { Mob } from './mobs/brain';
@@ -240,6 +242,13 @@ const chests = Chests.from(record.containers, (x, y, z) => lootSource(world.gene
 /** Wheat growing (`survival/farming.ts`), saved with the record. */
 const crops = Crops.from(record.crops);
 let time = timeHeld ? Number(timeParam) : record.time;
+// The weather, saved with the world. `?weather=clear|overcast|rain|storm` holds it and `?settled=1`
+// starts with snow lying; flights to measure and the backdrop stay clear unless told, and so does
+// a guest's until the host sends its own.
+const weather = Weather.from(record.seed, record.weather);
+const weatherHeld = weatherKindOf(params.get('weather')) ?? (guest || params.has('autofly') || params.has('backdrop') ? 'clear' : null);
+if (weatherHeld) weather.hold(weatherHeld);
+if (params.get('settled') === '1') weather.settled = 1;
 
 const world = new World(record.seed, { generation: generationOf(record.generation) });
 // Sounds wait for the first click or key (browsers allow audio only after a gesture).
@@ -250,13 +259,15 @@ window.addEventListener('pointerdown', () => sound.unlock());
 window.addEventListener('keydown', () => sound.unlock());
 const skyDome = new SkyDome(TUNING.sky.sunTilt);
 scene.add(skyDome.group);
-const clouds = new Clouds(record.seed, TUNING.sky.cloudCover, TUNING.sky.cloudHeight, TUNING.sky.cloudCell);
+const clouds = new Clouds(record.seed, TUNING.sky.cloudHeight, TUNING.sky.cloudCell);
 scene.add(clouds.mesh);
 const particles = new Particles();
 const particleMesh = new ParticleMesh(particles);
 scene.add(particleMesh.mesh);
-/** Daylight this frame, for lighting new particles. */
+/** Daylight this frame by the time of day alone: what the rules read (creatures, crops, sleep). */
 let daylightNow = 1;
+/** Daylight this frame as it's drawn, dimmed by the weather: for drawing only. */
+let drawnDaylight = 1;
 // Mobs (`mobs/`): animals round the player, not saved. `?mobs=0` none, `?mobs=40` a cap of 40.
 const mobsParam = Number(params.get('mobs') ?? Number.NaN);
 const mobCap = Number.isFinite(mobsParam) ? Math.max(0, Math.floor(mobsParam)) : TUNING.mobs.max;
@@ -403,7 +414,7 @@ function hitVehicle(v: Vehicle): void {
   const gives = vehicles.hit(v, !survival);
   sound.play({ name: gives ? 'break' : 'dig', material: 'stone', gain: 1 });
   if (!gives) return;
-  particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow));
+  particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), drawnDaylight));
   if (survival) for (const st of gives) ground.drop(b.x, b.y + 0.5, b.z, st, (Math.random() - 0.5) * 2, TUNING.survival.ground.hop, (Math.random() - 0.5) * 2);
 }
 /** `?litter[=256]`: that many items dropped round the player once the ground is there (for measuring). */
@@ -880,7 +891,7 @@ if (guest) {
       if (h) sound.play({ name: 'mob', voice: s.voice, kind: s.kind, ...h });
       if (s.voice === 'puff') {
         const k = KINDS[s.kind];
-        particles.puff(s.x, s.y, s.z, k.halfWidth, k.height, brightness(world.getLight(Math.floor(s.x), Math.floor(s.y + 0.5), Math.floor(s.z)), daylightNow));
+        particles.puff(s.x, s.y, s.z, k.halfWidth, k.height, brightness(world.getLight(Math.floor(s.x), Math.floor(s.y + 0.5), Math.floor(s.z)), drawnDaylight));
       }
     }
   };
@@ -1006,7 +1017,7 @@ function guestFeed(id: number, mobId: number, item: number): boolean {
 /** A fed animal's pleasure: a little burst of pink over its back. */
 function hearts(mob: Mob): void {
   const b = mob.body;
-  particles.burst(b.x - 0.5, b.y + b.height - 0.4, b.z - 0.5, HEARTS, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow));
+  particles.burst(b.x - 0.5, b.y + b.height - 0.4, b.z - 0.5, HEARTS, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), drawnDaylight));
 }
 const HEARTS: readonly [number, number, number][] = [
   [0.95, 0.35, 0.45],
@@ -1073,7 +1084,7 @@ function playTogether(now: number): void {
     return pose ? [{ id, name: net.players.find((p) => p.id === id)?.name ?? '', pose }] : [];
   });
   if (host) loader.setOthers(others.map((o) => [o.pose.x, o.pose.z]));
-  playerView.update(others, world, daylightNow);
+  playerView.update(others, world, drawnDaylight);
 }
 
 /** The network line of `?stats`: who, and what goes each way. */
@@ -1110,6 +1121,7 @@ const stats = new Stats(
     sceneTriangles: chunks.triangles,
     lastEdit,
     time: `${clock(time)}, daylight ${skyAt(time).daylight.toFixed(2)}${timeHeld ? ' (held)' : ''}`,
+    weather: weather.describe(),
     saving:
       (unsaved ? 'off (this world is not kept)' : `${saver.unsaved} edited chunks to write`) +
       (saver.last ? `; last wrote ${saver.last.chunks} chunks, ${(saver.last.bytes / 1024).toFixed(1)} KB in ${saver.last.ms.toFixed(1)} ms` : ''),
@@ -1704,7 +1716,7 @@ function hitMob(mob: Mob, fromX = player.body.x, fromZ = player.body.z, points =
   if (fromX === player.body.x && fromZ === player.body.z) swing();
   const b = mob.body;
   if (mobs.hit(mob, fromX, fromZ, points)) {
-    const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), daylightNow);
+    const light = brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 0.5), Math.floor(b.z)), drawnDaylight);
     particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, light);
     // In survival an animal leaves raw meat (a mossback moss too, for beds), a hostile kind its loot
     // (a gloamer an ember, a delver raw iron).
@@ -1750,7 +1762,7 @@ function editing(dt: number): void {
     if (partner) edit(partner[0], partner[1], partner[2], Block.Air);
     sound.play({ name: 'break', material: info.sound, gain: 1 });
     swing();
-    particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), daylightNow));
+    particles.burst(broken.x, broken.y, broken.z, [info.top, info.side], brightness(world.getLight(broken.x, broken.y, broken.z), drawnDaylight));
     if (survival) gather(broken.block, broken.x, broken.y, broken.z);
     // A furnace broken: what's in it drops too (in survival), and it's forgotten (a guest's is the host's to drop).
     if ((furnaceOf(broken.block) || chestOf(broken.block)) && !guest) containerGone(broken.x, broken.y, broken.z);
@@ -2082,7 +2094,7 @@ function frame(now: number): void {
       if (e.name === 'dig' && target) {
         const t = target;
         const info = BLOCKS[t.block];
-        particles.chips(t.x, t.y, t.z, t.nx, t.ny, t.nz, [info.top, info.side], brightness(world.getLight(t.x + t.nx, t.y + t.ny, t.z + t.nz), daylightNow));
+        particles.chips(t.x, t.y, t.z, t.nx, t.ny, t.nz, [info.top, info.side], brightness(world.getLight(t.x + t.nx, t.y + t.ny, t.z + t.nz), drawnDaylight));
       }
     }
     particles.step(dt, (x, y, z) => !BLOCKS[world.getBlock(x, y, z)].passable);
@@ -2091,24 +2103,28 @@ function frame(now: number): void {
   }
   lastFeet = { x: player.body.x, z: player.body.z };
   if (!timeHeld && worldRuns()) time = (time + dt / TUNING.day.length) % 1;
-  const sky = skyAt(time);
-  daylightNow = sky.daylight;
+  if (worldRuns()) weather.step(dt);
+  const clearSky = skyAt(time);
+  const look = lookOf(weather.now());
+  const sky = skyUnder(clearSky, look);
+  daylightNow = clearSky.daylight;
+  drawnDaylight = sky.daylight;
   particleMesh.update();
   // A guest draws the host's items, where it last heard they lie.
-  groundView.update(guest ? guest.ground.map((g) => ({ id: g.id, item: g.item, body: g })) : ground.items, (x, y, z) => brightness(world.getLight(Math.floor(x), Math.floor(y), Math.floor(z)), daylightNow), now / 1000);
+  groundView.update(guest ? guest.ground.map((g) => ({ id: g.id, item: g.item, body: g })) : ground.items, (x, y, z) => brightness(world.getLight(Math.floor(x), Math.floor(y), Math.floor(z)), drawnDaylight), now / 1000);
   chunks.setSunlight(sky.sunlight);
   chunks.setWaterFlow(waterFlow(now / 1000, TUNING.water.flow));
   chunks.setLavaFlow(waterFlow(now / 1000, TUNING.lava.flow));
   // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).
   const air = blendFog(world.generator.climate.weights(camera.position.x, camera.position.z));
   fog = fog ? easeFog(fog, air, dt, TUNING.fog.ease) : air;
-  const horizon = fogColour(sky.colour, fog, sky.daylight);
+  const horizon = underWeather(fogColour(clearSky.colour, fog, clearSky.daylight), look, clearSky.daylight);
   const distance = TUNING.view.radius * CHUNK_SIZE;
-  waterView.setRange(distance * fog.start, distance * 0.95);
+  waterView.setRange(distance * fogStartUnder(fog.start, look), distance * 0.95);
   waterView.update(player.eyeInWater, horizon, sky.daylight, player.eyeInLava);
   const eyeUnder = player.eyeInWater || player.eyeInLava;
-  skyDome.update(camera, { ...sky, colour: horizon }, TUNING.sky.glow, eyeUnder);
-  clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, TUNING.view.radius * CHUNK_SIZE, eyeUnder);
+  skyDome.update(camera, { ...sky, colour: horizon }, TUNING.sky.glow, look.shown, eyeUnder);
+  clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, look.cover, TUNING.view.radius * CHUNK_SIZE, eyeUnder);
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
 
@@ -2149,7 +2165,7 @@ function frame(now: number): void {
   if (ground.items.length && worldRuns()) {
     ground.update(dt, world, (x, z) => world.hasColumn(toChunk(Math.floor(x)), toChunk(Math.floor(z))), survival && !dead && !player.waiting ? [player.body] : [], pickUp);
     // Items burnt up in lava go in a puff.
-    for (const [x, y, z] of ground.takeBurned()) particles.puff(x, y, z, 0.15, 0.3, brightness(world.getLight(Math.floor(x), Math.floor(y + 0.5), Math.floor(z)), daylightNow));
+    for (const [x, y, z] of ground.takeBurned()) particles.puff(x, y, z, 0.15, 0.3, brightness(world.getLight(Math.floor(x), Math.floor(y + 0.5), Math.floor(z)), drawnDaylight));
   }
   // `?flood=guest` waits for a guest to be in, to measure what the water sends.
   circuit?.update(now, interval, player.body.x, player.body.y, player.body.z, player.waiting);
@@ -2222,7 +2238,7 @@ function frame(now: number): void {
     }
     for (const m of mobs.takeFaded()) {
       const b = m.body;
-      particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 1), Math.floor(b.z)), daylightNow));
+      particles.puff(b.x, b.y, b.z, b.halfWidth, b.height, brightness(world.getLight(Math.floor(b.x), Math.floor(b.y + 1), Math.floor(b.z)), drawnDaylight));
     }
     if (showcase && !player.waiting) {
       // `?showcase=ambler,wader`: just those kinds (by name, lower case, spaces as dashes).
@@ -2236,7 +2252,7 @@ function frame(now: number): void {
       farmyard = false;
     }
     for (const m of mobs.takeBorn()) hearts(m);
-    mobView.update(mobs, world, daylightNow, now / 1000);
+    mobView.update(mobs, world, drawnDaylight, now / 1000);
     const p = camera.position;
     for (const s of mobs.takeSounds()) {
       const h = heard(s.x, s.y + 0.5, s.z, p.x, p.y, p.z, input.yaw);
@@ -2247,9 +2263,9 @@ function frame(now: number): void {
   // A guest's mobs, where the host's snapshots put them.
   if (guest && mobView) {
     guest.mobs.update(guest.clock());
-    mobView.update(guest.mobs, world, daylightNow, now / 1000);
+    mobView.update(guest.mobs, world, drawnDaylight, now / 1000);
   }
-  vehicleView.update(vehicleShown, world, daylightNow, now / 1000);
+  vehicleView.update(vehicleShown, world, drawnDaylight, now / 1000);
   // The map fills in round the player (a column a frame: about 0.4 ms), and shows while held or opened.
   if (!player.waiting) worldMap.explore(world, player.body.x, player.body.z, 4, 1);
   mapView.update(dt, survival && !dead && pack.slots[selected]?.item === Item.Map, player.body.x, player.body.z, input.yaw);
@@ -2289,7 +2305,7 @@ function frame(now: number): void {
   // A tool or a stick is held as its picture made solid; a block as a block.
   const heldItem = survival ? pack.slots[selected]?.item : undefined;
   const art = heldItem === undefined || isBlockItem(heldItem) ? null : artOf(heldItem);
-  if (art) held.setItem(heldItem!, art, brightness(eyeLight, daylightNow));
+  if (art) held.setItem(heldItem!, art, brightness(eyeLight, drawnDaylight));
   else held.set(heldBlock(), eyeLight, sky.sunlight);
   if (!backdrop) held.render(renderer, camera.aspect, !autofly);
   stats.gpuEnd();
@@ -2355,6 +2371,8 @@ function saveRecord(): Promise<void> {
   if (mobs) record.animals = mobs.keptRecords();
   if (vehicles) record.vehicles = vehicles.records();
   record.map = worldMap.toJSON();
+  // Weather held to try it isn't the world's.
+  if (!weather.held) record.weather = weather.toJSON();
   return saver.saveRecord(playerState(), time);
 }
 

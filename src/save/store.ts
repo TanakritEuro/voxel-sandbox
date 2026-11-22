@@ -64,6 +64,8 @@ export interface WorldRecord {
   map?: unknown;
   /** A small picture of the world (Milestone 20), taken on save and quit, for its card (`thumbOf` checks it). */
   thumb?: string;
+  /** The weather (Milestone 21), cleaned by `Weather.from`; missing in older worlds: they start clear. */
+  weather?: unknown;
 }
 
 /** The most a world's picture may be, in characters of its data URL (a 192 x 108 JPEG is about 8 KB). */

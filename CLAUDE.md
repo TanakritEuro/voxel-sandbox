@@ -26,6 +26,8 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); step 1 (spells, saving, the sky) built: nothing
+falls yet, and a guest's weather is held clear until step 5.
 Milestones 1–20 built (`docs/milestone-1.md` to `docs/milestone-20.md`), waiting for playtests
 (Milestone 20, a better-looking UI: one look for every screen (slate panels and buttons with a bevel, amber for
 what's chosen, titles in Pixelify Sans), the live world drifting behind the world list, world cards with pictures, a
@@ -166,7 +168,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name, UI size) in localStorage,
   cleaned on load.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, stepping up, light, day length, sleep, sky, mobs (kept animals, breeding), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), lava (tick, drop search, its view, swimming, burning), logic, survival (stacks, tool speeds and
+  reach, stepping up, light, day length, sleep, sky, weather, mobs (kept animals, breeding), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), lava (tick, drop search, its view, swimming, burning), logic, survival (stacks, tool speeds and
   wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
   eating, meat from animals, smelting time, items on the ground, farming), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
@@ -220,6 +222,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   through linked regions that decides what to mesh and draw (`Reach`); the old chunk walk `reachableChunks` kept for comparison),
   `world.ts` (`Chunk`, `World`: get/set across chunks (`setBlocks`: many, one light update), columns, light and stale chunks on edit,
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
+  `weather.ts` (`Weather`: one for the whole world, spell n from the seed and n (dry 6–14 min, then rain, storm or overcast
+  2–6 min); `step` while the world runs, the same however time is divided; `now`: kind and how far come on; settled snow
+  and wet ground; `hold` for `?weather`; `from` cleans what was saved; pure),
   `liquids.ts` (flowing water and lava, one cellular automaton: `LiquidFlow` for a `Liquid` (`WATER` spreading 7 and looking 4
   for a drop, `LAVA` 3 and 2; to each the other is solid) wakes blocks round edits and ticks them,
   falling, spreading towards the nearest drop, new sources between two, drying up; lava touching water basalt from a
@@ -319,7 +324,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (a title bar with its keys; zoomed with the wheel, dragged about), the player an arrow. `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
   icons. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
-  `clouds.ts` — the blocky cloud layer and its tiling pattern. `fog.ts` — fog colour and
+  `weatherLook.ts` — how weather changes sky, clouds, fog and sunlight for drawing (pure; clear gives them back untouched;
+  the rules read `skyAt`'s daylight, never the dimmed one: `daylightNow` against `drawnDaylight` in `game.ts`).
+  `clouds.ts` — the blocky cloud layer and its tiling pattern, its noise cut by a threshold for the cover. `fog.ts` — fog colour and
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
   and the water texture's drift.
   `crack.ts` — the crack pattern and overlay. `particles.ts` — breaking and digging particles
@@ -352,7 +359,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
   inventory, health and bed), `furnaces`, `containers` (chests), `crops`, `guests` (guests' survival states by name), `generation` (missing in older worlds: 1)
-  `animals` (kept animals), `vehicles`, `map` and `thumb` (a picture taken on save and quit; `thumbOf` checks it)), `saver.ts` (`WorldSaver`: which chunks a world
+  `animals` (kept animals), `vehicles`, `map`, `weather` (missing: clear) and `thumb` (a picture taken on save and quit; `thumbOf` checks it)), `saver.ts` (`WorldSaver`: which chunks a world
   has, writing edited ones soon after an edit and before unloading, the player and time;
   `heights` and `editedColumns` for guests),
   `worlds.ts` (unsaved URLs, seeds from text, new ids and names).
@@ -433,7 +440,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?railway` lays a loop of rails 40 x 20 round you
   on a stone bed (a hump with slopes and powered rails before it each way, ten powered rails with a wire and a switch) and
   puts you in a cart on it (`?railway=60` reports frame times after a minute riding), `?boat` puts you in a boat on
-  the nearest water (`?find=river&boat`), `?time=0.5` holds the time of day, `?daylength=60` shortens the day, `?lod=0` keeps every
+  the nearest water (`?find=river&boat`), `?time=0.5` holds the time of day, `?weather=clear|overcast|rain|storm` holds the weather (`?autofly` and `?backdrop` are
+  clear unless told; held weather isn't saved), `?settled=1` starts with snow settled, `?daylength=60` shortens the day, `?lod=0` keeps every
   column at full detail (`?lod=8,13` moves the half- and quarter-detail rings), `?aa=0` turns antialiasing
   off and `?scale=0.5` draws at half resolution (for measuring the GPU).
 - `bench/` — `npm run bench`.

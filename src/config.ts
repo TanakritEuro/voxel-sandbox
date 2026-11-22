@@ -241,6 +241,35 @@ export const TUNING = {
     step: 0.35,
     dig: 0.5,
   },
+  weather: {
+    /** A spell: seconds dry, then seconds of weather (`world/weather.ts`). */
+    dry: { min: 360, max: 840 },
+    spell: { min: 120, max: 360 },
+    /** What the weather is: rain, a storm, else only cloud. */
+    shares: { rain: 0.6, storm: 0.25 },
+    /** Seconds it takes to come on, and to clear. */
+    ease: 20,
+    /** Seconds of falling for snow to settle whole, and of none for it to melt. */
+    settle: 120,
+    melt: 300,
+    /** Seconds of falling to wet the ground through, and of none to dry it. */
+    soak: 20,
+    dryOut: 60,
+    /**
+     * Each kind fully come on (`render/weatherLook.ts`): share of the sky under cloud, sunlight
+     * as a share of a clear noon's, how grey colours go, and where the fog starts as a fraction
+     * of the view distance.
+     */
+    look: {
+      overcast: { cover: 0.8, light: 0.88, grey: 0.6, fogStart: 0.5 },
+      rain: { cover: 0.9, light: 0.75, grey: 0.75, fogStart: 0.35 },
+      storm: { cover: 0.95, light: 0.55, grey: 0.85, fogStart: 0.25 },
+    },
+    /** The share of that dimming left at night, when there's little light to lose. */
+    nightDim: 0.3,
+    /** How much darker clouds are than the light under them. */
+    thickCloud: 0.15,
+  },
   /**
    * Fog by biome (`render/fog.ts`): a tint, how much of it shows by day, and where the fog
    * starts as a fraction of the view distance. Blended by the biomes where the player is.

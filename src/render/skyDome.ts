@@ -2,7 +2,8 @@
 // of the world melts into it) up to the zenith's, glowing round the sun at dawn and dusk; a
 // square pixel-art sun and moon opposite each other; and stars that come out at night and turn
 // with the sun. All of it is drawn behind the world: inside the far plane, so mountains hide
-// the sun, without fog, and without writing depth. Hidden under water, where the fog is the view.
+// the sun, without fog, and without writing depth. Hidden under water, where the fog is the view;
+// the weather fades the sun and moon out (`shown`), and the stars and glow through the sky it's given.
 
 import * as THREE from 'three';
 import { createRng } from '../math';
@@ -83,6 +84,7 @@ export class SkyDome {
   private readonly dome: THREE.Mesh;
   private readonly domeMaterial: THREE.ShaderMaterial;
   private readonly sun: THREE.Sprite;
+  private readonly sunMaterial: THREE.SpriteMaterial;
   private readonly moon: THREE.Sprite;
   private readonly moonMaterial: THREE.SpriteMaterial;
   /** Leans the stars' circle like the sun's; `stars` turns within it. */
@@ -128,7 +130,8 @@ export class SkyDome {
     this.tilt.rotation.x = tilt;
     this.tilt.add(this.stars);
 
-    this.sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: sunTexture(), blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.sunMaterial = new THREE.SpriteMaterial({ map: sunTexture(), blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    this.sun = new THREE.Sprite(this.sunMaterial);
     this.moonMaterial = new THREE.SpriteMaterial({ map: moonTexture(), depthWrite: false, fog: false });
     this.moon = new THREE.Sprite(this.moonMaterial);
     for (const s of [this.sun, this.moon]) {
@@ -138,8 +141,8 @@ export class SkyDome {
     this.group.add(this.dome, this.tilt, this.sun, this.moon);
   }
 
-  /** Once a frame: follow the camera, inside its far plane, and show the sky for `sky`. */
-  update(camera: THREE.PerspectiveCamera, sky: SkyState, glowHex: number, underwater: boolean): void {
+  /** Once a frame: follow the camera, inside its far plane, and show the sky for `sky`, the sun and moon as far as `shown` (0–1). */
+  update(camera: THREE.PerspectiveCamera, sky: SkyState, glowHex: number, shown: number, underwater: boolean): void {
     this.group.visible = !underwater;
     if (underwater) return;
     const r = camera.far * 0.9;
@@ -161,7 +164,9 @@ export class SkyDome {
     this.sun.scale.setScalar(r * 0.16);
     this.moon.position.copy(this.sunDir).multiplyScalar(-r * 0.95);
     this.moon.scale.setScalar(r * 0.11);
+    this.sun.visible = this.moon.visible = shown > 0.01;
+    this.sunMaterial.opacity = shown;
     // Faint in daylight, as the moon is.
-    this.moonMaterial.opacity = 1 - 0.7 * Math.min(1, Math.max(0, sky.elevation * 3));
+    this.moonMaterial.opacity = (1 - 0.7 * Math.min(1, Math.max(0, sky.elevation * 3))) * shown;
   }
 }
