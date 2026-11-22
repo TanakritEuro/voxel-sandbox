@@ -7,12 +7,15 @@
 //
 // Weather on the ground is drawn here, not placed (`WEATHER`: the solid and cutout passes of
 // chunks): a level top at or above its place's cover (`world/cover.ts`, `coverMap.ts`) is open
-// to the sky and, where rain falls, darkened by how wet it is. Near, up to half a block under
-// the cover counts (a stair's lower step); far chunks' coarser tops, up to a cell of theirs.
+// to the sky: where rain falls darkened by how wet it is (but not snow, already white), where
+// snow falls white in a blocky patchy pattern filling in as it settles, none near block light.
+// Near, up to half a block under the cover counts (a stair's lower step); far chunks' coarser
+// tops, up to two cells of theirs.
 
 import * as THREE from 'three';
 import { TUNING } from '../config';
-import { type CoverMap, COVER_SIZE } from './coverMap';
+import { UNDER_COVER, UNDER_COVER_CELLS } from '../world/cover';
+import { COVER_GLSL, type CoverMap, COVER_SIZE } from './coverMap';
 import { makeTextures, TEXTURE_NAMES, TEXTURE_SIZE, textureLayer } from '../world/textures';
 
 const vertexShader = /* glsl */ `
@@ -76,22 +79,49 @@ const fragmentShader = /* glsl */ `
   varying vec2 vUv;
   flat varying float vLayer;
   #ifdef WEATHER
-    uniform highp sampler2D cover;
-    uniform ivec2 coverOrigin;
+    ${COVER_GLSL}
     uniform float wetness;
     uniform float wetShade;
+    uniform float settled;
+    uniform float snowLayer;
+    uniform float melts;
     varying vec2 vPlace;
     flat varying vec2 vTop;
 
     /** What falls on this fragment (a Fall: 0 nothing), 0 where it's under cover. */
     float fallsHere() {
-      ivec2 cell = ivec2(floor(vPlace));
-      ivec2 inside = cell - coverOrigin;
-      if (inside.x < 0 || inside.y < 0 || inside.x >= COVER_SIZE || inside.y >= COVER_SIZE) return 0.0;
-      vec2 stored = floor(texelFetch(cover, cell & (COVER_SIZE - 1), 0).rg * 255.0 + 0.5);
-      float height = (stored.x + mod(stored.y, 4.0) * 256.0) * 0.5;
-      float under = vTop.x > 1.5 ? vTop.x : 0.5;
-      return vTop.y >= height - under - 0.01 ? floor(stored.y / 4.0) : 0.0;
+      vec2 here = coverAt(vPlace);
+      float under = vTop.x > 1.5 ? vTop.x * UNDER_COVER_CELLS : UNDER_COVER;
+      return vTop.y >= here.x - under - 0.01 ? here.y : 0.0;
+    }
+
+    float patchHash(vec2 p) {
+      vec3 q = fract(mod(p, 4096.0).xyx * 0.1031);
+      q += dot(q, q.yzx + 33.33);
+      return fract((q.x + q.y) * q.z);
+    }
+
+    /**
+     * How much of this fragment is under settled snow, seen at \`footprint\` blocks a pixel: patches a
+     * few blocks across of quarter-block squares, thinning out to nothing by block light.
+     */
+    float snowHere(float footprint) {
+      float s = settled * clamp((melts - vLight.y * 15.0) / 1.5, 0.0, 1.0);
+      if (s >= 1.0 || s <= 0.0) return s;
+      vec2 square = floor(vPlace * 4.0);
+      vec2 wide = (square + 0.5) / 20.0;
+      vec2 corner = floor(wide);
+      vec2 f = wide - corner;
+      f *= f * (3.0 - 2.0 * f);
+      float broad = mix(
+        mix(patchHash(corner), patchHash(corner + vec2(1.0, 0.0)), f.x),
+        mix(patchHash(corner + vec2(0.0, 1.0)), patchHash(corner + vec2(1.0, 1.0)), f.x),
+        f.y
+      );
+      // Squares smaller than a pixel are drawn as their average, or they'd shimmer.
+      float fine = mix(patchHash(square), 0.5, smoothstep(0.1, 0.35, footprint));
+      float covered = step(0.65 * broad + 0.35 * fine, s);
+      return mix(covered, smoothstep(0.15, 0.85, s), smoothstep(0.5, 2.0, footprint));
     }
   #endif
   #include <fog_pars_fragment>
@@ -130,13 +160,20 @@ const fragmentShader = /* glsl */ `
     if (texel.a < alphaTest) discard;
     #endif
     #ifdef WEATHER
-    // Dry, the first test is all it costs.
-    if (wetness > 0.0 && vTop.x > 0.0
+    // Dry and bare, the first test is all it costs.
+    if ((wetness > 0.0 || settled > 0.0) && vTop.x > 0.0
       #ifdef LAVA
         && abs(vLayer - lavaLayer) >= 0.5
       #endif
     ) {
-      if (fallsHere() == 1.0) texel.rgb *= mix(1.0, wetShade, wetness);
+      float falls = fallsHere();
+      if (falls == 1.0) {
+        // Snow outside the snow line doesn't darken.
+        if (abs(vLayer - snowLayer) >= 0.5) texel.rgb *= mix(1.0, wetShade, wetness);
+      } else if (falls == 2.0 && settled > 0.0) {
+        float lying = snowHere(max(length(dx), length(dy)));
+        if (lying > 0.0) texel.rgb = mix(texel.rgb, textureGrad(map, vec3(fract(vPlace), snowLayer), dx, dy).rgb, lying);
+      }
     }
     #endif
     #ifdef LIGHT_VIEW
@@ -209,6 +246,9 @@ export function createBlockMaterial(
     uniforms.coverOrigin = { value: cover.origin };
     uniforms.wetness = { value: 0 };
     uniforms.wetShade = { value: TUNING.weather.wetShade };
+    uniforms.settled = { value: 0 };
+    uniforms.snowLayer = { value: textureLayer('snow') };
+    uniforms.melts = { value: TUNING.weather.melts };
   }
   return new THREE.ShaderMaterial({
     uniforms,
@@ -220,7 +260,7 @@ export function createBlockMaterial(
       // Lava only in the solid pass.
       ...(!options.transparent && options.alphaTest === 0 && { LAVA: '' }),
       ...(options.lightView && { LIGHT_VIEW: '' }),
-      ...(weathered && { WEATHER: '', COVER_SIZE }),
+      ...(weathered && { WEATHER: '', COVER_SIZE, UNDER_COVER: UNDER_COVER.toFixed(2), UNDER_COVER_CELLS: UNDER_COVER_CELLS.toFixed(1) }),
     },
     fog: true,
     transparent: options.transparent,

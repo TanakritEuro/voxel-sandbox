@@ -26,8 +26,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); steps 1–2 (spells, saving, the sky; cover and
-wet ground) built: nothing falls yet, and a guest's weather is held clear until step 5.
+Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); steps 1–3 (spells, saving, the sky; cover and
+wet ground; rain, snow and settled snow) built: no lightning, thunder or rain's sound yet, and a guest's weather is held
+clear until step 5.
 Milestones 1–20 built (`docs/milestone-1.md` to `docs/milestone-20.md`), waiting for playtests
 (Milestone 20, a better-looking UI: one look for every screen (slate panels and buttons with a bevel, amber for
 what's chosen, titles in Pixelify Sans), the live world drifting behind the world list, world cards with pictures, a
@@ -227,7 +228,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   and wet ground; `hold` for `?weather`; `from` cleans what was saved; pure),
   `cover.ts` (a tile a column, 2 bytes a place: how far rain gets down, in half blocks (`RAIN_STOP`: what fills its
   block from above, and liquids; not fences, panes, doors, lanterns), and what falls there by the climate (`Fall`,
-  `fallOf`); `coverTile` in the generate worker, `updateCover` after an edit: every `setBlock`/`setBlocks` does it,
+  `fallOf`); `snowLies`: settled snow at a height, for footsteps, as the chunk shader draws it; `coverTile` in the generate worker, `updateCover` after an edit: every `setBlock`/`setBlocks` does it,
   `World.coverOf`, `coverChanged`; pure),
   `liquids.ts` (flowing water and lava, one cellular automaton: `LiquidFlow` for a `Liquid` (`WATER` spreading 7 and looking 4
   for a drop, `LAVA` 3 and 2; to each the other is solid) wakes blocks round edits and ticks them,
@@ -323,15 +324,19 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   (`pageAllocator.ts`, in quads, first fit), one shared index buffer, and a draw list built each
   frame from the visible chunks in the frustum (blended ones farthest first); opaque chunks draw
   only the face directions that can point at the camera (`facing`), of the groups to draw (`drawRanges`), kept per entry until those change. `blockMaterial.ts` — the texture
-  array, the chunk shader (light, water drift, wet tops; keep its varyings few: 4 more cost 0.8 ms in the mountains). `icons.ts` — isometric block icons from the
+  array, the chunk shader (light, water drift, wet and snowy tops; keep its varyings few: 4 more cost 0.8 ms in the mountains). `icons.ts` — isometric block icons from the
   textures (a slab's or stairs' boxes each drawn, cropped; a small shape's scaled up to fill its square, `fitted`). `mapView.ts` — the map shown: a panel in the corner in a wooden frame with N marked while one is held, full screen with N
   (a title bar with its keys; zoomed with the wheel, dragged about), the player an arrow. `itemIcons.ts` — the other items' 16 × 16 pictures from masks (`itemArt`, pure) and their
   icons. `sky.ts` — time of day to daylight, sunlight colour, sky
   and fog colour, the sun's path, stars (pure). `skyDome.ts` — the dome, sun, moon and stars.
   `weatherLook.ts` — how weather changes sky, clouds, fog and sunlight for drawing (pure; clear gives them back untouched;
-  the rules read `skyAt`'s daylight, never the dimmed one: `daylightNow` against `drawnDaylight` in `game.ts`).
+  `coverFrom`: the extra cloud thins over the layer; the rules read `skyAt`'s daylight, never the dimmed one: `daylightNow` against `drawnDaylight` in `game.ts`).
   `coverMap.ts` — the cover on the GPU: a 1024² RG8 texture wrapped round the world, changed tiles uploaded alone; read by
-  the chunk shader to darken wet tops open to the sky.
+  the chunk shader (`COVER_GLSL`) to darken wet tops open to the sky and whiten settled ones (none at block light 11 up;
+  far tops may be two cells under the cover), and by what falls.
+  `precipitation.ts` — rain, splashes and flakes: one instanced draw moved by the vertex shader in a 48-block box round
+  the eye, ended at the cover, not drawn when none could be seen; whole-block speeds so the clock wraps; compiled at
+  startup, as anything hidden until later must be (else a 50 ms frame when first shown).
   `clouds.ts` — the blocky cloud layer and its tiling pattern, its noise cut by a threshold for the cover. `fog.ts` — fog colour and
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
   and the water texture's drift.

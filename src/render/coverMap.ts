@@ -17,6 +17,23 @@ const WHOLE_UPLOAD = 128;
 
 const NOWHERE = -0x8000_0000;
 
+/**
+ * GLSL to read it, in a shader with `COVER_SIZE` defined and the uniforms `cover` and
+ * `coverOrigin` set: coverAt(world x and z) is (height in blocks, what falls), zeros outside it.
+ */
+export const COVER_GLSL = /* glsl */ `
+  uniform highp sampler2D cover;
+  uniform ivec2 coverOrigin;
+
+  vec2 coverAt(vec2 place) {
+    ivec2 cell = ivec2(floor(place));
+    ivec2 inside = cell - coverOrigin;
+    if (inside.x < 0 || inside.y < 0 || inside.x >= COVER_SIZE || inside.y >= COVER_SIZE) return vec2(0.0);
+    vec2 stored = floor(texelFetch(cover, cell & (COVER_SIZE - 1), 0).rg * 255.0 + 0.5);
+    return vec2((stored.x + mod(stored.y, 4.0) * 256.0) * 0.5, floor(stored.y / 4.0));
+  }
+`;
+
 export class CoverMap {
   /** The texture's bytes, kept here for uploading tiles from. */
   readonly data = new Uint8Array(COVER_SIZE * COVER_SIZE * COVER_STRIDE);
@@ -84,6 +101,32 @@ export class CoverMap {
       }
     }
     this.changed.clear();
+  }
+
+  /**
+   * The lowest height (blocks) anything falls to within `reach` blocks of (x, z) either way;
+   * Infinity if nothing falls there (desert, or columns not loaded). `reach` well inside the texture.
+   */
+  lowestFalling(x: number, z: number, reach: number): number {
+    const mask = COVER_SIZE - 1;
+    const data = this.data;
+    const size = COVER_SIZE;
+    const stride = COVER_STRIDE;
+    const x0 = Math.floor(x - reach);
+    const x1 = Math.floor(x + reach);
+    const z1 = Math.floor(z + reach);
+    let lowest = Number.POSITIVE_INFINITY;
+    for (let bz = Math.floor(z - reach); bz <= z1; bz++) {
+      const row = (bz & mask) * size;
+      for (let bx = x0; bx <= x1; bx++) {
+        const at = (row + (bx & mask)) * stride;
+        const high = data[at + 1];
+        if (high < 4) continue; // nothing falls
+        const half = data[at] | ((high & 3) << 8);
+        if (half < lowest) lowest = half;
+      }
+    }
+    return lowest / 2;
   }
 
   private write(world: World, cx: number, cz: number, slot: number): void {

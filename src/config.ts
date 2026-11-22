@@ -257,18 +257,20 @@ export const TUNING = {
     dryOut: 60,
     /**
      * Each kind fully come on (`render/weatherLook.ts`): share of the sky under cloud, sunlight
-     * as a share of a clear noon's, how grey colours go, and where the fog starts as a fraction
-     * of the view distance.
+     * as a share of a clear noon's, how grey colours go, where the fog starts as a fraction
+     * of the view distance, and how hard it falls (0–1 of `precipitation.drops`).
      */
     look: {
-      overcast: { cover: 0.8, light: 0.88, grey: 0.6, fogStart: 0.5 },
-      rain: { cover: 0.9, light: 0.75, grey: 0.75, fogStart: 0.35 },
-      storm: { cover: 0.95, light: 0.55, grey: 0.85, fogStart: 0.25 },
+      overcast: { cover: 0.8, light: 0.88, grey: 0.6, fogStart: 0.5, fall: 0 },
+      rain: { cover: 0.9, light: 0.75, grey: 0.75, fogStart: 0.35, fall: 0.6 },
+      storm: { cover: 0.95, light: 0.55, grey: 0.85, fogStart: 0.25, fall: 1 },
     },
     /** The share of that dimming left at night, when there's little light to lose. */
     nightDim: 0.3,
     /** How much darker clouds are than the light under them. */
     thickCloud: 0.15,
+    /** Blocks over the cloud layer in which the weather's extra cloud thins to a clear day's, so a summit's valley shows. */
+    overClouds: 8,
     /**
      * What falls where (`world/cover.ts`), by the biomes' weights: snow from this much snowy
      * mountain, nothing from this much desert and savanna together, else rain; the edges
@@ -276,9 +278,28 @@ export const TUNING = {
      */
     snowAt: 0.5,
     dryAt: 0.6,
-    dither: 0.06,
+    dither: 0.02,
     /** A wet top's brightness as a share of a dry one's (linear light). */
     wetShade: 0.6,
+    /** Settled snow: none where block light is at least `melts`, footsteps in it from this much settled. */
+    melts: 11,
+    snowSteps: 0.5,
+    /**
+     * What falls (`render/precipitation.ts`), in a box this many blocks across round the eye:
+     * speeds and winds whole blocks a second (so it all repeats every `box` seconds), none
+     * above the `ceiling`.
+     */
+    precipitation: {
+      box: 48,
+      ceiling: 240,
+      drops: 3000,
+      splashes: 300,
+      rain: { speed: [18, 24], wind: [2, 1], length: 1.2, width: 0.025, opacity: 0.6 },
+      /** Every other drop is a flake. */
+      snow: { speed: [2, 3], wind: [1, 0], size: 0.12, sway: 0.4 },
+      /** A splash's width, and how many lives it has in those `box` seconds. */
+      splash: { width: 0.35, cycles: 150 },
+    },
   },
   /**
    * Fog by biome (`render/fog.ts`): a tint, how much of it shows by day, and where the fog

@@ -1480,6 +1480,16 @@ it('weather', () => {
       whole.push(ms);
       across.push(performance.now() - t0);
     }
+    const looks: number[] = [];
+    const map = new CoverMap();
+    map.update(world, ox * 32, oz * 32);
+    for (let run = 0; run <= RUNS; run++) {
+      const t0 = performance.now();
+      // What `Precipitation.update` asks once a frame while it falls.
+      for (let n = 0; n < 1000; n++) map.lowestFalling(x + n * 0.1, z, TUNING.weather.precipitation.box / 2);
+      if (run > 0) looks.push(performance.now() - t0);
+    }
+    lines.push(`  ${name}: looking for sky near, a frame while it falls ${median(looks).toFixed(2)} us`);
     lines.push(
       `  ${name}: cover ${median(cover).toFixed(3)} ms a column (p95 at most ${slowest.toFixed(3)}), after an edit at most ${median(edits).toFixed(2)} us, ` +
         `the texture written whole ${median(whole).toFixed(2)} ms, crossing a column ${median(across).toFixed(3)} ms`,

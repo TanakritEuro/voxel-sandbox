@@ -11,7 +11,7 @@ import { handleJob } from '../src/workers/jobs';
 import { Biome, BIOME_COUNT, Climate } from '../src/world/biomes';
 import { Block, BLOCKS, door, slab, stairs, wheat } from '../src/world/blocks';
 import { CHUNK_SIZE, CHUNK_VOLUME, localIndex, MAX_CHUNK_Y, MIN_CHUNK_Y, toLocal, WORLD_HEIGHT } from '../src/world/coords';
-import { COVER_BYTES, coverFall, coverHeight, coverTile, Fall, fallOf, RAIN_STOP, updateCover } from '../src/world/cover';
+import { COVER_BYTES, coverFall, coverHeight, coverTile, Fall, fallOf, RAIN_STOP, UNDER_COVER, UNDER_COVER_CELLS, updateCover } from '../src/world/cover';
 import { type Generation, Generator } from '../src/world/generate';
 import { Weather } from '../src/world/weather';
 import { World } from '../src/world/world';
@@ -254,6 +254,49 @@ describe('tops marked for the shader', () => {
       const { wrong, tops } = check(meshChunk(blocks, 0, 2, 0, light, lod > 0, LOD_CELL[lod]), LOD_CELL[lod]);
       expect(wrong).toBe(0);
       expect(tops).toBeGreaterThan(0);
+    }
+  });
+
+  it('seen from above are open to the sky: every one at full detail, nearly every one far off', () => {
+    const world = new World(SEED, { generation: 3 });
+    for (let cz = 10; cz <= 14; cz++) for (let cx = -13; cx <= -9; cx++) world.ensureColumn(cx, cz);
+    for (const lod of [0, 1, 2] as const) {
+      const cell = LOD_CELL[lod];
+      const under = lod ? cell * UNDER_COVER_CELLS : UNDER_COVER;
+      let seen = 0;
+      let missed = 0;
+      for (let cz = 11; cz <= 13; cz++) {
+        for (let cx = -12; cx <= -10; cx++) {
+          const highest = new Float32Array(S * S);
+          for (let cy = MIN_CHUNK_Y; cy <= MAX_CHUNK_Y; cy++) {
+            if (world.getChunk(cx, cy, cz)!.empty) continue;
+            const blocks = paddedBlocks(world, cx, cy, cz);
+            const light = paddedLight(world, cx, cy, cz);
+            if (lod) prepareLod(blocks, light, lod, 0);
+            const mesh = meshChunk(blocks, cx, cy, cz, light, lod > 0, cell);
+            for (const { positions: p, colors } of [mesh.opaque, mesh.cutout]) {
+              for (let a = 0; a < p.length; a += 12) {
+                if (colors[(a / 12) * 16 + 3] === 255) continue;
+                const xs = [p[a], p[a + 3], p[a + 6], p[a + 9]].map((x) => x - cx * S);
+                const zs = [p[a + 2], p[a + 5], p[a + 8], p[a + 11]].map((z) => z - cz * S);
+                for (let z = Math.max(0, Math.min(...zs)); z < Math.min(S, Math.max(...zs)); z++)
+                  for (let x = Math.max(0, Math.min(...xs)); x < Math.min(S, Math.max(...xs)); x++) highest[z * S + x] = Math.max(highest[z * S + x], p[a + 1]);
+              }
+            }
+          }
+          const tile = world.coverOf(cx, cz)!;
+          highest.forEach((y, i) => {
+            if (!y) return;
+            const height = coverHeight(tile, i) / 2;
+            // Water's surface is in the transparent pass: the ground under it is under cover.
+            if (BLOCKS[world.getBlock(cx * S + (i % S), Math.ceil(height) - 1, cz * S + Math.floor(i / S))].liquid) return;
+            seen++;
+            if (y < height - under - 0.01) missed++;
+          });
+        }
+      }
+      expect(seen).toBeGreaterThan(5000);
+      expect(missed / seen, `level ${lod}`).toBeLessThanOrEqual(lod ? 0.06 : 0);
     }
   });
 

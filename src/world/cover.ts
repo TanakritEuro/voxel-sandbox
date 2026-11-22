@@ -51,6 +51,27 @@ function setHeight(tile: Uint8Array, i: number, half: number): void {
   tile[at + 1] = (tile[at + 1] & ~3) | (half >> 8);
 }
 
+/**
+ * How far under its cover a top can be and still be open to the sky: a stair's lower step.
+ */
+export const UNDER_COVER = 0.5;
+/**
+ * The same for far chunks' coarser tops, in cells of their detail. Coarsening takes thin things
+ * off (canopies, ledges): with one cell 3–10 % of the tops seen from above were missed, with two
+ * 1.3–3.8 %.
+ */
+export const UNDER_COVER_CELLS = 2;
+
+/**
+ * Whether settled snow lies at height `y` of place `i` of a tile with `blockLight` there and
+ * this much of it `settled`: enough to hear underfoot, where the shader draws it.
+ */
+export function snowLies(tile: Uint8Array, i: number, y: number, blockLight: number, settled: number): boolean {
+  const W = TUNING.weather;
+  if (settled < W.snowSteps || blockLight >= W.melts || coverFall(tile, i) !== Fall.Snow) return false;
+  return y >= coverHeight(tile, i) / 2 - UNDER_COVER - 0.01;
+}
+
 /** What falls with this much snowy mountain and this much dry biome (desert and savanna); `dither` is -0.5–0.5. */
 export function fallOf(snowy: number, dry: number, dither: number): Fall {
   const W = TUNING.weather;

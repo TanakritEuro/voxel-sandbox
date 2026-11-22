@@ -1,6 +1,6 @@
 # Milestone 21: weather
 
-**Status:** plan approved (2026-11-22), all six decisions as written; steps 1–2 built.
+**Status:** plan approved (2026-11-22), all six decisions as written; steps 1–3 built.
 
 ## Goal
 
@@ -172,6 +172,7 @@ numbers are a playtest question.
    measured against the limits.
    Done (2026-11-22).
 3. **What falls and lies:** rain, splashes, flakes, settled snow and melting; the far chunks looked at.
+   Done (2026-11-22).
 4. **Storms and sound:** lightning, thunder, rain's sound, the setting, the two rules; tests.
 5. **Together:** the messages, guests, sleep; tests.
 6. **Measurements,** notes, playtest questions.
@@ -315,3 +316,67 @@ This is still this machine's GPU; a laptop's is a playtest question.
 - **The biome edges are busy:** the wet and dry dither lies over the ground's own, a patchwork in single blocks
   (`2-edge-dry.jpg`); a narrower dither may be better.
 - **Snow-topped blocks just outside the snow line get rain** and are darkened like the rest (`2-edge-snow.jpg`).
+
+## Step 3: what falls and lies (2026-11-22)
+
+**Built:**
+- `render/precipitation.ts`: one instanced mesh in one draw. 3,000 streaks in a storm (60 % of them in rain) or half as
+  many flakes, by what falls at each one's own x and z, and 300 splashes, all moved by the vertex shader in a 48-block box
+  round the eye and ended at the cover. None under water, above y 240, or where there's none to see (under cover with no
+  sky within 24 blocks, deserts): then no draw at all. Speeds are whole blocks a second, so the clock wraps every 48 s.
+- **Settled snow,** in the chunk shader: the snow texture over tops open to the sky where it snows, in patches a few
+  blocks across of quarter-block squares that fill in as it settles, drawn as their average where they'd be under a
+  pixel. None where block light is 11 or more, so torches clear a ring. No new interpolated numbers.
+- **Footsteps** in settled snow sound of snow.
+
+**The three left from steps 1 and 2:**
+- **Clouds over mountains:** the weather's extra cover thins to a clear day's over the 8 blocks above the layer
+  (`3-summit.jpg`, against `1-mountains-storm.jpg`).
+- **Busy biome edges:** the dither narrowed from 0.06 of weight to 0.02, so the band of mixed wet and dry is about a
+  third as wide (`3-edge-dry.jpg`). The patchwork left is mostly the ground's own.
+- **Snowy blocks outside the snow line** (2.6 % of the mountain biome's ground, counted over 8,000 x 8,000 blocks) still
+  get rain, but no longer darken. The threshold is as agreed.
+
+**Changed from the plan:**
+- **Far chunks' tops may be two cells under the cover,** not one. Coarsening takes canopies and ledges off: of the tops
+  seen from above, one cell missed 2.9–10.2 %, two miss 1.3–3.8 % (three places, both levels). The price: some ground
+  under far trees turns white. A test holds it to at most 6 %, and none missed at full detail.
+- **Drops and flakes a little bigger** than first drawn, and the nearest flakes faded, or they were big squares.
+
+**Found and fixed:** **the first frame of rain took 50 ms.** The mesh is hidden until it rains, so its shader compiled
+then; held weather, as every flight uses, never showed it. It's now compiled at startup: 17 ms at worst over the change
+from dry to rain, against 50, three trials each with shaders no cache had seen.
+
+**Tests:** 9 in `tests/precipitation.test.ts` and 1 more in `tests/cover.test.ts`. 707 in all pass; the build passes.
+
+**Looked at** (`docs/milestone-21/3-…`, the production build): storms at the spawn, under a canopy, at night, over a
+desert (nothing falling), at the snow line and on a summit; snow settling over 84 s; a torch clearing it; radius 16 from
+high up, bare and settled, with no banding seen. No console or shader errors. The footsteps weren't listened to.
+
+**Measured** as in step 2: production builds against `9bddd4c` under one server, interleaved, medians, 752 x 457 at 1.5x
+unless said. "Storm" is with what falls; in the mountains with snow settled whole. (Taken before the warm-up fix, which
+only moves a compile to startup.)
+
+| GPU (runs each) | Before | Clear | Storm | Lying, clear sky | Limit |
+| --- | --- | --- | --- | --- | --- |
+| The spawn (6) | 4.10 ms | 4.24 | 4.56 | | +0.3 clear, +1.5 storm or snow |
+| Looking down, wet (4) | 1.85 | 1.90 | 2.20 | | the same |
+| The mountains (6) | 8.44 | 8.41 | 8.74 | 8.54 | the same |
+| The spawn at 1920 x 1080 (6) | 6.28 | 6.46 | 6.70 | | the same |
+| The mountains at 1920 x 1080 (6) | 7.30 | 7.34 | 6.64 | | the same |
+| Looking down at snow, 1920 x 1080 (8) | 7.19 | | 6.96 (settling: 7.31) | 7.27 | the same |
+| The spawn at radius 16 (4) | 8.28 | | 9.01 | | recorded |
+
+- **Inside the limits everywhere.** Looking down at snow at full HD first read +1.5, right on the limit, over 4 runs
+  spread over 6.4–10.0 ms; 8 runs each with controls didn't bear it out. Differences below zero are noise.
+
+| | Measured | Limit |
+| --- | --- | --- |
+| Main thread standing, means | at most +0.21 ms | +0.3 |
+| Looking for sky near, a frame while it falls | 0.005 ms | |
+| Sprint flights, frames over 20 ms (6 each) | none: before, clear, storm with snow | no more than before |
+| Sprint flight, main thread p50, means | before 2.30 ms, clear 2.40, storm 2.28 | +0.3 |
+| Cover a column, in the generate job | 0.057 ms at the spawn, 0.084 in the mountains | +0.15 |
+| Chunks modified or remeshed by weather | none (tested) | none |
+
+A laptop's GPU is still a playtest question.

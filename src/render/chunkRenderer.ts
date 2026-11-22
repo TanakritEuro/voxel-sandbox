@@ -62,6 +62,11 @@ export class ChunkRenderer {
     for (const m of [this.opaqueMaterial, this.cutoutMaterial]) if (m.uniforms.wetness) m.uniforms.wetness.value = wet;
   }
 
+  /** How much snow has settled where it snows, 0–1 (`Weather.settled`). */
+  setSettled(settled: number): void {
+    for (const m of [this.opaqueMaterial, this.cutoutMaterial]) if (m.uniforms.settled) m.uniforms.settled.value = settled;
+  }
+
   /** Where the water's texture has drifted to (`water.ts`). */
   setWaterFlow(flow: WaterFlow): void {
     const u = this.transparentMaterial.uniforms;

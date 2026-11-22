@@ -48,9 +48,10 @@ import { GroundItemView } from './render/groundItems';
 import { clock, skyAt } from './render/sky';
 import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
-import { fogStartUnder, lookOf, skyUnder, underWeather } from './render/weatherLook';
+import { Precipitation } from './render/precipitation';
+import { coverFrom, fogStartUnder, lookOf, skyUnder, underWeather } from './render/weatherLook';
 import { Weather, weatherKindOf } from './world/weather';
-import { coverFall } from './world/cover';
+import { coverFall, snowLies } from './world/cover';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import type { Mob } from './mobs/brain';
@@ -631,6 +632,10 @@ groundView.warm((group) => renderer.compile(group, camera));
 /** The selected block, drawn in the lower right. */
 const held = new HeldBlock(chunks.textures);
 scene.add(chunks.group);
+const precipitation = new Precipitation(chunks.cover);
+scene.add(precipitation.mesh);
+// Its shader compiled now: hidden until it rains, it would be on the first frame of rain (50 ms).
+renderer.compile(precipitation.mesh, camera, scene);
 // `?workers=1` runs fewer workers, to see how a machine with fewer cores loads.
 const workersParam = Number(params.get('workers'));
 const pool = new WorkerPool(Number.isInteger(workersParam) && workersParam > 0 ? workersParam : undefined);
@@ -2087,7 +2092,8 @@ function frame(now: number): void {
     const b = player.body;
     const moved = player.seat ? 0 : Math.hypot(b.x - lastFeet.x, b.z - lastFeet.z);
     const digging = mining.target ? BLOCKS[mining.target.block].sound : null;
-    const ground = underfoot(world, b.x, b.y, b.z);
+    let ground = underfoot(world, b.x, b.y, b.z);
+    if (ground && snowUnderfoot(b.x, b.y, b.z)) ground = 'snow';
     for (const e of cues.frame({ dt, moved, vy: b.vy, onGround: b.onGround, flying: player.flying, inWater: b.inWater, ground, digging })) {
       sound.play(e);
       // Each digging hit knocks a few chips off the face being dug.
@@ -2115,6 +2121,7 @@ function frame(now: number): void {
   groundView.update(guest ? guest.ground.map((g) => ({ id: g.id, item: g.item, body: g })) : ground.items, (x, y, z) => brightness(world.getLight(Math.floor(x), Math.floor(y), Math.floor(z)), drawnDaylight), now / 1000);
   chunks.setSunlight(sky.sunlight);
   chunks.setWetness(weather.wet);
+  chunks.setSettled(weather.settled);
   chunks.setWaterFlow(waterFlow(now / 1000, TUNING.water.flow));
   chunks.setLavaFlow(waterFlow(now / 1000, TUNING.lava.flow));
   // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).
@@ -2126,11 +2133,12 @@ function frame(now: number): void {
   waterView.update(player.eyeInWater, horizon, sky.daylight, player.eyeInLava);
   const eyeUnder = player.eyeInWater || player.eyeInLava;
   skyDome.update(camera, { ...sky, colour: horizon }, TUNING.sky.glow, look.shown, eyeUnder);
-  clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, look.cover, TUNING.view.radius * CHUNK_SIZE, eyeUnder);
+  clouds.update(camera, now / 1000, TUNING.sky.cloudWind, sky.clouds, coverFrom(look, camera.position.y), TUNING.view.radius * CHUNK_SIZE, eyeUnder);
   const dir = player.direction();
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
   chunks.cover.update(world, camera.position.x, camera.position.z);
   chunks.cover.upload(renderer);
+  precipitation.update(camera.position, worldRuns() ? dt : 0, look.fall, horizon, sky.daylight, eyeUnder);
 
   if (!guest && worldRuns()) {
     flowLiquids(dt);
@@ -2361,6 +2369,15 @@ function sendKept(): void {
   if (json === keptSent) return;
   keptSent = json;
   guest.keep(state);
+}
+
+/** Whether the player's feet are in settled snow, for its footsteps. */
+function snowUnderfoot(x: number, y: number, z: number): boolean {
+  if (weather.settled < TUNING.weather.snowSteps) return false;
+  const bx = Math.floor(x);
+  const bz = Math.floor(z);
+  const tile = world.coverOf(toChunk(bx), toChunk(bz));
+  return !!tile && snowLies(tile, (toLocal(bz) << CHUNK_BITS) | toLocal(bx), y, world.getLight(bx, Math.floor(y + 0.1), bz) & 15, weather.settled);
 }
 
 /** What falls where the player stands, for `?stats`. */

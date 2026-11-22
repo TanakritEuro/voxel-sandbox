@@ -2,7 +2,8 @@
 // choices are tested without a browser (as five-a-side's cues). `sound.ts` plays them.
 //
 // - A footstep for every `TUNING.sound.stride` blocks walked on the ground (so faster when
-//   sprinting), in the material of the block underfoot; none in the air, flying or swimming.
+//   sprinting), in the material of the block underfoot (snow where it has settled: `game.ts` says);
+//   none in the air, flying or swimming.
 // - Landing from a fall faster than a jump's: a thud, louder for a bigger fall, and a step.
 // - Splashing into water, from how fast the player went in.
 // - Digging: a hit in the block's material every `TUNING.sound.digInterval` while breaking.

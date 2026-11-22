@@ -20,6 +20,8 @@ export interface WeatherLook {
   shown: number;
   /** Where its fog starts at full strength, as a fraction of the view distance. */
   fogStart: number;
+  /** How hard it's raining or snowing, 0–1. */
+  fall: number;
 }
 
 /** Overcast greys lean a little towards blue. */
@@ -28,7 +30,7 @@ const SLATE: RGB = [0.95, 1, 1.08];
 /** The look of the weather `now`. */
 export function lookOf({ kind, amount }: WeatherNow): WeatherLook {
   const cover = TUNING.sky.cloudCover;
-  if (kind === 'clear' || amount === 0) return { amount: 0, cover, light: 1, grey: 0, shown: 1, fogStart: 1 };
+  if (kind === 'clear' || amount === 0) return { amount: 0, cover, light: 1, grey: 0, shown: 1, fogStart: 1, fall: 0 };
   const to = TUNING.weather.look[kind];
   return {
     amount,
@@ -38,7 +40,17 @@ export function lookOf({ kind, amount }: WeatherNow): WeatherLook {
     // Gone by the time the weather is two thirds come on, ahead of the rain.
     shown: Math.max(0, 1 - amount * 1.5),
     fogStart: to.fogStart,
+    fall: to.fall * amount,
   };
+}
+
+/**
+ * The cloud cover seen from height `eyeY`: the weather's from under the layer, thinning to a
+ * clear day's just over it, or the layer is a floor over every valley seen from a summit.
+ */
+export function coverFrom(look: WeatherLook, eyeY: number): number {
+  const over = Math.max(0, Math.min(1, (eyeY - TUNING.sky.cloudHeight) / TUNING.weather.overClouds));
+  return look.cover + (TUNING.sky.cloudCover - look.cover) * over;
 }
 
 /**
