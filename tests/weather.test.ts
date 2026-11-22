@@ -254,11 +254,10 @@ describe('gloom and the rules', () => {
   it('gives creatures, crops and sleep the plain daylight', () => {
     const game = Object.values(GAME)[0];
     expect(game).toContain('daylightNow = clearSky.daylight;');
-    for (const call of [/crops\.step\([^\n]*/, /canSleep\(daylight[^\n]*/, /mobs\.update\([^\n]*/]) {
+    for (const call of [/crops\.step\([^\n]*/, /canSleep\(daylight[^\n]*/, /sleepable\(daylight[^\n]*/, /sleepThrough\(time,[^\n]*/, /mobs\.update\([^\n]*/]) {
       const line = game.match(call)?.[0];
       expect(line).toContain('daylightNow');
       expect(line).not.toContain('drawnDaylight');
     }
-    expect(game).toContain('daylightNow >= TUNING.sleep.night');
   });
 });

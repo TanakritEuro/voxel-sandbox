@@ -136,6 +136,31 @@ export class Weather {
     return { kind, amount: t * t * (3 - 2 * t) };
   }
 
+  /** Whether it's a storm: what a bed can be used in by day. */
+  get storming(): boolean {
+    return this.now().kind === 'storm';
+  }
+
+  /** Seconds of the wet stretch left; 0 in a dry one, or held. */
+  get left(): number {
+    const { dry, wet } = this.current;
+    return this.heldKind || this.elapsed < dry ? 0 : dry + wet - this.elapsed;
+  }
+
+  /** Slept through what's left of the wet stretch, as if it had run out; the seconds that passed. */
+  sitOut(): number {
+    const left = this.left;
+    this.step(left);
+    return left;
+  }
+
+  /** Cleared up (a night slept): on to the next spell's dry stretch, the ground as wet and white as it was. */
+  clearUp(): void {
+    if (!this.left) return;
+    this.current = spellAt(this.seed, ++this.spell);
+    this.elapsed = 0;
+  }
+
   toJSON(): WeatherRecord {
     return { spell: this.spell, elapsed: this.elapsed, settled: this.settled, wet: this.wet };
   }

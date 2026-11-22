@@ -18,6 +18,7 @@ import { HALF_WIDTH } from '../world/physics';
 export type SoundEvent =
   | { name: 'step' | 'dig' | 'break' | 'place' | 'land'; material: BlockSound; gain: number }
   | { name: 'splash' | 'hurt' | 'pickup' | 'eat' | 'click' | 'tick'; gain: number }
+  | { name: 'thunder'; gain: number; bright: number; pan: number }
   | { name: 'mob'; voice: MobVoice; kind: MobKind; gain: number; pan: number };
 
 /**

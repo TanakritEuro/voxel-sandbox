@@ -16,7 +16,7 @@ import { ChunkLoader } from './chunkLoader';
 import { TUNING } from './config';
 import { Input } from './input';
 import { Player } from './player';
-import { loadSettings, saveSettings, type Settings } from './settings';
+import { flashesOn, loadSettings, saveSettings, type Settings } from './settings';
 import { WorldSaver } from './save/saver';
 import { IndexedDbStore, MemoryStore, modeOf, newWorldRecord, type PlayerState, type SurvivalRecord, type WorldStore, thumbOf } from './save/store';
 import { isUnsavedUrl } from './save/worlds';
@@ -33,7 +33,7 @@ import type { Stack } from './survival/inventory';
 import { Furnace, Furnaces } from './survival/furnace';
 import { CHEST_SLOTS, Chests } from './survival/chest';
 import { Crops, sowable, tillable } from './survival/farming';
-import { type BedPlace, bedFoot, bedFrom, canSleep, wakeAt } from './survival/sleep';
+import { type BedPlace, bedFoot, bedFrom, canSleep, sleepable, sleepThrough, wakeAt } from './survival/sleep';
 import { hostSurvival } from './net/hostSurvival';
 import { Health } from './survival/health';
 import { hash3 } from './math';
@@ -48,10 +48,13 @@ import { GroundItemView } from './render/groundItems';
 import { clock, skyAt } from './render/sky';
 import { SkyDome } from './render/skyDome';
 import { WaterView, waterFlow } from './render/water';
-import { Precipitation } from './render/precipitation';
+import { flashed, skyFlashed } from './render/lightning';
+import { WeatherView } from './render/weatherView';
+import { rainHeard, shelter, thunderHeard } from './audio/weather';
+import { Lightning } from './world/lightning';
 import { coverFrom, fogStartUnder, lookOf, skyUnder, underWeather } from './render/weatherLook';
 import { Weather, weatherKindOf } from './world/weather';
-import { coverFall, snowLies } from './world/cover';
+import { coverFall, coverHeight, rainsOn, snowLies } from './world/cover';
 import { Stats } from './stats';
 import { WorkerPool } from './workers/pool';
 import type { Mob } from './mobs/brain';
@@ -86,7 +89,7 @@ import { railPlacement } from './world/rails';
 import { torchesHeldBy } from './world/torches';
 import { isPaired, pairPlacement, partnerOf, useAt } from './world/parts';
 import { blockBoxes, isShape, shapePlacement } from './world/shapes';
-import { CHUNK_BITS, CHUNK_SIZE, toChunk, toLocal } from './world/coords';
+import { CHUNK_BITS, CHUNK_SIZE, SEA_LEVEL, toChunk, toLocal } from './world/coords';
 import { Mining } from './world/mining';
 import { overlapsBlock, touches } from './world/physics';
 import { raycast, type RayHit } from './world/raycast';
@@ -251,6 +254,9 @@ const weather = Weather.from(record.seed, record.weather);
 const weatherHeld = weatherKindOf(params.get('weather')) ?? (guest || params.has('autofly') || params.has('backdrop') ? 'clear' : null);
 if (weatherHeld) weather.hold(weatherHeld);
 if (params.get('settled') === '1') weather.settled = 1;
+// Lightning is this world's to choose; its flash the player's to allow.
+const lightning = new Lightning(record.seed, weather.toJSON().elapsed);
+const lessMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 const world = new World(record.seed, { generation: generationOf(record.generation) });
 // Sounds wait for the first click or key (browsers allow audio only after a gesture).
@@ -632,10 +638,9 @@ groundView.warm((group) => renderer.compile(group, camera));
 /** The selected block, drawn in the lower right. */
 const held = new HeldBlock(chunks.textures);
 scene.add(chunks.group);
-const precipitation = new Precipitation(chunks.cover);
-scene.add(precipitation.mesh);
-// Its shader compiled now: hidden until it rains, it would be on the first frame of rain (50 ms).
-renderer.compile(precipitation.mesh, camera, scene);
+const weatherView = new WeatherView(chunks.cover);
+scene.add(weatherView.group);
+weatherView.warm(renderer, camera, scene);
 // `?workers=1` runs fewer workers, to see how a machine with fewer cores loads.
 const workersParam = Number(params.get('workers'));
 const pool = new WorkerPool(Number.isInteger(workersParam) && workersParam > 0 ? workersParam : undefined);
@@ -1295,8 +1300,8 @@ function useBed(x: number, y: number, z: number): void {
   const p = player.body;
   let nearest = Infinity;
   for (const m of mobs?.mobs ?? guest?.mobs.mobs ?? []) if (KINDS[m.kind].hostile) nearest = Math.min(nearest, Math.hypot(m.body.x - p.x, m.body.y - p.y, m.body.z - p.z));
-  const check = canSleep(daylightNow, nearest);
-  if (check === 'day') return say('You can only sleep at night.');
+  const check = canSleep(daylightNow, nearest, weather.storming);
+  if (check === 'day') return say('You can only sleep at night or in a storm.');
   if (check === 'near') return say("You can't sleep with something near.");
   // Lie down on the foot, still.
   getOut();
@@ -1314,7 +1319,7 @@ function getUp(): void {
 
 /**
  * Once a frame: asleep, held still on the bed, the eye low, until a movement key gets them up or the
- * dimming is done and it's morning (saved), when they get up beside the bed. Started again with a
+ * dimming is done and the night or the storm is over (saved), when they get up beside the bed. Started again with a
  * bed, put beside it once its land is there.
  */
 function sleeping(dt: number): void {
@@ -1339,26 +1344,33 @@ function sleeping(dt: number): void {
   camera.position.y -= TUNING.player.eyeHeight - 0.25;
   asleep.for += dt;
   if (asleep.for < TUNING.sleep.dim) return;
+  // It went by itself meanwhile (day broke, the storm ended, or a guest's host moved the time on).
+  if (!sleepable(daylightNow, weather.storming)) return wakeUp(foot);
   // Playing together, the night goes only when everyone is asleep (the host decides, and its
   // guests see the time jump to morning).
   if (host || guest) {
     const others = [...(host ?? guest)!.remotes.values()];
     const sleepers = 1 + others.filter((r) => r.latest?.sleeping).length;
     const everyone = 1 + others.length;
-    if (guest && daylightNow >= TUNING.sleep.night) return wakeUp(foot);
     if (sleepers < everyone || guest) {
       const text = `Waiting for the others to sleep (${sleepers} of ${everyone}).`;
       if (text !== asleep.waiting) say(text);
       asleep.waiting = text;
       return;
     }
-    if (!timeHeld) time = TUNING.sleep.morning;
+    passSleep();
     // Told at once, not at the next time share.
     lastTimeSent = Number.NEGATIVE_INFINITY;
     return wakeUp(foot);
   }
-  if (!timeHeld) time = TUNING.sleep.morning;
+  passSleep();
   wakeUp(foot);
+}
+
+/** What was slept through is over: the night, or a storm by day (`sleepThrough`). */
+function passSleep(): void {
+  const woken = sleepThrough(time, daylightNow, weather, TUNING.day.length);
+  if (!timeHeld) time = woken;
 }
 
 /** Morning: up, beside the bed, and saved. */
@@ -1573,6 +1585,7 @@ function live(dt: number): void {
     eyeInWater: player.eyeInWater,
     touchingCactus: touches(b, world, Block.Cactus),
     inLava: b.inLava,
+    inRain: health.burning > 0 && rainOnPlayer(),
     sprinting: player.sprinting && !player.flying,
     swimming: b.inWater,
     digging: mining.target !== null,
@@ -2110,10 +2123,17 @@ function frame(now: number): void {
   }
   lastFeet = { x: player.body.x, z: player.body.z };
   if (!timeHeld && worldRuns()) time = (time + dt / TUNING.day.length) % 1;
-  if (worldRuns()) weather.step(dt);
+  const weatherDt = worldRuns() ? dt : 0;
+  weather.step(weatherDt);
   const clearSky = skyAt(time);
-  const look = lookOf(weather.now());
-  const sky = skyUnder(clearSky, look);
+  const weatherNow = weather.now();
+  const look = lookOf(weatherNow);
+  const flashes = flashesOn(settings, lessMotion.matches);
+  const storming = !guest && weatherNow.kind === 'storm' && weatherNow.amount >= TUNING.weather.lightning.from;
+  const bolt = storming && weatherDt ? lightning.step(weatherDt, true, strikeNear(), boltGround) : null;
+  if (bolt) weatherView.strike(bolt, camera.position, flashes);
+  const storm = weatherView.step(dt, weatherDt, flashes);
+  const sky = skyFlashed(skyUnder(clearSky, look), storm.flash);
   daylightNow = clearSky.daylight;
   drawnDaylight = sky.daylight;
   particleMesh.update();
@@ -2127,7 +2147,7 @@ function frame(now: number): void {
   // The air of the biomes here, tinting the horizon (fog, background and sky dome alike).
   const air = blendFog(world.generator.climate.weights(camera.position.x, camera.position.z));
   fog = fog ? easeFog(fog, air, dt, TUNING.fog.ease) : air;
-  const horizon = underWeather(fogColour(clearSky.colour, fog, clearSky.daylight), look, clearSky.daylight);
+  const horizon = flashed(underWeather(fogColour(clearSky.colour, fog, clearSky.daylight), look, clearSky.daylight), storm.flash);
   const distance = TUNING.view.radius * CHUNK_SIZE;
   waterView.setRange(distance * fogStartUnder(fog.start, look), distance * 0.95);
   waterView.update(player.eyeInWater, horizon, sky.daylight, player.eyeInLava);
@@ -2138,7 +2158,17 @@ function frame(now: number): void {
   loader.update(camera.position.x, camera.position.y, camera.position.z, dir.x, dir.z);
   chunks.cover.update(world, camera.position.x, camera.position.z);
   chunks.cover.upload(renderer);
-  precipitation.update(camera.position, worldRuns() ? dt : 0, look.fall, horizon, sky.daylight, eyeUnder);
+  weatherView.draw(camera.position, weatherDt, look.fall, horizon, sky.daylight, eyeUnder);
+  // The weather's sounds where the ear is; none while the world stands still.
+  const ear = camera.position;
+  if (weatherDt && look.fall > 0) {
+    const rain = rainHeard(chunks.cover, ear.x, ear.y, ear.z, look.fall, eyeUnder);
+    sound.rain(rain.level, rain.open);
+  } else sound.rain(0, 0);
+  if (storm.thunder.length) {
+    const { open } = shelter(chunks.cover, ear.x, ear.y, ear.z);
+    for (const t of storm.thunder) sound.play({ name: 'thunder', ...thunderHeard(t, ear.x, ear.z, input.yaw, eyeUnder ? 0 : open) });
+  }
 
   if (!guest && worldRuns()) {
     flowLiquids(dt);
@@ -2371,6 +2401,33 @@ function sendKept(): void {
   guest.keep(state);
 }
 
+/** Who lightning strikes near: this player, and a host's guests. */
+function strikeNear(): (readonly [number, number])[] {
+  const at: (readonly [number, number])[] = [[player.body.x, player.body.z]];
+  if (host) for (const r of host.remotes.values()) if (r.latest) at.push([r.latest.x, r.latest.z]);
+  return at;
+}
+
+/** How high the land is where a bolt lands: the cover if it's loaded, else as generated (or the sea). */
+function boltGround(x: number, z: number): number {
+  const bx = Math.floor(x);
+  const bz = Math.floor(z);
+  const tile = world.coverOf(toChunk(bx), toChunk(bz));
+  if (tile) return coverHeight(tile, (toLocal(bz) << CHUNK_BITS) | toLocal(bx)) / 2;
+  return Math.max(SEA_LEVEL, world.generator.height(bx, bz)) + 1;
+}
+
+/** Whether rain falls on the player: in the open, where it's rain that falls. */
+function rainOnPlayer(): boolean {
+  const { fall } = lookOf(weather.now());
+  if (!fall) return false;
+  const b = player.body;
+  const bx = Math.floor(b.x);
+  const bz = Math.floor(b.z);
+  const tile = world.coverOf(toChunk(bx), toChunk(bz));
+  return !!tile && rainsOn(tile, (toLocal(bz) << CHUNK_BITS) | toLocal(bx), b.y + b.height, fall);
+}
+
 /** Whether the player's feet are in settled snow, for its footsteps. */
 function snowUnderfoot(x: number, y: number, z: number): boolean {
   if (weather.settled < TUNING.weather.snowSteps) return false;
@@ -2415,7 +2472,11 @@ function saveAll(): void {
   void saveRecord();
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') saveAll();
+  // No frames while hidden to quiet the rain by.
+  if (document.visibilityState === 'hidden') {
+    sound.rain(0, 0);
+    saveAll();
+  }
 });
 window.addEventListener('pagehide', () => {
   saveAll();

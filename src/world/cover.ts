@@ -72,6 +72,11 @@ export function snowLies(tile: Uint8Array, i: number, y: number, blockLight: num
   return y >= coverHeight(tile, i) / 2 - UNDER_COVER - 0.01;
 }
 
+/** Whether rain falling `fall` hard (0–1) gets to height `y` (a body's top) of place `i` of a tile: in the open, and rain, not snow. */
+export function rainsOn(tile: Uint8Array, i: number, y: number, fall: number): boolean {
+  return fall >= TUNING.weather.douses && coverFall(tile, i) === Fall.Rain && y >= coverHeight(tile, i) / 2;
+}
+
 /** What falls with this much snowy mountain and this much dry biome (desert and savanna); `dither` is -0.5–0.5. */
 export function fallOf(snowy: number, dry: number, dither: number): Fall {
   const W = TUNING.weather;

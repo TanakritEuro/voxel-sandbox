@@ -28,6 +28,8 @@ export interface Settings {
   name: string;
   /** Everything on screen (menus and HUD) at this size, 0.8–1.3. */
   uiScale: number;
+  /** Lightning briefly brightens the sky (never when the system asks for less motion). */
+  flashes: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -41,6 +43,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   muted: false,
   name: 'Player',
   uiScale: 1,
+  flashes: true,
 };
 
 /** Allowed range and step of each number. */
@@ -76,7 +79,7 @@ export function cleanSettings(raw: unknown): Settings {
     s[key] = Math.min(max, Math.max(min, v));
   }
   s.viewDistance = Math.round(s.viewDistance);
-  for (const key of ['invertY', 'muted', 'antialias'] as const) if (typeof r[key] === 'boolean') s[key] = r[key];
+  for (const key of ['invertY', 'muted', 'antialias', 'flashes'] as const) if (typeof r[key] === 'boolean') s[key] = r[key];
   s.name = cleanName(r.name) ?? DEFAULT_SETTINGS.name;
   return s;
 }
@@ -96,6 +99,9 @@ export function saveSettings(settings: Settings, storage: KeyValue | null = brow
     // Not remembered this time; the game works the same.
   }
 }
+
+/** Whether lightning may flash: the setting, unless the system asks for less motion. */
+export const flashesOn = (settings: Pick<Settings, 'flashes'>, lessMotion: boolean): boolean => settings.flashes && !lessMotion;
 
 function browserStorage(): KeyValue | null {
   try {

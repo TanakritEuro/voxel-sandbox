@@ -33,6 +33,8 @@ export function settingsControls(parent: HTMLElement, settings: Settings, onChan
   });
   toggle(el(display, 'div', 'menu-row'), 'Antialiasing', () => settings.antialias, (v) => (settings.antialias = v), changed);
   el(display, 'p', 'menu-help', 'Lower resolution or antialiasing off is faster on a slow GPU. Antialiasing changes the next time a world is opened.');
+  toggle(el(display, 'div', 'menu-row'), 'Lightning flashes', () => settings.flashes, (v) => (settings.flashes = v), changed);
+  el(display, 'p', 'menu-help', 'A soft brightening of the sky with each bolt in a storm. Always off while your system asks for less motion.');
 
   const controls = section(parent, 'Controls');
   slider(controls, 'Mouse speed', 'sensitivity', settings, (v) => v.toFixed(1), changed);

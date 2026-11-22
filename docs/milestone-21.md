@@ -1,6 +1,6 @@
 # Milestone 21: weather
 
-**Status:** plan approved (2026-11-22), all six decisions as written; steps 1–3 built.
+**Status:** plan approved (2026-11-22), all six decisions as written; steps 1–4 built.
 
 ## Goal
 
@@ -174,6 +174,7 @@ numbers are a playtest question.
 3. **What falls and lies:** rain, splashes, flakes, settled snow and melting; the far chunks looked at.
    Done (2026-11-22).
 4. **Storms and sound:** lightning, thunder, rain's sound, the setting, the two rules; tests.
+   Done (2026-11-23).
 5. **Together:** the messages, guests, sleep; tests.
 6. **Measurements,** notes, playtest questions.
 
@@ -380,3 +381,79 @@ only moves a compile to startup.)
 | Chunks modified or remeshed by weather | none (tested) | none |
 
 A laptop's GPU is still a playtest question.
+
+## Step 4: storms and sound (2026-11-23)
+
+**Built:**
+- `world/lightning.ts`: once a storm is half come on, a bolt every 8–25 s, 40–240 blocks from a player (a host's guests
+  among them), chosen on the machine that runs the world. It returns a place and nothing else: no damage, block or light.
+- `render/lightning.ts`: the bolt, up to 26 boxes in one draw from the clouds down to its place with 2–4 forks, fading
+  over 0.45 s; the flash, one smooth rise (0.12 s) and fall (0.6 s) of the sky and sunlight, at most one in 3 s.
+  `render/weatherView.ts` keeps these, what falls and the thunder's wait behind a few calls, all compiled at startup.
+- `audio/weather.ts` says what's heard and `sound.ts` plays it. Rain: a looped bed of noise with drops in it, full and
+  bright in the open, muffled by how far the nearest open place within 6 blocks is and how near the roof, silent deep
+  down, nearly so as snow, quiet under water. Thunder: 0.3–2 s later by the distance, quieter and duller from far off and
+  under cover, panned to its side.
+- **The setting:** Lightning flashes, in Display; none either while the system asks for less motion.
+- **The two rules:** rain falling on a burning player puts it out (in the open, rain and not snow). A bed can be used in
+  a storm by day: the storm ends and the clock moves on by what was left of it. A night slept clears the weather.
+
+**Chosen while building, where the plan didn't say:**
+- **Storms flash over deserts too:** the weather is one for the world, so it's a dry storm there.
+- **Sleep clearing a night's weather leaves the ground** as wet and white as it was, to dry and melt from morning. A storm
+  slept through counts as fallen, so snow settles by what was left of it.
+- **Behind a menu a flash still fades** (not left lit), and the thunder and rain wait.
+- **Asleep when the night or storm ends by itself,** you just get up.
+
+**Found and fixed, by rendering the sounds offline and measuring them:** thunder from 240 blocks (-29.3 dB in its loudest
+tenth of a second) was about at the storm's rain (-27.5), and that rain was bright and well over a footstep (-34.4).
+The rain is now lower and less hissy, the thunder's body made up:
+
+| Sound, at volume 0.8 | Loudest tenth of a second | Share under 500 Hz |
+| --- | --- | --- |
+| Storm's rain, in the open | -31.9 dB | 10 % |
+| Rain, in the open | -33.8 | 10 % |
+| By a doorway | -38.9 | 19 % |
+| Indoors, the open 5 blocks off | -45.5 | 44 % |
+| Under a roof, none open near | -48.5 | 65 % |
+| Snow | -55.7 | 10 % |
+| Deep underground | silent | |
+| Thunder at 40, 140, 240 blocks | -18.4, -23.3, -29.2 | 57, 68, 88 % |
+| Thunder at 40, underground | -29.3 | 89 % |
+| A footstep on grass, for comparison | -34.4 | 4 % |
+
+The most at full volume, a storm with the nearest thunder: peaks at 0.76, nothing clipping.
+
+**Tests:** 23 in `tests/storms.test.ts`; the settings test has the new one, and the test that gloom stays out of the
+rules follows sleep to its new calls. 730 in all pass; the build passes.
+
+**Looked at and recorded** (`docs/milestone-21/4-…`, the production build, the game driven in a frame):
+- bolts by day and by night; the sky's brightness read every frame: each flash one rise and one fall, no turn back;
+- thunder in the game's own output 0.98, 0.71 and 0.52 s after flashes 113, 85 and 62 blocks off (0.92, 0.68 and 0.49
+  meant), nothing clipped (before the mix was changed);
+- the setting turned off by its button: no flash, thunder still there;
+- in a saved world made for it and deleted after: a storm slept at noon took the clock from 12:01 to 16:02 (the 3:19
+  that was left) and cleared; a storm at night to morning and clear; a fine day refused. Walking into lava and out, burning
+  went on 3 s more in the dry and stopped on leaving it in the storm;
+- no console errors.
+
+**Not tried:** listening (I can't hear it: only measured); the system's less-motion switch (tested as a rule only).
+
+**Measured** as in step 3, against `9bddd4c`, interleaved, each run long enough for a bolt, sound running:
+
+| GPU (runs each) | Before | Clear | Storm | Limit |
+| --- | --- | --- | --- | --- |
+| The spawn (6) | 3.94 ms | 4.14 | 4.39 | +0.3 clear, +1.5 storm |
+| The mountains (4) | 8.30 | 8.25 | 8.20 | the same |
+| The spawn at 1920 x 1080 (5) | 6.61 | 6.49 | 7.01 | the same |
+
+| | Measured | Limit |
+| --- | --- | --- |
+| Main thread standing, means | at most +0.17 ms (the spawn in a storm) | +0.3 |
+| Hearing the rain under cover, a frame | 0.005 ms | |
+| Sprint flights, frames over 20 ms (6 each) | none: before, clear, storm | no more than before |
+| Sprint flight, main thread p50, means | before 2.15 ms, clear 2.05, storm 1.93 | +0.3 |
+| Frames over 20 ms standing, bolts among them | none in 45 runs (recording every frame's pixels did cause a few, up to 33 ms, in the runs that watched the flashes) | |
+
+**Left for step 5:** guests have no weather yet, so no bolts, rain or sleeping by day; a host lying down in a storm
+waits for guests who can't (and gets up when it ends).

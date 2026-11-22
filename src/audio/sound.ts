@@ -13,11 +13,16 @@
 // comes higher and shorter over a thump. A hopper lands with a soft thump; a mob that's gone
 // leaves a rising whoosh of noise. Each is panned to the side it came from.
 //
+// The weather (`weather.ts` says how loud): rain is a looped bed of noise with drops in it, through
+// a low-pass that closes under cover; thunder a rumble of noise in a few swells over a deep boom,
+// with a crack on top from near.
+//
 // In survival, being hurt is a low thump with a quick falling grunt; picking something up a soft
 // rising blip; a bite of food a short crunch.
 
 import { MobKind } from '../mobs/kinds';
 import type { MobVoice } from '../mobs/mobs';
+import { TUNING } from '../config';
 import type { BlockSound } from '../world/blocks';
 import type { SoundEvent } from './cues';
 
@@ -57,6 +62,10 @@ export class Sound {
   private master: GainNode | null = null;
   /** A few seconds of white noise, shared by every noisy sound. */
   private noise: AudioBuffer | null = null;
+  /** Rain's noise, made when it's first heard. */
+  private drops: AudioBuffer | null = null;
+  /** The rain's bed while it's heard. */
+  private bed: { source: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode; level: number; open: number } | null = null;
 
   constructor(
     private volume: number,
@@ -87,9 +96,54 @@ export class Sound {
     if (this.ctx && this.master) this.master.gain.setTargetAtTime(this.level(), this.ctx.currentTime, 0.05);
   }
 
+  /** The rain's bed, once a frame: `level` 0–1 (0 silent), `open` 0 muffled – 1 bright. Eased. */
+  rain(level: number, open: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const wanted = this.level() === 0 ? 0 : level;
+    let bed = this.bed;
+    if (wanted < 0.002) {
+      if (!bed) return;
+      bed.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.15);
+      bed.source.stop(ctx.currentTime + 1);
+      this.bed = null;
+      return;
+    }
+    if (!bed) {
+      this.drops ??= makeRain(ctx, 5.3);
+      const source = ctx.createBufferSource();
+      source.buffer = this.drops;
+      source.loop = true;
+      const low = ctx.createBiquadFilter();
+      low.type = 'highpass';
+      low.frequency.value = 180;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.Q.value = 0.5;
+      filter.frequency.value = rainCutoff(open);
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      source.connect(low).connect(filter).connect(gain).connect(this.master);
+      source.start(ctx.currentTime, Math.random() * 5);
+      bed = this.bed = { source, filter, gain, level: -1, open: -1 };
+    }
+    // Only changes are set: an automation event a frame would pile up.
+    if (Math.abs(wanted - bed.level) > 0.004) {
+      bed.level = wanted;
+      bed.gain.gain.setTargetAtTime(wanted * TUNING.weather.hearing.level, ctx.currentTime, 0.2);
+    }
+    if (Math.abs(open - bed.open) > 0.01) {
+      bed.open = open;
+      bed.filter.frequency.setTargetAtTime(rainCutoff(open), ctx.currentTime, 0.2);
+    }
+  }
+
   play(e: SoundEvent): void {
     if (!this.ctx || this.level() === 0) return;
     switch (e.name) {
+      case 'thunder':
+        this.thunder(e.gain, e.bright, e.pan);
+        break;
       case 'step':
         this.material(e.material, e.gain, 1, 0);
         break;
@@ -137,6 +191,59 @@ export class Sound {
         // A slot or tab changed: a tiny tick.
         this.glide('triangle', 1900, 1600, 0.02, e.gain * 0.045, 5000);
         break;
+    }
+  }
+
+  /** Thunder at `gain`, `bright` near and open, dull from far off, panned by `pan`. */
+  private thunder(gain: number, bright: number, pan: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noise) return;
+    const out = ctx.createStereoPanner();
+    out.pan.value = pan;
+    out.connect(this.master);
+    const t = ctx.currentTime;
+    const length = 2.6 + (1 - bright) * 1.4;
+    const rumble = ctx.createBufferSource();
+    rumble.buffer = this.noise;
+    rumble.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(340 + 1400 * bright, t);
+    f.frequency.exponentialRampToValueAtTime(140, t + length);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    // Sharp from near, a slow swell from far; then a few rolls, dying away.
+    const attack = 0.04 + 0.3 * (1 - bright);
+    // A low-pass takes most of noise's power: made up, or thunder from far off was under the rain.
+    const body = gain * (0.75 + 0.75 * (1 - bright));
+    g.gain.linearRampToValueAtTime(body, t + attack);
+    let at = attack;
+    for (let i = 1; i <= 3; i++) {
+      const dip = at + 0.28 * vary(0.3);
+      const swell = dip + 0.3 * vary(0.3);
+      const level = body * (0.95 - i * 0.18);
+      g.gain.linearRampToValueAtTime(level * 0.45, t + dip);
+      g.gain.linearRampToValueAtTime(level, t + swell);
+      at = swell;
+    }
+    g.gain.exponentialRampToValueAtTime(0.001, t + length);
+    rumble.connect(f).connect(g).connect(out);
+    rumble.start(t, Math.random() * 2);
+    rumble.stop(t + length + 0.02);
+    this.thump(62, 0.9, gain * 0.35, out);
+    if (bright > 0.4) {
+      const crack = ctx.createBufferSource();
+      crack.buffer = this.noise;
+      const high = ctx.createBiquadFilter();
+      high.type = 'highpass';
+      high.frequency.value = 1400;
+      const c = ctx.createGain();
+      c.gain.setValueAtTime(0, t);
+      c.gain.linearRampToValueAtTime(gain * (bright - 0.4) * 0.6, t + 0.01);
+      c.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      crack.connect(high).connect(c).connect(out);
+      crack.start(t, Math.random() * 2);
+      crack.stop(t + 0.24);
     }
   }
 
@@ -334,6 +441,24 @@ export class Sound {
     o.start(t);
     o.stop(t + decay + 0.02);
   }
+}
+
+/** The rain bed's low-pass (Hz): 450 muffled, 4,800 in the open (more was hiss). */
+const rainCutoff = (open: number): number => 450 * (4800 / 450) ** Math.max(0, Math.min(1, open));
+
+/** Rain: soft noise with a couple of hundred little drops a second in it. */
+function makeRain(ctx: AudioContext, seconds: number): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, Math.floor(rate * seconds), rate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+  for (let n = 0; n < seconds * 220; n++) {
+    const length = Math.floor(rate * (0.002 + Math.random() * 0.006));
+    const from = Math.floor(Math.random() * (data.length - length));
+    const loud = 0.2 + Math.random() * 0.4;
+    for (let i = 0; i < length; i++) data[from + i] += (Math.random() * 2 - 1) * loud * (1 - i / length);
+  }
+  return buffer;
 }
 
 function makeNoise(ctx: AudioContext, seconds: number): AudioBuffer {

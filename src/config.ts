@@ -281,6 +281,33 @@ export const TUNING = {
     dither: 0.02,
     /** A wet top's brightness as a share of a dry one's (linear light). */
     wetShade: 0.6,
+    /** Rain falling this hard puts out burning, as water does. */
+    douses: 0.15,
+    /**
+     * Lightning (`world/lightning.ts`, `render/lightning.ts`) once a storm has come on this far:
+     * a bolt every so often, so far from a player, harmless; thunder after it by the distance.
+     */
+    lightning: {
+      from: 0.5,
+      every: { min: 8, max: 25 },
+      away: { min: 40, max: 240 },
+      /** Blocks: a bolt's least height, how far it wanders a piece, its width (and by the distance). */
+      shortest: 48,
+      wander: 5,
+      width: 0.4,
+      widthFar: 0.006,
+      /** Seconds it shows. */
+      shown: 0.45,
+      /** One soft brightening: up and down once, no more than one in `gap` seconds. */
+      flash: { peak: 0.4, rise: 0.12, fall: 0.6, gap: 3 },
+      delay: { min: 0.3, max: 2 },
+    },
+    /**
+     * Rain's sound (`audio/weather.ts`): open places heard within `reach` blocks (and `sill` over
+     * the ear), a roof drumming up to `roof` blocks overhead; levels beside, under and in water,
+     * and snow's.
+     */
+    hearing: { reach: 6, sill: 1, roof: 16, nearOpen: 0.85, underRoof: 0.6, underWater: 0.15, snow: 0.06, level: 0.23 },
     /** Settled snow: none where block light is at least `melts`, footsteps in it from this much settled. */
     melts: 11,
     snowSteps: 0.5,

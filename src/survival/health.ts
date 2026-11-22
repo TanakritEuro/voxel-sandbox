@@ -5,7 +5,7 @@
 // - drowning: the eyes under water use up air, then cost a point a second; above, air comes back;
 // - cactus: a point every half second while touching one;
 // - lava: 4 points at once and every half second in it, then burning for 3 s more at a point every
-//   half second, put out by water (`TUNING.lava`);
+//   half second, put out by water or by rain falling on them (`TUNING.lava`);
 // - hunger: lost slowly, faster sprinting, swimming and digging; eating gives it back;
 // - healing: from a while after the last hurt, a point every few seconds, only well fed, costing
 //   hunger; starving costs health down to 1 point, never the last.
@@ -27,6 +27,8 @@ export interface Condition {
   touchingCactus: boolean;
   /** In lava (`inWater` is any liquid, lava too). */
   inLava?: boolean;
+  /** Rain falls on it (`world/cover.ts` `rainsOn`): burning is put out. */
+  inRain?: boolean;
   /** Working hard: each makes it hungrier. */
   sprinting?: boolean;
   swimming?: boolean;
@@ -112,7 +114,7 @@ export class Health {
         this.cause = 'burning';
       }
     } else if (this.burning > 0) {
-      if (c.inWater) this.burning = 0;
+      if (c.inWater || c.inRain) this.burning = 0;
       else {
         this.burnClock += Math.min(dt, this.burning);
         this.burning = Math.max(0, this.burning - dt);

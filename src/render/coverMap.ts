@@ -4,7 +4,7 @@
 // uploaded: the texture stays where it is while the world slides through it.
 
 import * as THREE from 'three';
-import { COVER_BYTES, COVER_STRIDE } from '../world/cover';
+import { COVER_BYTES, COVER_STRIDE, type Fall } from '../world/cover';
 import { CHUNK_SIZE, toChunk } from '../world/coords';
 import type { World } from '../world/world';
 
@@ -103,6 +103,17 @@ export class CoverMap {
     this.changed.clear();
   }
 
+  /** The height (blocks) rain gets down to at a column near the camera (well inside the texture). */
+  heightAt(x: number, z: number): number {
+    const at = texelAt(x, z);
+    return (this.data[at] | ((this.data[at + 1] & 3) << 8)) / 2;
+  }
+
+  /** What falls at a column near the camera; nothing where none is loaded. */
+  fallAt(x: number, z: number): Fall {
+    return this.data[texelAt(x, z) + 1] >> 2;
+  }
+
   /**
    * The lowest height (blocks) anything falls to within `reach` blocks of (x, z) either way;
    * Infinity if nothing falls there (desert, or columns not loaded). `reach` well inside the texture.
@@ -146,6 +157,9 @@ export class CoverMap {
     this.changed.add(slot);
   }
 }
+
+/** Where column of blocks (x, z)'s bytes start. */
+const texelAt = (x: number, z: number): number => ((z & (COVER_SIZE - 1)) * COVER_SIZE + (x & (COVER_SIZE - 1))) * COVER_STRIDE;
 
 /** A column's slot: its place in the texture, row by row. */
 const slotOf = (cx: number, cz: number): number => (cz & (COVER_COLUMNS - 1)) * COVER_COLUMNS + (cx & (COVER_COLUMNS - 1));

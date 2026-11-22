@@ -28,6 +28,7 @@ import { Block, BLOCKS, delay, inverter, poweredRail, railOf } from '../src/worl
 import { railPlacement } from '../src/world/rails';
 import { type RiderInput, VehicleManager } from '../src/vehicles/manager';
 import { VehicleKind } from '../src/vehicles/vehicle';
+import { rainHeard } from '../src/audio/weather';
 import { CoverMap } from '../src/render/coverMap';
 import { coverTile, updateCover } from '../src/world/cover';
 import { Weather } from '../src/world/weather';
@@ -1489,6 +1490,15 @@ it('weather', () => {
       for (let n = 0; n < 1000; n++) map.lowestFalling(x + n * 0.1, z, TUNING.weather.precipitation.box / 2);
       if (run > 0) looks.push(performance.now() - t0);
     }
+    const ears: number[] = [];
+    const under = map.heightAt(x, z) - 8;
+    for (let run = 0; run <= RUNS; run++) {
+      const t0 = performance.now();
+      // The dearest rain to hear, once a frame while it falls: under cover, looking round for the open.
+      for (let n = 0; n < 1000; n++) rainHeard(map, x + 0.5, under, z + 0.5, 1, false);
+      if (run > 0) ears.push(performance.now() - t0);
+    }
+    lines.push(`  ${name}: hearing the rain under cover, a frame ${median(ears).toFixed(2)} us`);
     lines.push(`  ${name}: looking for sky near, a frame while it falls ${median(looks).toFixed(2)} us`);
     lines.push(
       `  ${name}: cover ${median(cover).toFixed(3)} ms a column (p95 at most ${slowest.toFixed(3)}), after an edit at most ${median(edits).toFixed(2)} us, ` +

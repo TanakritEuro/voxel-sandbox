@@ -1,7 +1,8 @@
 // Beds (Milestone 13): whether a player may sleep, and where they wake. Pure.
 //
-// - Sleeping is for the night (daylight under `TUNING.sleep.night`), and not with a hostile mob
-//   within `TUNING.sleep.near` blocks.
+// - Sleeping is for the night (daylight under `TUNING.sleep.night`) and for storms by day, and not
+//   with a hostile mob within `TUNING.sleep.near` blocks. A night slept ends at morning with the
+//   weather cleared; a storm slept by day ends, the clock moved on by what was left of it.
 // - A bed clicked in survival becomes where its player wakes after dying (kept with the inventory,
 //   by the place of its foot). Waking is beside the bed, on the floor, where there's room; on top of
 //   it if there's none round it. A bed that's gone wakes nobody.
@@ -9,6 +10,7 @@
 import { TUNING } from '../config';
 import { BLOCKS, bedOf, type Block, FACINGS } from '../world/blocks';
 import { partnerStep } from '../world/parts';
+import type { Weather } from '../world/weather';
 
 interface Blocks {
   getBlock(x: number, y: number, z: number): Block;
@@ -17,14 +19,30 @@ interface Blocks {
 /** Where a bed is: its foot's block. */
 export type BedPlace = [number, number, number];
 
-/** Why not: 'day' (the sun is up), 'near' (something hostile is close); or 'ok'. */
+/** Why not: 'day' (the sun is up and there's no storm), 'near' (something hostile is close); or 'ok'. */
 export type SleepCheck = 'ok' | 'day' | 'near';
 
-/** May a player sleep with the sky at `daylight`, the nearest hostile mob `nearest` blocks away (Infinity: none)? */
-export function canSleep(daylight: number, nearest: number): SleepCheck {
-  if (daylight >= TUNING.sleep.night) return 'day';
+/** May a player sleep with the sky at `daylight`, `storming` or not, the nearest hostile mob `nearest` blocks away (Infinity: none)? */
+export function canSleep(daylight: number, nearest: number, storming = false): SleepCheck {
+  if (!sleepable(daylight, storming)) return 'day';
   if (nearest <= TUNING.sleep.near) return 'near';
   return 'ok';
+}
+
+/** Is there anything to sleep through: the night, or a storm? */
+export const sleepable = (daylight: number, storming: boolean): boolean => daylight < TUNING.sleep.night || storming;
+
+/**
+ * Everyone's asleep: what's slept through is over. At night it's morning and the weather has
+ * cleared; by day a storm has ended and `time` moved on by what was left of it (a day being
+ * `dayLength` seconds). Returns the time of day to wake at.
+ */
+export function sleepThrough(time: number, daylight: number, weather: Weather, dayLength: number): number {
+  if (daylight < TUNING.sleep.night) {
+    weather.clearUp();
+    return TUNING.sleep.morning;
+  }
+  return weather.storming ? (time + weather.sitOut() / dayLength) % 1 : time;
 }
 
 /** The foot of the bed with a half at (x, y, z); null if there's no bed there. */

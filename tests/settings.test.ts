@@ -10,7 +10,7 @@ describe('settings', () => {
   it('are the defaults with nothing saved, and come back as saved', () => {
     const storage = memory();
     expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS);
-    const mine = { viewDistance: 12, fov: 90, resolution: 0.75, antialias: false, sensitivity: 3.5, invertY: true, volume: 0.3, muted: true, name: 'Pim', uiScale: 1.15 };
+    const mine = { viewDistance: 12, fov: 90, resolution: 0.75, antialias: false, sensitivity: 3.5, invertY: true, volume: 0.3, muted: true, name: 'Pim', uiScale: 1.15, flashes: false };
     saveSettings(mine, storage);
     expect(loadSettings(storage)).toEqual(mine);
   });
@@ -27,6 +27,8 @@ describe('settings', () => {
     expect(cleanSettings({ name: '   ' }).name).toBe(DEFAULT_SETTINGS.name);
     expect(cleanSettings({ name: 7 }).name).toBe(DEFAULT_SETTINGS.name);
     expect(cleanSettings({ antialias: false }).antialias).toBe(false);
+    // Lightning's flash: on unless turned off.
+    expect([cleanSettings({}).flashes, cleanSettings({ flashes: 'no' }).flashes, cleanSettings({ flashes: false }).flashes]).toEqual([true, true, false]);
     // The UI size: 80 to 130 %.
     expect([cleanSettings({ uiScale: 0.2 }).uiScale, cleanSettings({ uiScale: 9 }).uiScale, cleanSettings({ uiScale: 'big' }).uiScale]).toEqual([0.8, 1.3, 1]);
     expect(cleanSettings({ viewDistance: 6.6 }).viewDistance).toBe(7);

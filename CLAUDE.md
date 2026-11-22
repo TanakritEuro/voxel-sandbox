@@ -26,9 +26,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); steps 1–3 (spells, saving, the sky; cover and
-wet ground; rain, snow and settled snow) built: no lightning, thunder or rain's sound yet, and a guest's weather is held
-clear until step 5.
+Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); steps 1–4 (spells, saving, the sky; cover and
+wet ground; rain, snow and settled snow; lightning, thunder, rain's sound, rain dousing, sleeping through storms) built:
+a guest's weather is held clear until step 5.
 Milestones 1–20 built (`docs/milestone-1.md` to `docs/milestone-20.md`), waiting for playtests
 (Milestone 20, a better-looking UI: one look for every screen (slate panels and buttons with a bevel, amber for
 what's chosen, titles in Pixelify Sans), the live world drifting behind the world list, world cards with pictures, a
@@ -166,8 +166,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 
 ## Layout
 
-- `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name, UI size) in localStorage,
-  cleaned on load.
+- `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name, UI size, lightning's flashes) in localStorage,
+  cleaned on load; `flashesOn`: none either with less motion asked for.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
   reach, stepping up, light, day length, sleep, sky, weather, mobs (kept animals, breeding), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), lava (tick, drop search, its view, swimming, burning), logic, survival (stacks, tool speeds and
   wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
@@ -225,11 +225,12 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `weather.ts` (`Weather`: one for the whole world, spell n from the seed and n (dry 6–14 min, then rain, storm or overcast
   2–6 min); `step` while the world runs, the same however time is divided; `now`: kind and how far come on; settled snow
-  and wet ground; `hold` for `?weather`; `from` cleans what was saved; pure),
+  and wet ground; `hold` for `?weather`; `storming`, `sitOut`, `clearUp` for sleep; `from` cleans what was saved; pure),
   `cover.ts` (a tile a column, 2 bytes a place: how far rain gets down, in half blocks (`RAIN_STOP`: what fills its
   block from above, and liquids; not fences, panes, doors, lanterns), and what falls there by the climate (`Fall`,
-  `fallOf`); `snowLies`: settled snow at a height, for footsteps, as the chunk shader draws it; `coverTile` in the generate worker, `updateCover` after an edit: every `setBlock`/`setBlocks` does it,
+  `fallOf`); `rainsOn`: rain on a body, dousing; `snowLies`: settled snow at a height, for footsteps, as the chunk shader draws it; `coverTile` in the generate worker, `updateCover` after an edit: every `setBlock`/`setBlocks` does it,
   `World.coverOf`, `coverChanged`; pure),
+  `lightning.ts` (`Lightning`: in a storm a bolt every 8–25 s, 40–240 blocks from a player, only a place; pure),
   `liquids.ts` (flowing water and lava, one cellular automaton: `LiquidFlow` for a `Liquid` (`WATER` spreading 7 and looking 4
   for a drop, `LAVA` 3 and 2; to each the other is solid) wakes blocks round edits and ticks them,
   falling, spreading towards the nearest drop, new sources between two, drying up; lava touching water basalt from a
@@ -260,11 +261,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `tileOf`; `explore` round a player (4 chunks, two tiles a frame), `touch` after an edit, `paint` any window at any
   scale, unexplored parchment; saved in the record's `map`, run-length encoded as base 64), `farming.ts` (`tillable`, `sowable`,
   `stageTime`, `growingLight`; `Crops`: wheat by place, a slice stepped each frame, growing a stage
-  every ~70 s in light 9 or more, saved in the record's `crops`), `sleep.ts` (`canSleep`: at night, nothing
-  hostile near; `bedFoot`, `bedFrom`, `wakeAt`: beside the bed where there's room), `ground.ts` (`GroundItems`: items lying on the ground, boxes
+  every ~70 s in light 9 or more, saved in the record's `crops`), `sleep.ts` (`canSleep`: at night or in a storm, nothing
+  hostile near; `sleepThrough`: morning and clear, or the storm over and the clock on; `bedFoot`, `bedFrom`, `wakeAt`: beside the bed where there's room), `ground.ts` (`GroundItems`: items lying on the ground, boxes
   under the block physics at 60 Hz, asleep at rest, floating, merging, picked up within reach of a
   player's box, aging out, a cap, burnt up in lava (`takeBurned`)), `health.ts` (`Health`: falls from where the feet last stood,
-  air and drowning, cactus, lava (4 points every half second in it, `burning` 3 s after unless in water), hunger (faster working hard; starving down to 1; `eat`), healing only well
+  air and drowning, cactus, lava (4 points every half second in it, `burning` 3 s after unless in water or rain), hunger (faster working hard; starving down to 1; `eat`), healing only well
   fed, death; stepped a frame at a time with how the body is).
 - `src/mobs/` — `kinds.ts` (the six animals (the ambler in the savanna, the wader in the swamp), the gloamer and the delver (deep caves): size,
   speeds, climb and drop, biomes, ground, groups, health in points, how far the head nods walking (`headBob`), the `food`
@@ -337,6 +338,9 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `precipitation.ts` — rain, splashes and flakes: one instanced draw moved by the vertex shader in a 48-block box round
   the eye, ended at the cover, not drawn when none could be seen; whole-block speeds so the clock wraps; compiled at
   startup, as anything hidden until later must be (else a 50 ms frame when first shown).
+  `lightning.ts` — the bolt (one draw of boxes) and the flash (one soft rise and fall, at most one in 3 s, never with the
+  setting off: never add a flicker). `weatherView.ts` — what falls, bolts, flash and thunder's wait behind a few calls,
+  compiled at startup.
   `clouds.ts` — the blocky cloud layer and its tiling pattern, its noise cut by a threshold for the cover. `fog.ts` — fog colour and
   start by biome, eased (pure). `water.ts` — the fog and background, above and under water,
   and the water texture's drift.
@@ -365,8 +369,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   column's changed chunks that way (flowing water); `onColumnAdded` tells the game a column is in;
   `setOthers` keeps the land round other players loaded (generated, not drawn).
 - `src/audio/` — `cues.ts` (which sounds movement and digging make, when; `heard`: how loud
-  and from which side a mob is: pure), `sound.ts` (Web Audio: a recipe per block material, mob
-  voices panned to their side, volume, mute).
+  and from which side a mob is: pure), `weather.ts` (the rain where the ear is, by the nearest open place and the roof;
+  thunder's delay, level and side: pure), `sound.ts` (Web Audio: a recipe per block material, mob
+  voices panned to their side, the rain's looped bed, thunder, volume, mute; balance a new sound by rendering it in an
+  `OfflineAudioContext` and measuring).
 - `src/save/` — `rle.ts` (chunk blocks run-length encoded), `store.ts` (`WorldStore`: world
   records and chunks, in IndexedDB or memory; a record's `mode`, `modeOf`, `survival` (the
   inventory, health and bed), `furnaces`, `containers` (chests), `crops`, `guests` (guests' survival states by name), `generation` (missing in older worlds: 1)
