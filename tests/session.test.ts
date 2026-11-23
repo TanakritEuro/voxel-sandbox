@@ -26,6 +26,10 @@ import { VehicleManager } from '../src/vehicles/manager';
 import type { Stack } from '../src/survival/inventory';
 import { chest, door, doorOf, furnace, rail, wheat } from '../src/world/blocks';
 import { useAt } from '../src/world/parts';
+import { spellAt, Weather } from '../src/world/weather';
+import { type Bolt, Lightning } from '../src/world/lightning';
+import { canSleep, sleepable, sleepThrough } from '../src/survival/sleep';
+import { TUNING } from '../src/config';
 
 const SEED = 20261022;
 /** The columns everyone loads: blocks -32..63 each way. */
@@ -67,6 +71,8 @@ async function makeHost(env: Env, generation: Generation = 1) {
   const allow = { ok: true };
   // The world's mode and guests' kept states, as the game holds them.
   const mode = { value: 'creative' as WorldMode };
+  // Its weather, as the game shares it.
+  const shared = { value: new Weather(SEED).share() };
   const kept = new Map<string, Record<string, unknown>>();
   // Its logic, woken by every edit as the game's is.
   const logic = new LogicFlow();
@@ -96,6 +102,7 @@ async function makeHost(env: Env, generation: Generation = 1) {
     room,
     hostWorld(world, saver, {
       time: () => 0.3,
+      weather: () => shared.value,
       position: () => [1.5, 80, 2.5],
       allowed: () => allow.ok,
       edit,
@@ -128,7 +135,7 @@ async function makeHost(env: Env, generation: Generation = 1) {
     world.setBlocks(changes);
     session.shareEdits(changes, 0, 0, true);
   };
-  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces, chests, feeds, vehicles, outs };
+  return { world, saver, session, room, allow, hostEdit, tick, mode, kept, ground, furnaces, chests, feeds, vehicles, outs, shared };
 }
 
 async function makeGuest(env: Env, host: Awaited<ReturnType<typeof makeHost>>, name: string) {
@@ -849,5 +856,116 @@ describe('survival over the network', () => {
     a.session.sendState({ x: 4.5, y: 70, z: 4.5, yaw: 0, pitch: 0, flying: false, crouching: false, swimming: false, onGround: true, sleeping: true, held: Block.Air, swings: 0, digging: Block.Air });
     await env.pump(0.3);
     expect(host.session.remotes.get(a.session.you)!.latest!.sleeping).toBe(true);
+  });
+});
+
+describe('weather together', () => {
+  /** A weather `into` seconds into the first wet stretch of a storm. */
+  function storm(into: number): Weather {
+    let at = 0;
+    for (let n = 0; ; n++) {
+      const sp = spellAt(SEED, n);
+      if (sp.kind === 'storm') {
+        const w = new Weather(SEED);
+        w.step(at + sp.dry + into);
+        return w;
+      }
+      at += sp.dry + sp.wet;
+    }
+  }
+
+  it("is the host's from the welcome on, held or not, and kept up with every share", async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const hostWeather = storm(40);
+    host.shared.value = hostWeather.share();
+    const g = await makeGuest(env, host, 'Pim');
+    expect(g.welcome.weather).toEqual(hostWeather.share());
+    const mine = new Weather(SEED);
+    mine.adopt(g.welcome.weather);
+    expect(mine.toJSON()).toEqual(hostWeather.toJSON());
+    expect(mine.storming).toBe(true);
+
+    // Each steps on its own between shares, and ends where the host is.
+    const heard: number[] = [];
+    g.session.onTime = (time, w) => {
+      heard.push(time);
+      mine.adopt(w);
+    };
+    for (let i = 0; i < 5; i++) {
+      hostWeather.step(2);
+      mine.step(2);
+      host.shared.value = hostWeather.share();
+      host.session.shareTime(0.31 + i * 0.01);
+      await env.pump(0.3);
+    }
+    expect(heard).toHaveLength(5);
+    expect(mine.toJSON()).toEqual(hostWeather.toJSON());
+    expect(g.session.weather).toEqual(hostWeather.share());
+
+    // Held (?weather) at the host: held at the guest.
+    const held = new Weather(SEED);
+    held.hold('overcast');
+    host.shared.value = held.share();
+    host.session.shareTime(0.4);
+    await env.pump(0.3);
+    expect(mine.now()).toEqual({ kind: 'overcast', amount: 1 });
+  });
+
+  it('brings every guest the same bolt, the host choosing it near any of them', async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const a = await makeGuest(env, host, 'Pim');
+    const b = await makeGuest(env, host, 'Noor');
+    const seen: Bolt[][] = [[], []];
+    a.session.onBolt = (bolt) => seen[0].push(bolt);
+    b.session.onBolt = (bolt) => seen[1].push(bolt);
+    const lightning = new Lightning(SEED);
+    const players = [[0, 0], [5000, 0], [0, 5000]] as const;
+    const struck: Bolt[] = [];
+    for (let t = 0; t < 400; t += 0.5) {
+      const bolt = lightning.step(0.5, true, players, () => 70);
+      if (bolt) {
+        struck.push(bolt);
+        host.session.shareBolt(bolt);
+      }
+    }
+    await env.pump(0.5);
+    expect(struck.length).toBeGreaterThan(10);
+    expect(seen[0]).toEqual(struck);
+    expect(seen[1]).toEqual(struck);
+  });
+
+  it('ends a storm slept through for everyone: the host moves on, the guests hear it at once', async () => {
+    const env = setup();
+    const host = await makeHost(env);
+    const hostWeather = storm(40);
+    let time = 0.5;
+    host.shared.value = hostWeather.share();
+    const g = await makeGuest(env, host, 'Pim');
+    const mine = new Weather(SEED);
+    mine.adopt(g.welcome.weather);
+    let guestTime = g.welcome.time;
+    g.session.onTime = (t, w) => {
+      guestTime = t;
+      mine.adopt(w);
+    };
+    // Both may lie down by day: it's a storm.
+    expect(canSleep(1, Infinity, hostWeather.storming)).toBe('ok');
+    expect(canSleep(1, Infinity, mine.storming)).toBe('ok');
+    // Everyone asleep: the host sleeps it through and tells them.
+    time = sleepThrough(time, 1, hostWeather, TUNING.day.length);
+    host.shared.value = hostWeather.share();
+    host.session.shareTime(time);
+    await env.pump(0.3);
+    expect(time).toBeGreaterThan(0.5);
+    expect(guestTime).toBe(time);
+    expect(mine.storming).toBe(false);
+    // So the guest gets up: nothing left to sleep through.
+    expect(sleepable(1, mine.storming)).toBe(false);
+  });
+
+  it('turns a guest of another version away', () => {
+    expect(PROTOCOL).toBe(13);
   });
 });

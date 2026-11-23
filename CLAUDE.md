@@ -26,9 +26,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); steps 1–4 (spells, saving, the sky; cover and
-wet ground; rain, snow and settled snow; lightning, thunder, rain's sound, rain dousing, sleeping through storms) built:
-a guest's weather is held clear until step 5.
+Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); steps 1–5 (spells, saving, the sky; cover and
+wet ground; rain, snow and settled snow; lightning, thunder, rain's sound, rain dousing, sleeping through storms;
+the host's weather and bolts shared with guests, `PROTOCOL` 13) built: step 6 (measurements, playtest questions) left.
 Milestones 1–20 built (`docs/milestone-1.md` to `docs/milestone-20.md`), waiting for playtests
 (Milestone 20, a better-looking UI: one look for every screen (slate panels and buttons with a bevel, amber for
 what's chosen, titles in Pixelify Sans), the live world drifting behind the world list, world cards with pictures, a
@@ -225,7 +225,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `EMPTY_BLOCKS` shared by all-air chunks and copied on the first edit),
   `weather.ts` (`Weather`: one for the whole world, spell n from the seed and n (dry 6–14 min, then rain, storm or overcast
   2–6 min); `step` while the world runs, the same however time is divided; `now`: kind and how far come on; settled snow
-  and wet ground; `hold` for `?weather`; `storming`, `sitOut`, `clearUp` for sleep; `from` cleans what was saved; pure),
+  and wet ground; `hold` for `?weather`; `storming`, `sitOut`, `clearUp` for sleep; `share` and `adopt` (`SharedWeather`, `sharedWeatherOf`) for guests; `from` cleans what was saved; pure),
   `cover.ts` (a tile a column, 2 bytes a place: how far rain gets down, in half blocks (`RAIN_STOP`: what fills its
   block from above, and liquids; not fences, panes, doors, lanterns), and what falls there by the climate (`Fall`,
   `fallOf`); `rainsOn`: rain on a body, dousing; `snowLies`: settled snow at a height, for footsteps, as the chunk shader draws it; `coverTile` in the generate worker, `updateCover` after an edit: every `setBlock`/`setBlocks` does it,
@@ -388,10 +388,11 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (12), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (13), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
-  blocks; the world's mode in the welcome and when it changes, guests' survival states kept by name
+  blocks; the world's mode in the welcome and when it changes, the time and weather in it and every 2 s (`shareTime`, at once after
+  sleep), bolts (`shareBolt`), guests' survival states kept by name
   and given back; the ground near each guest (only when it changed, or a second on), the furnace or
   chest each has open (`contents`, when it changed; a chest cart as the place (its id, `VEHICLE_Y`, 0)), a hostile mob's hit on a guest (`hurt`); guests'
   drops, takes and container moves passed to the world, what they get back sent (`given`);

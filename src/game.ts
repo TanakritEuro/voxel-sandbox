@@ -249,10 +249,11 @@ const crops = Crops.from(record.crops);
 let time = timeHeld ? Number(timeParam) : record.time;
 // The weather, saved with the world. `?weather=clear|overcast|rain|storm` holds it and `?settled=1`
 // starts with snow lying; flights to measure and the backdrop stay clear unless told, and so does
-// a guest's until the host sends its own.
+// a guest's is its host's, from the welcome on.
 const weather = Weather.from(record.seed, record.weather);
-const weatherHeld = weatherKindOf(params.get('weather')) ?? (guest || params.has('autofly') || params.has('backdrop') ? 'clear' : null);
+const weatherHeld = guest ? null : (weatherKindOf(params.get('weather')) ?? (params.has('autofly') || params.has('backdrop') ? 'clear' : null));
 if (weatherHeld) weather.hold(weatherHeld);
+if (welcome) weather.adopt(welcome.weather);
 if (params.get('settled') === '1') weather.settled = 1;
 // Lightning is this world's to choose; its flash the player's to allow.
 const lightning = new Lightning(record.seed, weather.toJSON().elapsed);
@@ -862,9 +863,11 @@ if (guest) {
     say(text);
     pauseMenu.refresh();
   };
-  guest.onTime = (t) => {
+  guest.onTime = (t, w) => {
     if (!timeHeld) time = t;
+    weather.adopt(w);
   };
+  guest.onBolt = (bolt) => weatherView.strike(bolt, camera.position, flashesOn(settings, lessMotion.matches));
   // The host switched the world's mode: everyone plays it.
   guest.onMode = (mode) => setMode(mode === 'survival');
   // Survival together: what the host gives (picked up, from a furnace), a gloamer's hits, the furnace open.
@@ -915,6 +918,7 @@ function openToFriends(room: Room): HostSession {
     traffic.room(room),
     hostWorld(world, saver, {
       time: () => time,
+      weather: () => weather.share(),
       position: () => [player.body.x, player.body.y, player.body.z],
       allowed: (id, x, y, z, block): boolean => editAllowed(session.states().get(id), session.states().values(), x, y, z, block),
       edit: (x, y, z, block) => guestEdit(x, y, z, block),
@@ -2131,7 +2135,10 @@ function frame(now: number): void {
   const flashes = flashesOn(settings, lessMotion.matches);
   const storming = !guest && weatherNow.kind === 'storm' && weatherNow.amount >= TUNING.weather.lightning.from;
   const bolt = storming && weatherDt ? lightning.step(weatherDt, true, strikeNear(), boltGround) : null;
-  if (bolt) weatherView.strike(bolt, camera.position, flashes);
+  if (bolt) {
+    weatherView.strike(bolt, camera.position, flashes);
+    host?.shareBolt(bolt);
+  }
   const storm = weatherView.step(dt, weatherDt, flashes);
   const sky = skyFlashed(skyUnder(clearSky, look), storm.flash);
   daylightNow = clearSky.daylight;

@@ -1,6 +1,6 @@
 # Milestone 21: weather
 
-**Status:** plan approved (2026-11-22), all six decisions as written; steps 1–4 built.
+**Status:** plan approved (2026-11-22), all six decisions as written; steps 1–5 built.
 
 ## Goal
 
@@ -176,6 +176,7 @@ numbers are a playtest question.
 4. **Storms and sound:** lightning, thunder, rain's sound, the setting, the two rules; tests.
    Done (2026-11-23).
 5. **Together:** the messages, guests, sleep; tests.
+   Done (2026-11-23).
 6. **Measurements,** notes, playtest questions.
 
 ## Decisions (agreed 2026-11-22)
@@ -457,3 +458,29 @@ rules follows sleep to its new calls. 730 in all pass; the build passes.
 
 **Left for step 5:** guests have no weather yet, so no bolts, rain or sleeping by day; a host lying down in a storm
 waits for guests who can't (and gets up when it ends).
+
+## Step 5: together (2026-11-23)
+
+**Built:**
+- **`PROTOCOL` 13.** The welcome and the time message (every 2 s, and at once when sleep moves the clock) carry the
+  weather: its state and the kind it's held at, if `?weather` holds it (`SharedWeather`, checked on arrival by
+  `sharedWeatherOf`). A bolt is a message of its own.
+- **A guest's weather is its host's:** taken from the welcome and from each time message (`Weather.adopt`; a state that
+  isn't one of the world's spells is left out), stepped on its own in between. So a guest sees the same spell come and
+  go, and draws and hears its own rain, snow, wet ground and thunder where it stands.
+- **Lightning is the host's to choose,** near any player; every guest is sent each bolt and sees it, flashes (by its
+  own setting) and hears its thunder from where it is.
+- **Sleeping through a storm together:** everyone can lie down in a storm by day; once all are asleep the host sleeps it
+  through (`sleepThrough`), sends the time and weather at once, and the guests, with nothing left to sleep through, get up.
+
+**Tests:** 4 in `tests/session.test.ts` (the welcome's weather, held or not, a guest stepping between shares and ending
+where the host is; the same bolts to two guests; a storm slept through together), 1 in `tests/weather.test.ts`
+(adopting, junk left out), the protocol test's good and bad messages for both, and the older tests' stand-in hosts
+given weather. 735 in all pass; the build passes.
+
+**Looked at:** the production build hosting two test guests (`?bot=2&weather=storm`) for 30 s: no console errors,
+7.7–8.1 KB/s out (not set against the build before: what's added is a time message of about 128 bytes every 2 s to
+each guest, and a bolt's few now and then).
+
+**Not tried:** two browsers playing together (as in the milestones before: the loopback tests cover the sessions), so a
+guest's rain, thunder and flash haven't been seen in a guest's own window.

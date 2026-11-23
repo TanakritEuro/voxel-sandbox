@@ -172,6 +172,22 @@ describe('weather saved', () => {
     expect(Weather.from(SEED, { ...good, settled: 7, wet: 'x' }).toJSON()).toEqual({ ...good, settled: 1, wet: 0 });
   });
 
+  it('is taken as the host has it, and junk from it is left out', () => {
+    const host = new Weather(SEED);
+    host.step(2000);
+    const guest = new Weather(SEED);
+    guest.adopt(host.share());
+    expect(guest.toJSON()).toEqual(host.toJSON());
+    expect(guest.held).toBe(false);
+    // A state another world's spells don't have: the guest keeps its own, but takes the ground's.
+    const before = guest.toJSON();
+    guest.adopt({ state: { spell: 0, elapsed: 5000, settled: 0.5, wet: 0.25 }, held: null });
+    expect(guest.toJSON()).toEqual({ ...before, settled: 0.5, wet: 0.25 });
+    guest.adopt({ state: before, held: 'rain' });
+    expect(guest.now()).toEqual({ kind: 'rain', amount: 1 });
+    expect(guest.wet).toBe(before.wet);
+  });
+
   it('takes no time from a bad step', () => {
     const weather = new Weather(SEED);
     for (const dt of [0, -5, Number.NaN, Infinity]) weather.step(dt);

@@ -32,6 +32,27 @@ export interface WeatherRecord {
   wet: number;
 }
 
+/** The weather as the host tells its guests: its state, and the kind it's held at (`?weather`) or null. */
+export interface SharedWeather {
+  state: WeatherRecord;
+  held: WeatherKind | null;
+}
+
+/** Weather from the network, if it's whole and sensible (the spell's own length is the guest's to check); else null. */
+export function sharedWeatherOf(raw: unknown): SharedWeather | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const { state, held } = raw as Record<string, unknown>;
+  if (held !== null && weatherKindOf(typeof held === 'string' ? held : null) === null) return null;
+  if (typeof state !== 'object' || state === null) return null;
+  const { spell, elapsed, settled, wet } = state as Record<string, unknown>;
+  const W = TUNING.weather;
+  const longest = W.dry.max + W.spell.max;
+  const share = (v: unknown): v is number => typeof v === 'number' && v >= 0 && v <= 1;
+  if (typeof spell !== 'number' || !Number.isInteger(spell) || spell < 0 || spell > LAST_SPELL) return null;
+  if (typeof elapsed !== 'number' || !(elapsed >= 0 && elapsed < longest) || !share(settled) || !share(wet)) return null;
+  return { state: { spell, elapsed, settled, wet }, held: held as WeatherKind | null };
+}
+
 /** Keeps the spells' hashes apart from the land's. */
 const SALT = 0x5eed_c10d;
 /** The highest spell number a record may say (centuries of play). */
@@ -74,18 +95,37 @@ export class Weather {
   /** A world's saved weather, cleaned; junk, or none (older worlds), starts clear at the first spell. */
   static from(seed: number, saved: unknown): Weather {
     const weather = new Weather(seed);
-    if (typeof saved !== 'object' || saved === null) return weather;
-    const { spell, elapsed, settled, wet } = saved as Record<string, unknown>;
-    if (typeof spell !== 'number' || !Number.isInteger(spell) || spell < 0 || spell > LAST_SPELL) return weather;
-    const current = spellAt(seed, spell);
-    if (typeof elapsed !== 'number' || !(elapsed >= 0 && elapsed < current.dry + current.wet)) return weather;
-    weather.spell = spell;
-    weather.elapsed = elapsed;
-    weather.current = current;
-    const share = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, 0, 1) : 0);
-    weather.settled = share(settled);
-    weather.wet = share(wet);
+    weather.load(saved);
     return weather;
+  }
+
+  /** As the host has it, for its guests. */
+  share(): SharedWeather {
+    return { state: this.toJSON(), held: this.heldKind };
+  }
+
+  /** Take the host's weather (a guest, every few seconds): held as it holds it, or its state if that's one of this world's. */
+  adopt(shared: SharedWeather): void {
+    this.heldKind = shared.held;
+    this.load(shared.state);
+    this.settled = shared.state.settled;
+    this.wet = shared.state.wet;
+  }
+
+  /** Put a saved state in place if it's one of this world's spells; whether it was. */
+  private load(saved: unknown): boolean {
+    if (typeof saved !== 'object' || saved === null) return false;
+    const { spell, elapsed, settled, wet } = saved as Record<string, unknown>;
+    if (typeof spell !== 'number' || !Number.isInteger(spell) || spell < 0 || spell > LAST_SPELL) return false;
+    const current = spellAt(this.seed, spell);
+    if (typeof elapsed !== 'number' || !(elapsed >= 0 && elapsed < current.dry + current.wet)) return false;
+    this.spell = spell;
+    this.elapsed = elapsed;
+    this.current = current;
+    const share = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, 0, 1) : 0);
+    this.settled = share(settled);
+    this.wet = share(wet);
+    return true;
   }
 
   get held(): boolean {

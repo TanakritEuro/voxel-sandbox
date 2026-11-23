@@ -23,6 +23,7 @@ import type { HostWorld } from './session';
 
 export interface HostGame {
   time(): number;
+  weather: HostWorld['weather'];
   position(): [number, number, number];
   /** Is player `player` allowed this edit as far as the game goes (reach, not inside anyone)? */
   allowed(player: number, x: number, y: number, z: number, block: Block): boolean;
@@ -94,6 +95,7 @@ export function hostWorld(world: World, saver: WorldSaver, game: HostGame): Host
     seed: world.generator.seed,
     generation: world.generator.options.generation,
     time: () => game.time(),
+    weather: () => game.weather(),
     position: () => game.position(),
     editedColumns: () => {
       // Saved or waiting to be, and edited in memory since loading (the saver hears of every edit, so these agree; both for safety).

@@ -41,6 +41,8 @@ import { VehicleMirror } from './vehicleMirror';
 import { packVehicles, unpackVehicles } from './vehicleState';
 import type { Vehicle } from '../vehicles/vehicle';
 import { Item } from '../survival/items';
+import type { SharedWeather } from '../world/weather';
+import type { Bolt } from '../world/lightning';
 import { type BlockChange, checkChunk, MAX_PLAYERS, type Message, packEdits, parseMessage, type PlayerInfo, PROTOCOL, unpackEdits } from './protocol';
 
 /** What the host's game gives its session. */
@@ -50,6 +52,8 @@ export interface HostWorld {
   generation: Generation;
   /** Time of day now, 0–1. */
   time(): number;
+  /** The weather now, as guests are to have it. */
+  weather(): SharedWeather;
   /** Where the host stands. */
   position(): [number, number, number];
   /** Columns with edited chunks, as (cx, cz) pairs one after another. */
@@ -264,9 +268,15 @@ export class HostSession {
     link.send({ type: 'contents', x, y, z, state });
   }
 
-  /** The time of day now (every `TUNING.net.timeEvery` seconds): to every guest. */
+  /** The time of day and the weather now (every `TUNING.net.timeEvery` seconds, and at once when sleep moves them): to every guest. */
   shareTime(time: number): void {
-    for (const link of this.guests.values()) link.send({ type: 'time', time });
+    const weather = this.world.weather();
+    for (const link of this.guests.values()) link.send({ type: 'time', time, weather });
+  }
+
+  /** Lightning struck: every guest sees and hears it. */
+  shareBolt(bolt: Bolt): void {
+    for (const link of this.guests.values()) link.send({ type: 'bolt', ...bolt });
   }
 
   /** Close the world to friends: tell them why, and hang up. */
@@ -301,6 +311,7 @@ export class HostSession {
         seed: this.world.seed,
         generation: this.world.generation,
         time: this.world.time(),
+        weather: this.world.weather(),
         players: this.players,
         at: this.world.position(),
         edited: this.world.editedColumns(),
@@ -505,10 +516,13 @@ export class GuestSession {
   onDismount: () => void = () => {};
   /** Sounds mobs near this player made (calls, cries, landings, puffs). */
   onMobSounds: (sounds: MobSound[]) => void = () => {};
-  /** The host's time of day, as last heard (from the welcome on). */
+  /** The host's time of day and weather, as last heard (from the welcome on). */
   time = 0;
-  /** The time of day was heard (every few seconds). */
-  onTime: (time: number) => void = () => {};
+  weather: SharedWeather | null = null;
+  /** The time of day and the weather were heard (every few seconds). */
+  onTime: (time: number, weather: SharedWeather) => void = () => {};
+  /** Lightning struck. */
+  onBolt: (bolt: Bolt) => void = () => {};
   /** The host switched the world's mode. */
   onMode: (mode: WorldMode) => void = () => {};
   /** The items lying round this player, as the host last said. */
@@ -550,6 +564,7 @@ export class GuestSession {
         this.you = m.you;
         this.players = m.players;
         this.time = m.time;
+        this.weather = m.weather;
         for (let i = 0; i < m.edited.length; i += 2) this.saves.edited.add(columnKey(m.edited[i], m.edited[i + 1]));
         answer?.resolve(m);
       } else if (m.type === 'reject') {
@@ -727,7 +742,11 @@ export class GuestSession {
         break;
       case 'time':
         this.time = m.time;
-        this.onTime(m.time);
+        this.weather = m.weather;
+        this.onTime(m.time, m.weather);
+        break;
+      case 'bolt':
+        this.onBolt({ x: m.x, y: m.y, z: m.z, seed: m.seed });
         break;
       case 'mode':
         this.onMode(m.mode);

@@ -16,8 +16,10 @@ import { CHUNK_VOLUME, MAX_CHUNK_Y, MIN_CHUNK_Y, WORLD_HEIGHT } from '../world/c
 import { unpackMobs, unpackMobSounds } from './mobState';
 import { unpackVehicles } from './vehicleState';
 import { unpackState } from './playerState';
+import { type SharedWeather, sharedWeatherOf } from '../world/weather';
+import type { Bolt } from '../world/lightning';
 
-export const PROTOCOL = 12;
+export const PROTOCOL = 13;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;
@@ -37,7 +39,7 @@ export type Message =
   /** Guest → host on connecting: its version and its player's name. */
   | { type: 'hello'; version: number; name: string }
   /**
-   * Host → guest: you're in. Your player number, the world's seed and time of day, who's in
+   * Host → guest: you're in. Your player number, the world's seed, time of day and weather, who's in
    * (you included), where the host is standing (you start near them), the columns with edited
    * chunks, as (cx, cz) pairs one after another, the world's mode, and your survival state as the
    * host kept it last time you played here under this name (null if none; cleaned when used).
@@ -49,6 +51,7 @@ export type Message =
       /** The world's generation version. */
       generation: Generation;
       time: number;
+      weather: SharedWeather;
       players: PlayerInfo[];
       at: [number, number, number];
       edited: number[];
@@ -101,8 +104,10 @@ export type Message =
   | { type: 'hit'; id: number; points: number }
   /** Guest → host: fed mob `id` an `item` (its food) from what the guest holds (spent already; given back if refused). */
   | { type: 'feed'; id: number; item: number }
-  /** Host → guests: the time of day now (0–1). */
-  | { type: 'time'; time: number }
+  /** Host → guests: the time of day now (0–1) and the weather. */
+  | { type: 'time'; time: number; weather: SharedWeather }
+  /** Host → guests: lightning struck (`world/lightning.ts`). */
+  | ({ type: 'bolt' } & Bolt)
   /** Host → guest, unordered: the items lying on the ground round the guest (`itemState.ts`). */
   | { type: 'ground'; data: ArrayBuffer }
   /**
@@ -238,12 +243,15 @@ export function parseMessage(raw: unknown): Message | null {
       if (!Array.isArray(raw.edited) || raw.edited.length % 2 !== 0 || raw.edited.length > 2 * 65536 || !raw.edited.every(isChunkCoord)) return null;
       if (!isMode(raw.mode) || (raw.kept !== null && !isKept(raw.kept))) return null;
       if (raw.generation !== 1 && raw.generation !== 2 && raw.generation !== 3) return null;
+      const weather = sharedWeatherOf(raw.weather);
+      if (!weather) return null;
       return {
         type: 'welcome',
         you: raw.you,
         seed: raw.seed,
         generation: raw.generation,
         time: raw.time,
+        weather,
         players: players as PlayerInfo[],
         at: raw.at as [number, number, number],
         edited: raw.edited as number[],
@@ -340,8 +348,16 @@ export function parseMessage(raw: unknown): Message | null {
     }
     case 'ctake':
       return isContainerPlace(raw.x, raw.y, raw.z) && isCount(raw.slot, 0, CHEST_SLOTS - 1) ? { type: 'ctake', x: raw.x as number, y: raw.y as number, z: raw.z as number, slot: raw.slot } : null;
-    case 'time':
-      return isNumber(raw.time) && raw.time >= 0 && raw.time < 1 ? { type: 'time', time: raw.time } : null;
+    case 'time': {
+      const weather = sharedWeatherOf(raw.weather);
+      return weather && isNumber(raw.time) && raw.time >= 0 && raw.time < 1 ? { type: 'time', time: raw.time, weather } : null;
+    }
+    case 'bolt': {
+      // Anywhere a world can be, on its ground; its shape's seed a whole 32-bit number.
+      const at = [raw.x, raw.y, raw.z];
+      if (!at.every(isNumber) || Math.abs(raw.x as number) > 2 ** 24 || Math.abs(raw.z as number) > 2 ** 24 || (raw.y as number) < 0 || (raw.y as number) > WORLD_HEIGHT) return null;
+      return isCount(raw.seed, 0, 0xffffffff) ? { type: 'bolt', x: raw.x as number, y: raw.y as number, z: raw.z as number, seed: raw.seed } : null;
+    }
     case 'state':
       return isCount(raw.id, 0, MAX_PLAYERS - 1) && raw.data instanceof ArrayBuffer && unpackState(raw.data) !== null ? { type: 'state', id: raw.id, data: raw.data } : null;
     case 'refused':

@@ -10,6 +10,7 @@ import type { PlayerState } from '../src/net/playerState';
 import { type BlockChange, parseMessage } from '../src/net/protocol';
 import { GuestSession, HostSession, type HostWorld } from '../src/net/session';
 import { Block } from '../src/world/blocks';
+import { Weather } from '../src/world/weather';
 import { World } from '../src/world/world';
 
 const snap = (over: Partial<MobSnap> = {}): MobSnap => ({
@@ -135,6 +136,7 @@ describe('what the host runs, for its guests', () => {
       seed: 1,
       generation: 1,
       time: () => 0.4,
+      weather: () => new Weather(1).share(),
       position: () => [0, 70, 0],
       editedColumns: () => [],
       columnChunks: async () => [],

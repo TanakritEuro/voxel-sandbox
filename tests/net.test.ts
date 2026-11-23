@@ -141,11 +141,13 @@ describe('messages', () => {
     { id: 0, name: 'Host' },
     { id: 2, name: 'Pim' },
   ];
+  const raining = { state: { spell: 3, elapsed: 512.25, settled: 0.25, wet: 1 }, held: null };
+  const held = { state: { spell: 0, elapsed: 0, settled: 1, wet: 0 }, held: 'storm' as const };
   const good: Message[] = [
     { type: 'hello', version: PROTOCOL, name: 'Pim' },
-    { type: 'welcome', you: 2, seed: 20261022, generation: 2, time: 0.25, players, at: [10.5, 70, -3.5], edited: [0, 0, -1, 4], mode: 'survival', kept: { inventory: [null, { item: 1, count: 3 }], health: { health: 12, air: 10 } } },
-    { type: 'welcome', you: 2, seed: 20261022, generation: 2, time: 0.25, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
-    { type: 'welcome', you: 2, seed: 20261022, generation: 1, time: 0.25, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
+    { type: 'welcome', you: 2, seed: 20261022, generation: 2, time: 0.25, weather: raining, players, at: [10.5, 70, -3.5], edited: [0, 0, -1, 4], mode: 'survival', kept: { inventory: [null, { item: 1, count: 3 }], health: { health: 12, air: 10 } } },
+    { type: 'welcome', you: 2, seed: 20261022, generation: 2, time: 0.25, weather: held, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
+    { type: 'welcome', you: 2, seed: 20261022, generation: 1, time: 0.25, weather: raining, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
     { type: 'mode', mode: 'creative' },
     { type: 'kept', survival: { inventory: [], health: { health: 20, air: 10 } } },
     { type: 'reject', reason: 'This world is full.' },
@@ -168,7 +170,9 @@ describe('messages', () => {
     { type: 'contents', x: 4, y: 70, z: -9, state: { slots: [null, { item: 257, count: 2 }, null], burn: 3, burnTotal: 8, progress: 1.5 } },
     { type: 'cput', x: 4, y: 70, z: -9, slot: 0, stack: { item: 258, count: 3 } },
     { type: 'ctake', x: 4, y: 70, z: -9, slot: 2 },
-    { type: 'time', time: 0.75 },
+    { type: 'time', time: 0.75, weather: raining },
+    { type: 'time', time: 0.1, weather: held },
+    { type: 'bolt', x: -1234.5, y: 63.5, z: 88.25, seed: 4_000_000_000 },
     { type: 'refused', seq: 7, x: -40, y: 64, z: 1000, block: Block.Stone },
   ];
 
@@ -219,7 +223,20 @@ describe('messages', () => {
       { type: 'edits', from: 0, seq: 0, data: new ArrayBuffer(12), water: false },
       { type: 'edits', from: 0, seq: 0, data: packEdits([[0, 1, 0, 1]]) }, // no water flag
       { type: 'hit', id: -1 },
-      { type: 'time', time: 1 },
+      { type: 'time', time: 1, weather: raining },
+      { type: 'time', time: 0.5 },
+      { ...welcome, weather: null },
+      // Weather that isn't: a spell not whole or too far, a stretch longer than any, shares out of 0–1, a kind that isn't one.
+      ...[{ spell: -1 }, { spell: 1.5 }, { spell: 2 ** 40 }, { elapsed: -1 }, { elapsed: 1e6 }, { elapsed: Number.NaN }, { settled: 2 }, { wet: -0.1 }, { wet: '1' }].map(
+        (bad) => ({ type: 'time', time: 0.5, weather: { state: { ...raining.state, ...bad }, held: null } }),
+      ),
+      { type: 'time', time: 0.5, weather: { state: raining.state, held: 'snow' } },
+      { type: 'time', time: 0.5, weather: { state: raining.state } },
+      { type: 'bolt', x: 0, y: 64, z: 0, seed: -1 },
+      { type: 'bolt', x: 0, y: 64, z: 0, seed: 1.5 },
+      { type: 'bolt', x: Number.NaN, y: 64, z: 0, seed: 1 },
+      { type: 'bolt', x: 0, y: 900, z: 0, seed: 1 },
+      { type: 'bolt', x: 2 ** 30, y: 64, z: 0, seed: 1 },
       { type: 'mobs', time: 1, data: new ArrayBuffer(50) },
       { type: 'mobsounds', data: new Float32Array([9, 0, 0, 0, 0]).buffer }, // no such voice
       { type: 'edits', from: 0, seq: 0, data: packEdits([[0, -1, 0, 1]]) },

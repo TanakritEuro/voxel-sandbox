@@ -7,6 +7,7 @@ import { parseMessage } from '../src/net/protocol';
 import { RemotePlayer } from '../src/net/remotePlayer';
 import { GuestSession, HostSession, type HostWorld } from '../src/net/session';
 import { Block } from '../src/world/blocks';
+import { Weather } from '../src/world/weather';
 
 const state = (over: Partial<PlayerState> = {}): PlayerState => ({
   time: 10,
@@ -111,6 +112,7 @@ describe('states over the network', () => {
     seed: 1,
     generation: 1,
     time: () => 0.5,
+    weather: () => new Weather(1).share(),
     position: () => [0, 70, 0],
     editedColumns: () => [],
     columnChunks: async () => [],
