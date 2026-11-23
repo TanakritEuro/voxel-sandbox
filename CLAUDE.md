@@ -26,11 +26,14 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 21 (weather) in progress, plan approved (`docs/milestone-21.md`); steps 1–5 (spells, saving, the sky; cover and
-wet ground; rain, snow and settled snow; lightning, thunder, rain's sound, rain dousing, sleeping through storms;
-the host's weather and bolts shared with guests, `PROTOCOL` 13) built: step 6 (measurements, playtest questions) left.
-Milestones 1–20 built (`docs/milestone-1.md` to `docs/milestone-20.md`), waiting for playtests
-(Milestone 20, a better-looking UI: one look for every screen (slate panels and buttons with a bevel, amber for
+Milestones 1–21 built (`docs/milestone-1.md` to `docs/milestone-21.md`), waiting for playtests
+(Milestone 21, weather, in every world: spells of clear, overcast, rain and storms from the seed, saved; a greyer, darker
+sky, more cloud (thinning over its layer), closer fog, the sun hidden, for looks only; rain, splashes and flakes ending at
+a cover worked out per column, snow in the mountains and nothing over desert and savanna; wet ground and settled snow
+drawn on tops open to the sky, melted by torches; lightning with a soft flash (a setting), thunder by the distance,
+rain's sound muffled under cover; rain puts out burning, a bed ends a storm by day, a night slept clears the weather;
+together, the host's weather and bolts, `PROTOCOL` 13; `?weather`, `?settled`;
+Milestone 20, a better-looking UI: one look for every screen (slate panels and buttons with a bevel, amber for
 what's chosen, titles in Pixelify Sans), the live world drifting behind the world list, world cards with pictures, a
 loading panel, health, hunger and air as gems, loaves and bubbles, the selected thing's name over the hotbar, the debug
 line only with F3, the pause menu's keys as keycaps, settings in sections with a UI size, the block picker in tabs with

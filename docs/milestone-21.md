@@ -1,6 +1,6 @@
 # Milestone 21: weather
 
-**Status:** plan approved (2026-11-22), all six decisions as written; steps 1–5 built.
+**Status:** built (2026-11-23), waiting for playtests.
 
 ## Goal
 
@@ -177,7 +177,7 @@ numbers are a playtest question.
    Done (2026-11-23).
 5. **Together:** the messages, guests, sleep; tests.
    Done (2026-11-23).
-6. **Measurements,** notes, playtest questions.
+6. **Measurements,** notes, playtest questions. Done (2026-11-23).
 
 ## Decisions (agreed 2026-11-22)
 
@@ -484,3 +484,68 @@ each guest, and a bolt's few now and then).
 
 **Not tried:** two browsers playing together (as in the milestones before: the loopback tests cover the sessions), so a
 guest's rain, thunder and flash haven't been seen in a guest's own window.
+
+## Step 6: measurements (2026-11-23)
+
+The finished milestone against `9bddd4c` (Milestone 20's end), in one sitting: production builds under one server,
+interleaved, medians, 752 x 457 at 1.5x unless said, sound running.
+
+| GPU (runs each) | Before | Clear | Storm | Snow settled, storm | Limit |
+| --- | --- | --- | --- | --- | --- |
+| The spawn (4) | 3.44 ms | 3.41 | 3.59 | | +0.3 clear, +1.5 storm or snow |
+| The mountains (4) | 4.38 | 4.42 | | 4.43 | the same |
+| Looking down at snow, 1920 x 1080 (4) | 4.38 | | | 4.74 | the same |
+| The spawn at radius 16 (3) | 4.63 | | 4.81 | | recorded |
+
+- **Everything inside the limits.** This sitting's GPU times are lower than the steps' (the mountains 4.4 ms against
+  8.0–8.4 before): the machine ran at another refresh rate today (120 fps, against 60). Only differences within a
+  sitting count, and they agree with the steps' (steps 2–4 have the 60 Hz tables).
+
+| | Measured | Limit |
+| --- | --- | --- |
+| Main thread standing, means | -0.12 to +0.12 ms, except looking down at snow at full HD: +0.30 (3.38 against 3.68, 4 runs) | +0.3 |
+| Generate job, a column (cover added, interleaved headless, 169 columns) | +0.10 ms at the spawn; the mountains' runs differed by more than that (-0.47) | +0.15 |
+| Sprint flight in a storm, frames over 20 ms (4 each) | 1 in the first of each, before and storm alike; none after | no more than clear |
+| Sprint flight, main thread p50 | before 1.97 ms, storm 1.95 | |
+| Holes while flying | none | |
+| Chunks modified or remeshed by weather | none (tested) | none |
+
+**The deployed page** (GitHub Pages, from step 5's push): it opens and storms in the browser, rain and wet ground as
+here, no console errors (`6-deployed.jpg`).
+
+## What changed from the plan, over the milestone
+
+- **The look:** at night only 0.3 of the storm's dimming is kept, or it was too dark to walk in; overcast's own numbers.
+- **Cover:** only what fills its block seen from above shelters, and liquids; fences, panes, doors and lanterns don't (they
+  left dry stripes). Its height takes ten bits. Tops at or above the cover count, half a block under near, two cells under
+  far.
+- **The clouds** thin over the 8 blocks above their layer, so a summit's valley shows in a storm.
+- **The biome edges' dither** is 0.02 of weight, not 0.06; **snowy blocks** outside the snow line don't darken in rain.
+- **Shaders hidden until wanted** (rain's, the bolt's) are compiled at startup: rain's first frame was 50 ms.
+- **The chunk shader's** interpolated numbers were packed: as first written it cost 0.8 ms in the mountains.
+- **Storms flash over deserts too;** a night slept leaves the ground wet or white; a flash still fades behind a menu.
+- **The sounds** were balanced by rendering them offline and measuring: the rain lower and less bright, the thunder's
+  body made up so it's heard over the rain from far off.
+- **Step 1's note** that a storm had spent part of its GPU allowance was wrong (noise); corrected in step 2.
+
+## Playtest questions
+
+1. **How often:** about a sixth of the time rain, a fourteenth storms. Too wet, too dry? Are the spells (6–14 minutes
+   dry, 2–6 wet) the right length?
+2. **The look of a storm:** too dark by day, or at night? Does overcast read as overcast? Is the fog closing in right?
+3. **What falls:** is the rain thick enough, too thick, too fast? Are the splashes seen? Are flakes the right size and
+   speed? Does anything fall where it shouldn't (under a roof, indoors)?
+4. **Wet ground:** noticeable, too dark? Do the dry patches under trees look right, or blotchy?
+5. **Snow:** does it settle at a good pace (2 minutes) and melt too fast or slow (5)? Do torches clearing a ring work for
+   you? Does far land whiten well, and is the white under far trees a bother?
+6. **Lightning:** too often, too seldom? Is the flash pleasant, or a distraction (Display → Lightning flashes turns it
+   off)? Do bolts look right near and far?
+7. **Sound:** please listen, since it was only measured: is the rain pleasant over a few minutes, or tiring? Is it
+   muffled enough indoors and in a doorway? Does thunder sound like thunder on your speakers, and come at a believable
+   time after the flash? Is snowy walking heard?
+8. **The two rules:** rain putting out burning, beds in a storm by day ending it: do they feel fair? Should a slept night
+   clear the weather?
+9. **Together:** does a guest see and hear the same storms, the same bolts? Does sleeping through a storm together work?
+   (Not tried with two browsers.)
+10. **Your laptop:** does a storm, or settled snow, at view distance 8 keep 60 fps? Any stutter when it starts raining or
+    at the first bolt?
