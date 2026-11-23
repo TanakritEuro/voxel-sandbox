@@ -28,9 +28,9 @@ function withMossback(x = 10, z = 10) {
 }
 
 describe('kept animals', () => {
-  it('each animal kind eats one thing; hostile kinds nothing', () => {
+  it('each animal kind eats one thing; hostile kinds and the hearthfolk nothing', () => {
     for (const k of KINDS) {
-      if (k.hostile) expect(k.food).toBeUndefined();
+      if (k.hostile || k.folk) expect(k.food).toBeUndefined();
       else expect([Item.Wheat, Item.Seeds, Item.Berries]).toContain(k.food);
     }
     expect(KINDS[MobKind.Hopper].food).toBe(Item.Seeds);

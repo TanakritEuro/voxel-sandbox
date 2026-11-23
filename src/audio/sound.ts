@@ -310,6 +310,20 @@ export class Sound {
         this.voiced('square', 64 * p, 48 * p, 0.9 * len, 260, 13, 5, gain * 0.25, t + 0.15, out);
         if (hurt) this.thump(70, 0.15, gain * 0.6, out);
         break;
+      case MobKind.Hearthfolk:
+        if (voice === 'greet') {
+          // A greeting: two warm notes rising, "hm-ho".
+          this.voiced('triangle', 190 * p, 200 * p, 0.16, 1400, 5, 2, gain * 0.4, t, out);
+          this.voiced('triangle', 250 * p, 270 * p, 0.24, 1400, 5, 3, gain * 0.4, t + 0.2, out);
+        } else if (hurt) {
+          // A short "oof", falling.
+          this.voiced('triangle', 230 * p, 160 * p, 0.14, 1100, 0, 0, gain * 0.45, t, out);
+        } else {
+          // Humming to itself: three soft notes, gliding.
+          const notes = [1, 1.125, 0.9][Math.floor(Math.random() * 3)];
+          for (let i = 0; i < 3; i++) this.voiced('sine', 150 * p * (i === 1 ? notes : 1), 152 * p * (i === 2 ? notes : 1), 0.32, 700, 4, 2, gain * 0.32, t + i * 0.34, out);
+        }
+        break;
       case MobKind.Gloamer:
         // A low rasp, shaking fast; hurt, a hiss over it.
         this.voiced('sawtooth', 74 * p, 52 * p, 1.1 * len, 480, 23, 14, gain * 0.55, t, out);

@@ -26,9 +26,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 22 (settlements) in progress, plan approved (`docs/milestone-22.md`); step 1 (settlements in the land, generation
-version 4, thatch and mud bricks, `?find=settlement`, `PROTOCOL` 14) built: steps 2–5 (the hearthfolk, trading, together,
-measurements) left.
+Milestone 22 (settlements) in progress, plan approved (`docs/milestone-22.md`); steps 1–2 (settlements in the land, generation
+version 4, thatch and mud bricks, `?find=settlement`; the hearthfolk living in them, wandering by day, greeting, in bed at
+night, never hurt; `PROTOCOL` 15) built: steps 3–5 (trading, together, measurements) left.
 Milestones 1–21 built (`docs/milestone-1.md` to `docs/milestone-21.md`), waiting for playtests
 (Milestone 21, weather, in every world: spells of clear, overcast, rain and storms from the seed, saved; a greyer, darker
 sky, more cloud (thinning over its layer), closer fog, the sun hidden, for looks only; rain, splashes and flakes ending at
@@ -175,7 +175,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
 - `src/settings.ts` — player settings (view distance, FOV, resolution, antialiasing, mouse, volume, name, UI size, lightning's flashes) in localStorage,
   cleaned on load; `flashesOn`: none either with less motion asked for.
 - `src/config.ts` — `TUNING`: seed, view radius, levels of detail, frame budget, player movement, fly speed,
-  reach, stepping up, light, day length, sleep, sky, weather, mobs (kept animals, breeding), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), lava (tick, drop search, its view, swimming, burning), logic, survival (stacks, tool speeds and
+  reach, stepping up, light, day length, sleep, sky, weather, mobs (kept animals, breeding), the hearthfolk (`folk`), vehicles (carts, boats), water (tick, per-tick limit, drop search, push), lava (tick, drop search, its view, swimming, burning), logic, survival (stacks, tool speeds and
   wear, without a pick, sticks and berries from leaves, health, falls, air, cactus, healing, hunger, food,
   eating, meat from animals, smelting time, items on the ground, farming), net.
 - `src/math.ts` — seeded PRNG and coordinate hash.
@@ -278,7 +278,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   player's box, aging out, a cap, burnt up in lava (`takeBurned`)), `health.ts` (`Health`: falls from where the feet last stood,
   air and drowning, cactus, lava (4 points every half second in it, `burning` 3 s after unless in water or rain), hunger (faster working hard; starving down to 1; `eat`), healing only well
   fed, death; stepped a frame at a time with how the body is).
-- `src/mobs/` — `kinds.ts` (the six animals (the ambler in the savanna, the wader in the swamp), the gloamer and the delver (deep caves): size,
+- `src/mobs/` — `kinds.ts` (the six animals (the ambler in the savanna, the wader in the swamp), the gloamer and the delver (deep caves), the hearthfolk (`folk`): size,
   speeds, climb and drop, biomes, ground, groups, health in points, how far the head nods walking (`headBob`), the `food`
   that feeds it (wheat, seeds or berries); `hostile`: sight, reach, hit, darkness to appear in, sun to fade in, how many, `below` (only under that height:
   appearing, wandering, hunting), `loot` (a gloamer's ember, a delver's raw iron)), `brain.ts` (a mob: idle, wander, flee, rest, and hunt for hostile kinds (paths to the
@@ -298,10 +298,15 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   breeding in `MobManager`: a kept, grown one fed while not waiting is in love, two of a kind in love near each other paired
   to court, a young one born when they meet (`takeBorn`), the parents waiting; each young one given a grown one to follow;
   `TUNING.mobs.breeding`),
+  `folk.ts` (the hearthfolk: `FolkHome` (well, bed, where they get up, a trader's place by the counter), `homesOf` a
+  settlement, one per bed; `stepFolk`: idle and wandering round the well, the trader at its counter, turning to and greeting a
+  player near once a visit, running from hostile mobs, home at dusk by a path through their open doors, `intoBed` (put there
+  when there's no way), up in the morning; never hurt (`hurt`: a step back); `MobManager` brings a settlement's folk when its
+  well's and homes' columns are loaded and lets them all go with the well's column; not in the cap, not saved),
   `blockCache.ts` (blocks for a search by number-keyed chunk, much faster than
   `World.getBlock`), `models.ts` (each kind's boxes, pivots, textures and how each part moves; pure
-  data), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
-  and ears; pure).
+  data; `tint`: a part coloured by the mob's colouring), `pose.ts` (legs swinging with the ground covered, grazing, lying down, a hopper's lean
+  and ears, the hearthfolk lying in bed (`lie`); pure).
 - `src/vehicles/` — vehicles (Milestone 18): `vehicle.ts` (`Vehicle`: a kind (cart, chest cart, boat), a body, facing and
   pitch, `OnRail` (a rail's block and how far along its path), speed along it, the rider, hits, a chest cart's 27 slots;
   `rideable`, `seatHeight`), `boat.ts` (`stepBoat`: floating sprung to the water's surface (`surfaceAt`), rowed
@@ -361,8 +366,8 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `heldBlock.ts` — the held block (a lone block meshed,
   drawn in its own pass; bob, swing and switch motion, pure), or a held item as its picture made a
   slab (`itemMesh`). `mobRenderer.ts` — the mobs (from a `MobView`: the manager, or a guest's mirror): each
-  kind's model posed, one InstancedMesh per box (an instance per copy per mob, so at most 19 draw
-  calls), lit by the world's light and fogged, drawn between physics steps; its shader compiled
+  kind's model posed, one InstancedMesh per box (an instance per copy per mob), the hearthfolk's robes tinted by
+  `COLOURINGS` and laid on their backs in bed, lit by the world's light and fogged, drawn between physics steps; its shader compiled
   at startup. `mobTextures.ts` — their 16 × 16 textures painted at startup, a face and its box's
   sides side by side in one so a head is one draw call. `vehicleRenderer.ts` — carts, chest carts and boats (bobbing afloat), as the mobs are drawn: a few boxes each,
   an InstancedMesh per box, facing along the rail and tipped on slopes. `playerRenderer.ts` — other players: a
@@ -399,7 +404,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (14), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (15), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
   blocks; the world's mode in the welcome and when it changes, the time and weather in it and every 2 s (`shareTime`, at once after
@@ -466,7 +471,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with, rails, carts, a boat, a map and lanterns), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),
-  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?railway` lays a loop of rails 40 x 20 round you
+  `?bot` (`?bot=3`) opens the world to test guests in the page, `?join=<code>` joins a friend's world, `?flood=guest` waits for a guest, `?mobs=0` turns mobs off and `?mobs=40` sets their cap, `?showcase` stands one of each kind in front of you (`?showcase=ambler,wader` just those; `?showcase=hearthfolk`), `?farmyard` (`?farmyard=32`) puts kept animals of every kind round you, every other one young, `?litter` (`?litter=100`) drops items round you (256 by default), `?farm` plants a field of wheat round you, `?shapes` builds rows of fences, panes, stairs and slabs round you, `?railway` lays a loop of rails 40 x 20 round you
   on a stone bed (a hump with slopes and powered rails before it each way, ten powered rails with a wire and a switch) and
   puts you in a cart on it (`?railway=60` reports frame times after a minute riding), `?boat` puts you in a boat on
   the nearest water (`?find=river&boat`), `?time=0.5` holds the time of day, `?weather=clear|overcast|rain|storm` holds the weather (`?autofly` and `?backdrop` are

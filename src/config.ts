@@ -487,6 +487,31 @@ export const TUNING = {
     calls: [8, 24] as [number, number],
     hearing: 24,
   },
+  /** The hearthfolk (Milestone 22, `mobs/folk.ts`). */
+  folk: {
+    /** Daylight below this sends them home to bed; above `wake` they get up. Earlier than the animals: home by dusk. */
+    home: 0.38,
+    wake: 0.45,
+    /** By day they wander to places this far from the well at most (blocks, across); further than `reach` they come back. */
+    roam: 22,
+    reach: 32,
+    /** Idle between wanders (seconds). */
+    idle: [3, 9] as [number, number],
+    /** A trader goes back to stand by its counter this often of the times it picks somewhere to go. */
+    counter: 0.75,
+    /** A player this close (blocks, across) is turned to, for up to `greetSeconds`; a greeting at most every `greetAgain`. */
+    greet: 3.5,
+    greetSeconds: 6,
+    greetAgain: 20,
+    /** A hostile mob this close (blocks) sends them running. */
+    scatter: 10,
+    /** Going home: within this of the place by its bed (blocks), into bed; with no way after `homeTries` tries, or after `homeSeconds`, put there. */
+    arrive: 1.2,
+    homeTries: 3,
+    homeSeconds: 90,
+    /** A hit's push (blocks / s), much less than an animal's: a step back. */
+    knockback: 2.5,
+  },
   /** Vehicles (Milestone 18, `src/vehicles/`). */
   vehicles: {
     /** Stepped at this fixed rate (seconds). */

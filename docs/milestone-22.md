@@ -1,6 +1,6 @@
 # Milestone 22: settlements
 
-**Status:** plan approved (2026-11-23), all six decisions as written; step 1 built.
+**Status:** plan approved (2026-11-23), all six decisions as written; steps 1–2 built.
 
 ## Goal
 
@@ -128,6 +128,7 @@ stopped).
 1. **Settlements in the land:** the layout, blocks, version 4, thatch and mud bricks, `?find=settlement`; tests; bench.
    Done (2026-11-23).
 2. **The hearthfolk:** kind, looks, brain, coming and going with the settlement, voices; tests.
+   Done (2026-11-23).
 3. **Trading:** offers, stock, the screen, the finder's map and the crystal pick; tests.
 4. **Together:** guests trading through the host; tests.
 5. **Measurements,** screenshots of settlements, notes, playtest questions.
@@ -202,3 +203,47 @@ land round them now and then; no hut on stilts or walled in dirt was seen. No co
 - **Hut chests have loot,** a household's, from a table of their own.
 - **A settlement needs a field;** two places are tried for its middle, so they come about one every 780–970 blocks.
 - **Ruins and camps are kept 24 blocks further off** than the settlement's reach, so none stands just outside.
+
+## Step 2: the hearthfolk (2026-11-23)
+
+**Built:**
+- **The kind** (`MobKind.Hearthfolk`, `KindInfo.folk`): 0.6 x 1.8, a walk of 1.3 blocks a second, swims; no biome,
+  ground, food or health that matters.
+- **Looks:** a long belted tunic with sleeves, brown trousers, a weathered face, a hood (top, back and sides, moving with
+  the head), a leather satchel at the hip. Robe and hood are undyed cloth tinted by one of three colourings (rust, moss,
+  slate) by id (`ModelPart.tint`, `COLOURINGS`), so guests see the same. In bed they lie on their backs along it, head
+  on the pillow (`Pose.lie`). They don't graze; greeting, they look up a little.
+- **Their brain** (`mobs/folk.ts`, from `stepBrain`): by day idle 3–9 s, then a walk to somewhere 3–22 blocks from
+  the well (the trader to its place beside the counter three times in four, looking out from it); a player within 3.5
+  blocks: stop and turn to them for up to 6 s, once a visit, a greeting at most every 20 s; a hostile mob within 10
+  blocks: run; past 32 from the well: the next walk is back. Below daylight 0.38 they walk home (a path to the floor
+  beside their bed, through their open doors) and lie down; with no way after 3 tries or after 90 s they're put there.
+  Above 0.45 they get up beside the bed.
+- **Coming and going** (`MobManager`): when a column loads, each settlement reaching into it whose well's column and
+  every home's are loaded gets its folk, one for each bed, beside it (in it at night). When the well's column or the
+  column any of them stands in unloads, all of that settlement's go. Not despawned for being far, not in the cap, not
+  in `?farmyard`, never kept or saved.
+- **Can't be hurt:** a hit is a step back (2.5 blocks a second, none in bed) and a cry; no flash of health lost, no
+  fleeing.
+- **Voices:** humming to themselves (three soft gliding notes) now and then, never asleep; a greeting of two warm
+  notes rising; a short falling "oof" when hit.
+- **`PROTOCOL` 15:** the mob snapshots carry the new states (sleep, home, greet) and the greeting's sound, and kind 8.
+
+**Tests:** `tests/hearthfolk.test.ts` (13): the kind; coming with the settlement, not before its homes' land, once,
+beside the beds, one trader; in bed at night; not in the cap; going with the well's column and back when it loads, not
+for being far; not hurt; wandering for 90 s never past the reach, the trader mostly at its counter; walking home at dusk
+(none put there) and lying in their own beds the right way, still until morning, up beside them; put to bed when there's
+no way; turning to and greeting a player once a visit; running from a gloamer; their snapshots and greeting to guests;
+a showcased one standing. The animal-only tests leave them out. 770 in all pass; the build passes.
+
+**Looked at** (seed 123's settlement): 8 folk by day, wandering, two turning to the camera as it came near, the three
+colourings; at night one lying in its bed (lowered after the first look: it floated above the blanket). The first tint
+was too pale (tinted after the light was made linear); it's tinted in sRGB now. No console errors.
+
+**Measured:** in the settlement by day with `?stats`, 8 folk and 24 animals: the mobs took 0.1–0.5 ms a frame,
+0–8 path searches a second, none put off. The full measurements are step 5's.
+
+**Changed from the plan:**
+- **`PROTOCOL` 15 now** (mob snapshots changed); step 4 makes it 16.
+- **Folk appear beside their beds,** not "each in its home" at a random spot; at night, in them.
+- **A stuck one is put to bed** (after 3 failed searches or 90 s on the way), rather than back home by day.

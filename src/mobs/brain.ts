@@ -26,9 +26,14 @@ import { createRng, type Rng } from '../math';
 import { BLOCKS } from '../world/blocks';
 import { type BlockSource, type Body, createBody, HALF_WIDTH, HEIGHT, stepMob } from '../world/physics';
 import { headroom, KINDS, type MobKind } from './kinds';
+import { type FolkHome, stepFolk } from './folk';
 import { findPath, type Path, type PathOptions } from './pathfind';
 
-export type MobState = 'idle' | 'wander' | 'flee' | 'rest' | 'hunt' | 'court';
+// The hearthfolk (Milestone 22) think in `folk.ts`: by day they wander round their settlement, turn to a
+// player who comes near (greet) and run from hostile mobs; at dusk they walk home (home) and lie in bed
+// (sleep) until morning. They can't be hurt.
+
+export type MobState = 'idle' | 'wander' | 'flee' | 'rest' | 'hunt' | 'court' | 'sleep' | 'home' | 'greet';
 
 /** A player a hostile mob can hunt: where their feet are. */
 export interface Prey {
@@ -75,6 +80,11 @@ export interface Mob {
   mate: Mob | null;
   /** A young one's grown one to stay near. */
   lead: Mob | null;
+  /** The hearthfolk: where it lives (null for any other kind, or a showcased one). */
+  home: FolkHome | null;
+  /** The hearthfolk: seconds since it last greeted anyone, and whether it has turned to the player near it now. */
+  greeted: number;
+  noticed: boolean;
   readonly rng: Rng;
 }
 
@@ -89,6 +99,12 @@ export interface MobContext {
   prey?: readonly Prey[];
   /** A hostile mob hits player `target` (an index into `prey`). */
   attack?(mob: Mob, target: number): void;
+  /** Every player (the hearthfolk turn to them), whatever the mode. */
+  players?: readonly Prey[];
+  /** Where the hostile mobs are (the hearthfolk run from them). */
+  dangers?: readonly Prey[];
+  /** One of the hearthfolk greets a player. */
+  greet?(mob: Mob): void;
 }
 
 /** The pathfinder's options for a kind. */
@@ -130,6 +146,9 @@ export function createMob(id: number, kind: MobKind, x: number, y: number, z: nu
     love: 0,
     mate: null,
     lead: null,
+    home: null,
+    greeted: Number.POSITIVE_INFINITY,
+    noticed: false,
     rng,
   };
 }
@@ -168,13 +187,24 @@ function grow(mob: Mob, blocks: BlockSource): void {
 }
 
 /** The block its feet are in. */
-const feet = (mob: Mob): [number, number, number] => [Math.floor(mob.body.x), Math.floor(mob.body.y + 0.01), Math.floor(mob.body.z)];
+export const feet = (mob: Mob): [number, number, number] => [Math.floor(mob.body.x), Math.floor(mob.body.y + 0.01), Math.floor(mob.body.z)];
 
-const between = (rng: Rng, [lo, hi]: readonly [number, number]) => lo + (hi - lo) * rng();
+export const between = (rng: Rng, [lo, hi]: readonly [number, number]) => lo + (hi - lo) * rng();
 
 /** Hit from (x, z) for `points`: knocked away and up, then it flees (a hostile one, knocked back less, comes on again). */
 export function hurt(mob: Mob, fromX: number, fromZ: number, points = 1): void {
   const b = mob.body;
+  // The hearthfolk can't be hurt: a step back (none in bed), nothing else.
+  if (KINDS[mob.kind].folk) {
+    mob.sinceHurt = 0;
+    if (mob.state === 'sleep') return;
+    const d = Math.hypot(b.x - fromX, b.z - fromZ) || 1;
+    b.vx = ((b.x - fromX) / d) * TUNING.folk.knockback;
+    b.vz = ((b.z - fromZ) / d) * TUNING.folk.knockback;
+    b.vy = 2;
+    b.onGround = false;
+    return;
+  }
   const hostile = KINDS[mob.kind].hostile !== undefined;
   const dx = b.x - fromX;
   const dz = b.z - fromZ;
@@ -319,7 +349,7 @@ export function goTo(mob: Mob, ctx: MobContext, goal: [number, number, number], 
 }
 
 /** Follow `path` to `goal` from its start. */
-function setPath(mob: Mob, path: Path, goal: [number, number, number], near: number): void {
+export function setPath(mob: Mob, path: Path, goal: [number, number, number], near: number): void {
   // No waypoints at all: it starts near enough, so there's no way to walk (a hunter goes straight).
   mob.path = path.length ? path : null;
   mob.next = 0;
@@ -330,7 +360,7 @@ function setPath(mob: Mob, path: Path, goal: [number, number, number], near: num
 }
 
 /** Where feet can stand in column (x, z) within a few blocks of height y, or null. */
-function standingAt(blocks: BlockSource, x: number, z: number, y: number, height: number): number | null {
+export function standingAt(blocks: BlockSource, x: number, z: number, y: number, height: number): number | null {
   for (let ny = y + 4; ny >= y - 6; ny--) {
     const below = BLOCKS[blocks.getBlock(x, ny - 1, z)];
     if (below.passable) continue;
@@ -345,7 +375,7 @@ function standingAt(blocks: BlockSource, x: number, z: number, y: number, height
 }
 
 /** A place a direction and distance away to wander or flee to, if one stands there. */
-function placeToward(mob: Mob, ctx: MobContext, angle: number, distance: number): [number, number, number] | null {
+export function placeToward(mob: Mob, ctx: MobContext, angle: number, distance: number): [number, number, number] | null {
   const b = mob.body;
   const x = Math.floor(b.x + Math.sin(angle) * distance);
   const z = Math.floor(b.z + Math.cos(angle) * distance);
@@ -366,6 +396,7 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
     grow(mob, ctx.blocks);
   }
   const young = mob.grow > 0 ? M.breeding.youngSpeed : 1;
+  if (k.folk) return stepFolk(mob, ctx, dt);
 
   // A hostile kind hunts the players it sees, and never rests.
   if (k.hostile) {
@@ -433,8 +464,8 @@ export function stepBrain(mob: Mob, ctx: MobContext, dt = TUNING.mobs.step): voi
   follow(mob, ctx, speed * young, dt);
 }
 
-/** Along its path (if it has one, wandering, fleeing, hunting or courting) at `speed`, then moving and turning. */
-function follow(mob: Mob, ctx: MobContext, speed: number, dt: number): void {
+/** Along its path (if it has one, wandering, fleeing, hunting, courting or going home) at `speed`, then moving and turning. */
+export function follow(mob: Mob, ctx: MobContext, speed: number, dt: number): void {
   const M = TUNING.mobs;
   const b = mob.body;
   let vx = 0;
@@ -446,7 +477,7 @@ function follow(mob: Mob, ctx: MobContext, speed: number, dt: number): void {
     mob.state = 'idle';
     mob.timer = between(mob.rng, M.idle);
   }
-  if ((mob.state === 'wander' || mob.state === 'flee' || mob.state === 'hunt' || mob.state === 'court') && mob.path && mob.next < mob.path.length) {
+  if ((mob.state === 'wander' || mob.state === 'flee' || mob.state === 'hunt' || mob.state === 'court' || mob.state === 'home') && mob.path && mob.next < mob.path.length) {
     const w = mob.path[mob.next];
     const dx = w[0] + 0.5 - b.x;
     const dz = w[2] + 0.5 - b.z;
@@ -486,7 +517,7 @@ function follow(mob: Mob, ctx: MobContext, speed: number, dt: number): void {
   moveAndTurn(mob, ctx, vx, vz, jump, dt);
 }
 
-function moveAndTurn(mob: Mob, ctx: MobContext, vx: number, vz: number, jump: boolean, dt: number): void {
+export function moveAndTurn(mob: Mob, ctx: MobContext, vx: number, vz: number, jump: boolean, dt: number): void {
   const k = KINDS[mob.kind];
   const b = mob.body;
   const moving = vx !== 0 || vz !== 0;

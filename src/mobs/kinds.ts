@@ -1,7 +1,8 @@
 // The kinds of mob: six invented animals, all passive, each at home in a biome or two (the ambler and
 // the wader, Milestone 17, in the savanna and the swamp); and the
 // gloamer, a hostile thing of the dark (survival only), that appears where it's dark rather than
-// in a biome and hunts players; and the delver (Milestone 17), slow and tough, only deep under the ground. Their size, how they move and how far their paths may go, how
+// in a biome and hunts players; and the delver (Milestone 17), slow and tough, only deep under the ground; and the
+// hearthfolk (Milestone 22), the people of the settlements, not animals at all. Their size, how they move and how far their paths may go, how
 // much hitting they take; their looks are in `render/mobRenderer.ts`.
 
 import { Item } from '../survival/items';
@@ -17,6 +18,8 @@ export enum MobKind {
   Ambler = 5,
   Wader = 6,
   Delver = 7,
+  /** Milestone 22: the folk of the settlements, not an animal (`folk.ts`). */
+  Hearthfolk = 8,
 }
 
 /** What makes a kind hostile: it hunts players and hits them. */
@@ -69,6 +72,8 @@ export interface KindInfo {
   /** What it eats, fed by hand (an item): fed, a wild one is kept (`kept.ts`). None for hostile kinds. */
   food?: number;
   hostile?: Hostile;
+  /** The hearthfolk: living in a settlement, coming and going with it, never hurt, fed, kept or counted in the cap. */
+  folk?: boolean;
 }
 
 export const KINDS: readonly KindInfo[] = [
@@ -225,6 +230,26 @@ export const KINDS: readonly KindInfo[] = [
     health: 12,
     // Never sees the sun (fadeSun beyond full sunlight), never comes up past its depth.
     hostile: { sight: 16, reach: 0.9, damage: 4, push: 7, every: 2, darkness: 4, fadeSun: 16, most: 2, distance: [16, 32], below: 40, loot: { item: Item.RawIron, count: [1, 2] } },
+  },
+  {
+    // About a player's size, hooded, unhurried; never far from home.
+    name: 'Hearthfolk',
+    halfWidth: 0.3,
+    height: 1.8,
+    walkSpeed: 1.3,
+    runSpeed: 3.8,
+    jumpHeight: 1.25,
+    step: 1,
+    drop: 3,
+    swim: true,
+    maxNodes: 1200,
+    hops: false,
+    headBob: 0.03,
+    biomes: [],
+    ground: [],
+    group: [1, 1],
+    health: 1,
+    folk: true,
   },
 ];
 

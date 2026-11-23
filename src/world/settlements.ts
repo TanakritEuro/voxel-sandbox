@@ -509,3 +509,6 @@ function footprints(st: Settlement): Rect[] {
     ...st.fields.map((f) => (FACINGS[f.facing][0] !== 0 ? rectAround(f.x, f.z, 3, 4) : rectAround(f.x, f.z, 4, 3))),
   ];
 }
+
+/** For the hearthfolk (`mobs/folk.ts`): a place given across and forward of something facing a way, and the way back. */
+export { back as backFacing, place as localPlace };

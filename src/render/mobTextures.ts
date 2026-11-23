@@ -118,5 +118,22 @@ export function mobTextures(): Record<MobTexture, THREE.DataTexture> {
       return shade(rgb(0x8a8c8e), 1 + (r() - 0.5) * 0.22);
     }),
     delverFace: face(23, 0x554b44, 0xff9a2a, 0x3a332e, 0xffd27a),
+    // The hearthfolk: undyed cloth (each one's colouring tints it), a woven texture with a hem; a hood a
+    // shade darker; brown trousers; leather for the belt and satchel; a weathered face with dark eyes.
+    folkRobe: painted(24, (x, y, r) => {
+      if (y >= 14) return shade(rgb(0xb8b2a6), 1 + (r() - 0.5) * 0.08);
+      const weave = (x + y) % 2 === 0 ? 1.04 : 0.95;
+      return shade(rgb(0xe4ded2), weave * (1 + (r() - 0.5) * 0.1));
+    }),
+    folkHood: painted(25, (x, y, r) => shade(rgb((x * 3 + y * 5) % 7 === 0 ? 0xb4aea2 : 0xcfc9bc), 1 + (r() - 0.5) * 0.1)),
+    folkSkin: fur(26, 0xb98a64, 0.12),
+    folkFace: painted(27, (x, y, r) => {
+      if ((y === 7 || y === 8) && (x === 4 || x === 5 || x === 10 || x === 11)) return rgb(x === 5 || x === 10 ? 0x1a1410 : 0xf2ece0);
+      if (y === 5 && x >= 3 && x <= 12 && x !== 7 && x !== 8) return rgb(0x5a4030);
+      if (y === 11 && x >= 6 && x <= 9) return rgb(0x8a5a44);
+      return shade(rgb(0xb98a64), 1 + (r() - 0.5) * 0.12);
+    }),
+    folkTrousers: painted(28, (_x, y, r) => shade(rgb(y >= 13 ? 0x2e241a : 0x5a4632), 1 + (r() - 0.5) * 0.14)),
+    folkLeather: painted(29, (x, y, r) => (x % 5 === 2 && y % 2 === 0 ? rgb(0xc8b088) : shade(rgb(0x7a5230), 1 + (r() - 0.5) * 0.16))),
   };
 }

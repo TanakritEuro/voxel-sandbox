@@ -19,7 +19,7 @@ import { unpackState } from './playerState';
 import { type SharedWeather, sharedWeatherOf } from '../world/weather';
 import type { Bolt } from '../world/lightning';
 
-export const PROTOCOL = 14;
+export const PROTOCOL = 15;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;

@@ -28,7 +28,13 @@ export type MobTexture =
   | 'waderFace'
   | 'delverHide'
   | 'delverPlate'
-  | 'delverFace';
+  | 'delverFace'
+  | 'folkRobe'
+  | 'folkHood'
+  | 'folkSkin'
+  | 'folkFace'
+  | 'folkTrousers'
+  | 'folkLeather';
 
 /**
  * How a part moves: not at all; a leg swinging forward and back (and folding at rest); a
@@ -53,6 +59,8 @@ export interface ModelPart {
   texture: MobTexture;
   /** The front face (-z), if it differs (a face with eyes). */
   front?: MobTexture;
+  /** Coloured by the mob's colouring (the hearthfolk's robes and hoods: `mobRenderer.ts`'s `COLOURINGS`). */
+  tint?: boolean;
 }
 
 export interface Model {
@@ -69,7 +77,56 @@ const fourLegs = (x: number, y: number, front: number, back: number): ModelPart[
   { pivot: [x, y, back], phase: 1 },
 ];
 
+/** The hearthfolk's hood: a box over the head's top, one down its back and one down each side. */
+const HOOD_PIVOT: V3 = [0, 1.38, 0];
+
 export const MODELS: Record<MobKind, Model> = {
+  [MobKind.Hearthfolk]: {
+    headPivot: HOOD_PIVOT,
+    parts: [
+      // A long tunic, belted, its sleeves the same cloth.
+      { size: [0.52, 0.66, 0.3], at: [{ pivot: [0, 1.05, 0] }], offset: [0, 0, 0], anim: 'none', texture: 'folkRobe', tint: true },
+      { size: [0.54, 0.07, 0.32], at: [{ pivot: [0, 0.84, 0] }], offset: [0, 0, 0], anim: 'none', texture: 'folkLeather' },
+      { size: [0.2, 0.72, 0.22], at: [{ pivot: [-0.12, 0.72, 0], phase: 1 }, { pivot: [0.12, 0.72, 0], phase: -1 }], offset: [0, -0.36, 0], anim: 'leg', texture: 'folkTrousers' },
+      {
+        size: [0.15, 0.62, 0.18],
+        at: [
+          { pivot: [-0.335, 1.36, 0], phase: -1 },
+          { pivot: [0.335, 1.36, 0], phase: 1 },
+        ],
+        offset: [0, -0.28, 0],
+        anim: 'arm',
+        texture: 'folkRobe',
+        tint: true,
+      },
+      { size: [0.36, 0.36, 0.36], at: [{ pivot: HOOD_PIVOT }], offset: [0, 0.18, -0.01], anim: 'head', texture: 'folkSkin', front: 'folkFace' },
+      // The hood, moving with the head.
+      {
+        size: [0.44, 0.08, 0.44],
+        at: [{ pivot: HOOD_PIVOT }],
+        offset: [0, 0.39, 0.02],
+        anim: 'none',
+        onHead: true,
+        texture: 'folkHood',
+        tint: true,
+      },
+      { size: [0.44, 0.4, 0.06], at: [{ pivot: HOOD_PIVOT }], offset: [0, 0.17, 0.21], anim: 'none', onHead: true, texture: 'folkHood', tint: true },
+      {
+        size: [0.05, 0.3, 0.4],
+        at: [
+          { pivot: HOOD_PIVOT, offset: [-0.205, 0.22, 0.02] },
+          { pivot: HOOD_PIVOT, offset: [0.205, 0.22, 0.02] },
+        ],
+        offset: [0, 0, 0],
+        anim: 'none',
+        onHead: true,
+        texture: 'folkHood',
+        tint: true,
+      },
+      // A satchel at the right hip.
+      { size: [0.1, 0.22, 0.26], at: [{ pivot: [0.31, 0.92, 0.03] }], offset: [0, 0, 0], anim: 'none', texture: 'folkLeather' },
+    ],
+  },
   [MobKind.Mossback]: {
     headPivot: [0, 0.72, -0.48],
     parts: [

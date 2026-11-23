@@ -35,6 +35,14 @@ const FOLD = Math.PI * 0.45;
 const ARM_REACH = 1.25;
 /** A beetle's legs swing sideways this much more than a walker's forward. */
 const YAW_SWING = 1.5;
+/** The hearthfolk's colourings (rust, moss, slate), tinting their undyed robes and hoods, by id. */
+export const COLOURINGS: readonly [number, number, number][] = [
+  [0.78, 0.36, 0.24],
+  [0.45, 0.62, 0.32],
+  [0.38, 0.5, 0.75],
+];
+/** A body lying down is lifted this far: its back on what it lies on, the hood sunk a little into the pillow. */
+const LIE_LIFT = 0.17;
 
 /**
  * A box geometry whose faces are shaded by direction (+x, -x, +y, -y, +z, -z), as the chunks are.
@@ -65,6 +73,7 @@ const place = new THREE.Matrix4();
 const step = new THREE.Matrix4();
 const scaled = new THREE.Vector3();
 const colour = new THREE.Color();
+const tinted = new THREE.Color();
 
 export class MobRenderer {
   readonly group = new THREE.Group();
@@ -112,8 +121,12 @@ export class MobRenderer {
       const head = MODELS[mob.kind].headPivot;
       // A young one smaller, all of it (`sizeOf`).
       const size = sizeOf(mob);
-      place.makeRotationY(yaw).setPosition(x, y - pose.drop * size, z);
+      place.makeRotationY(yaw);
+      // Lying on its back: tipped so its head goes behind it.
+      if (pose.lie) place.multiply(step.makeRotationX(Math.PI / 2));
+      place.setPosition(x, y - pose.drop * size + (pose.lie ? LIE_LIFT : 0), z);
       if (size !== 1) place.scale(scaled.set(size, size, size));
+      const [tr, tg, tb] = COLOURINGS[mob.id % COLOURINGS.length];
       for (const p of this.parts) {
         if (p.kind !== mob.kind) continue;
         const part = p.part;
@@ -150,7 +163,9 @@ export class MobRenderer {
           m.multiply(step.makeTranslation(ox, oy, oz));
           const n = p.mesh.count++;
           p.mesh.setMatrixAt(n, m);
-          p.mesh.setColorAt(n, colour);
+          // (Tinted as the light is given, in sRGB: tinting the linear colour washes it out.)
+          if (part.tint) p.mesh.setColorAt(n, tinted.setRGB(light * tr, light * (1 - flash) * tg, light * (1 - flash) * tb, THREE.SRGBColorSpace));
+          else p.mesh.setColorAt(n, colour);
         }
       }
     }

@@ -25,8 +25,8 @@ export interface MobSnap {
   grow: number;
 }
 
-const STATES: readonly MobState[] = ['idle', 'wander', 'flee', 'rest', 'hunt', 'court'];
-const VOICES: readonly MobVoice[] = ['call', 'hurt', 'land', 'puff'];
+const STATES: readonly MobState[] = ['idle', 'wander', 'flee', 'rest', 'hunt', 'court', 'sleep', 'home', 'greet'];
+const VOICES: readonly MobVoice[] = ['call', 'hurt', 'land', 'puff', 'greet'];
 const MOB_FLOATS = 14;
 const SOUND_FLOATS = 5;
 /** Far beyond the world: a number like this is junk. */

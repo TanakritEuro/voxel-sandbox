@@ -966,6 +966,6 @@ describe('weather together', () => {
   });
 
   it('turns a guest of another version away', () => {
-    expect(PROTOCOL).toBe(14); // 14: generation version 4 (settlements)
+    expect(PROTOCOL).toBe(15); // 14: generation version 4 (settlements); 15: the hearthfolk among the mobs
   });
 });

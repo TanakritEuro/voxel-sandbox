@@ -65,7 +65,7 @@ export class KeptAnimals {
       if (kept.count >= TUNING.mobs.kept) break;
       if (typeof r !== 'object' || r === null) continue;
       const { kind, x, y, z, grow, wait } = r as Record<string, unknown>;
-      if (!Number.isInteger(kind) || (kind as number) < 0 || (kind as number) >= KINDS.length || KINDS[kind as number].hostile) continue;
+      if (!Number.isInteger(kind) || (kind as number) < 0 || (kind as number) >= KINDS.length || KINDS[kind as number].hostile || KINDS[kind as number].folk) continue;
       if (![x, y, z].every((v) => typeof v === 'number' && Number.isFinite(v))) continue;
       const time = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
       kept.store({ kind: kind as MobKind, x: x as number, y: y as number, z: z as number, grow: time(grow), wait: time(wait) });

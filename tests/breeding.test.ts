@@ -171,7 +171,7 @@ describe('the young, for guests', () => {
     const m = new MobManager(world, 3, 0);
     expect(m.farmyard(10, 10, 12)).toBe(12);
     expect(m.mobs.every((x) => x.kept)).toBe(true);
-    expect(new Set(m.mobs.map((x) => x.kind)).size).toBe(KINDS.filter((k) => !k.hostile).length);
+    expect(new Set(m.mobs.map((x) => x.kind)).size).toBe(KINDS.filter((k) => !k.hostile && !k.folk).length);
     expect(young(m)).toHaveLength(6);
   });
 });

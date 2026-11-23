@@ -26,6 +26,11 @@
 // a puff. It hunts the players given as prey (`brain.ts`), and its hits are kept for the game to
 // take (`takeAttacks`).
 //
+// The hearthfolk (Milestone 22) come with their settlement: once the columns of its well and of every
+// home in it are loaded, one appears for each bed, beside it (in it, at night); when the well's column or
+// the one a folk stands in unloads, the whole settlement's folk go. They aren't saved, so they come back
+// as they were. They aren't counted in the cap, despawned for being far, or hurt (`folk.ts`).
+//
 // Kept animals breed (`TUNING.mobs.breeding`): one fed while grown and not waiting is in love for a
 // while; two of a kind in love near each other are paired and court (`brain.ts`), and when they meet a
 // young one is born beside them, kept, and each parent waits before it may breed again. Each young one
@@ -34,10 +39,11 @@
 import { TUNING } from '../config';
 import { createRng, FixedStep, type Rng } from '../math';
 import { BLOCKS, Block } from '../world/blocks';
-import { toChunk, WORLD_HEIGHT } from '../world/coords';
+import { CHUNK_SIZE, toChunk, WORLD_HEIGHT } from '../world/coords';
 import type { World } from '../world/world';
 import { BlockCache } from './blockCache';
 import { createMob, fitBody, hurt, type Mob, type MobContext, pathOptions, type Prey, stepBrain } from './brain';
+import { homesOf, intoBed, outOfBed, settlementKey } from './folk';
 import { type KeptRecord, KeptAnimals } from './kept';
 import { headroom, KINDS, MobKind } from './kinds';
 import { findPath } from './pathfind';
@@ -62,8 +68,8 @@ export interface Attack {
   fromZ: number;
 }
 
-/** What a mob sounds: its call, a cry when hit, a hopper landing, the puff it goes in. */
-export type MobVoice = 'call' | 'hurt' | 'land' | 'puff';
+/** What a mob sounds: its call, a cry when hit, a hopper landing, the puff it goes in, the hearthfolk's greeting. */
+export type MobVoice = 'call' | 'hurt' | 'land' | 'puff' | 'greet';
 
 /** A sound a mob made, where it was. */
 export interface MobSound {
@@ -90,6 +96,10 @@ export class MobManager {
   private nearDungeon(p: Prey): boolean {
     return this.world.generator.dungeonNear(p.x, p.y, p.z, TUNING.mobs.dungeonReach);
   }
+  /** The settlements whose folk are here, by key (`folk.ts`'s `settlementKey`). */
+  private readonly settled = new Map<number, Mob[]>();
+  /** The daylight at the last update (folk appearing at night appear in bed). */
+  private daylight = 1;
   /** Seconds since each mob in lava was last burnt. */
   private readonly burning = new Map<Mob, number>();
   private readonly sounds: MobSound[] = [];
@@ -141,6 +151,7 @@ export class MobManager {
    */
   update(dt: number, players: readonly (readonly [number, number])[], daylight: number, prey: readonly Prey[] = []): void {
     const t0 = performance.now();
+    this.daylight = daylight;
     this.cap = Math.min(this.max * Math.max(players.length, 1), this.max * 2);
     this.despawn(players);
     this.untilSpawn -= dt;
@@ -172,6 +183,9 @@ export class MobManager {
         blocks,
         daylight,
         prey,
+        players: players.map(([x, z]) => ({ x, y: 0, z })),
+        dangers: this.mobs.filter((m) => KINDS[m.kind].hostile).map((m) => ({ x: m.body.x, y: m.body.y, z: m.body.z })),
+        greet: (mob) => this.sound(mob, 'greet'),
         attack: (mob, target) => {
           const h = KINDS[mob.kind].hostile!;
           this.attacks.push({ target, kind: mob.kind, damage: h.damage, push: h.push, fromX: mob.body.x, fromZ: mob.body.z });
@@ -192,7 +206,7 @@ export class MobManager {
     // Calls, now and then; none at rest.
     if (dt > 0) {
       for (const m of this.mobs) {
-        let wait = (this.calls.get(m) ?? this.callWait()) - (m.state === 'rest' ? 0 : dt);
+        let wait = (this.calls.get(m) ?? this.callWait()) - (m.state === 'rest' || m.state === 'sleep' ? 0 : dt);
         if (wait <= 0) {
           this.sound(m, 'call');
           wait = this.callWait();
@@ -237,7 +251,7 @@ export class MobManager {
    */
   farmyard(x: number, z: number, count = 32): number {
     const B = TUNING.mobs.breeding;
-    const animals = KINDS.map((_, k) => k as MobKind).filter((k) => !KINDS[k].hostile);
+    const animals = KINDS.map((_, k) => k as MobKind).filter((k) => !KINDS[k].hostile && !KINDS[k].folk);
     const grounds = new Set(animals.flatMap((k) => KINDS[k].ground));
     let made = 0;
     for (let i = 0; i < count * 8 && made < count && this.keptCount < TUNING.mobs.kept; i++) {
@@ -268,6 +282,8 @@ export class MobManager {
   hit(mob: Mob, fromX: number, fromZ: number, points = 1): boolean {
     hurt(mob, fromX, fromZ, points);
     this.sound(mob, 'hurt');
+    // The hearthfolk step back with a cry, and that's all.
+    if (KINDS[mob.kind].folk) return false;
     if (mob.hits < KINDS[mob.kind].health) return false;
     this.sound(mob, 'puff');
     this.remove(mob);
@@ -304,7 +320,7 @@ export class MobManager {
   /** Wild animals around (hostile mobs have a cap of their own; kept animals aren't counted). */
   private animals(): number {
     let n = 0;
-    for (const m of this.mobs) if (!KINDS[m.kind].hostile && !m.kept) n++;
+    for (const m of this.mobs) if (!KINDS[m.kind].hostile && !KINDS[m.kind].folk && !m.kept) n++;
     return n;
   }
 
@@ -494,6 +510,41 @@ export class MobManager {
   /** Column (cx, cz) has loaded: its kept animals come back where they were. */
   columnLoaded(cx: number, cz: number): void {
     for (const r of this.kept.take(cx, cz)) this.mobs.push(this.fromRecord(r));
+    this.populate(cx, cz);
+  }
+
+  /** How many settlements' folk are here (for `?stats` and tests). */
+  get settlements(): number {
+    return this.settled.size;
+  }
+
+  /**
+   * The settlements reaching into column (cx, cz) whose folk aren't here: each whose well's column and
+   * every home's are loaded gets them, one for each bed, standing beside it (in it at night).
+   */
+  private populate(cx: number, cz: number): void {
+    const S = CHUNK_SIZE;
+    for (const st of this.world.generator.settlementsIn(cx * S, cz * S, cx * S + S - 1, cz * S + S - 1)) {
+      const key = settlementKey(st);
+      if (this.settled.has(key)) continue;
+      const homes = homesOf(st);
+      const places = [[st.x, st.z], ...homes.flatMap((h) => [[h.up[0], h.up[2]], [h.bed[0], h.bed[2]]])];
+      if (!places.every(([x, z]) => this.world.hasColumn(toChunk(x), toChunk(z)))) continue;
+      const folk = homes.map((home) => {
+        const mob = createMob(this.nextId++, MobKind.Hearthfolk, home.up[0] + 0.5, home.up[1], home.up[2] + 0.5, Math.floor(this.rng() * 0x7fffffff));
+        mob.home = home;
+        if (this.daylight < TUNING.folk.home) intoBed(mob);
+        this.mobs.push(mob);
+        return mob;
+      });
+      this.settled.set(key, folk);
+    }
+  }
+
+  /** A settlement's folk go (its land unloading). */
+  private leave(key: number): void {
+    for (const m of this.settled.get(key) ?? []) this.remove(m);
+    this.settled.delete(key);
   }
 
   /** Every kept animal, here and stored, as saved. */
@@ -531,10 +582,19 @@ export class MobManager {
 
   private despawn(players: readonly (readonly [number, number])[]): void {
     const far = TUNING.mobs.despawnDistance;
+    const leaving = new Set<number>();
     for (let i = this.mobs.length - 1; i >= 0; i--) {
       const mob = this.mobs[i];
       const b = mob.body;
       const loaded = this.world.hasColumn(toChunk(Math.floor(b.x)), toChunk(Math.floor(b.z)));
+      const home = mob.home;
+      if (home) {
+        // The hearthfolk: all of a settlement's go with its well's column, or the column any of them is in;
+        // never for being far. One fallen out of the world is put back home.
+        if (!loaded || !this.world.hasColumn(toChunk(home.well[0]), toChunk(home.well[2]))) leaving.add(home.settlement);
+        else if (b.y < -16) outOfBed(mob);
+        continue;
+      }
       if (mob.kept) {
         // Kept: stored when its land unloads, never let go for being far (fallen out of the world, gone).
         if (!loaded) this.kept.store(recordOf(mob));
@@ -544,6 +604,7 @@ export class MobManager {
       const near = players.some(([px, pz]) => Math.hypot(b.x - px, b.z - pz) <= far);
       if (!near || b.y < -16 || !loaded) this.remove(mob);
     }
+    for (const key of leaving) this.leave(key);
   }
 
   /** The mob numbered `id`, if it's here. */

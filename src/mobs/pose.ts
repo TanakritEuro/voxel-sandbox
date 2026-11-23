@@ -20,6 +20,8 @@ export interface Pose {
   ears: number;
   /** Arms reaching forward, 0 hanging to 1 out in front (gloamers hunting). */
   reach: number;
+  /** Lying on its back along the way it faces, its head behind (the hearthfolk in bed). */
+  lie: boolean;
 }
 
 /** Radians of leg swing per block walked, and the most it swings (at full walking speed). */
@@ -37,6 +39,13 @@ export function poseOf(mob: Mob, t: number): Pose {
   const speed = Math.hypot(b.vx, b.vz);
   const pace = Math.min(1, speed / k.walkSpeed);
   const resting = mob.state === 'rest';
+  // The hearthfolk: in bed lying still; otherwise they don't graze, and look up a little greeting someone.
+  if (k.folk) {
+    if (mob.state === 'sleep') return { drop: 0, swing: 0, fold: 0, head: 0, lean: 0, ears: 0, reach: 0, lie: true };
+    const swing = Math.sin(mob.walked * STRIDE) * SWING * pace;
+    const head = mob.state === 'greet' ? -0.12 : Math.sin(mob.walked * STRIDE * 2) * (k.headBob ?? 0.06) * pace;
+    return { drop: 0, swing, fold: 0, head, lean: 0, ears: 0, reach: 0, lie: false };
+  }
   // Legs swing with the ground covered, harder the faster it goes; still when it stands.
   const swing = resting ? 0 : Math.sin(mob.walked * STRIDE) * SWING * pace;
   let head = 0;
@@ -52,5 +61,5 @@ export function poseOf(mob: Mob, t: number): Pose {
   const ears = k.hops ? Math.min(0.9, Math.abs(b.vy) * 0.15 + pace * 0.3) : 0;
   // A hunter's arms come up in front of it as it closes in.
   const reach = mob.state === 'hunt' ? 1 : 0;
-  return { drop: resting ? k.height * 0.3 : 0, swing, fold: resting ? 1 : 0, head, lean, ears, reach };
+  return { drop: resting ? k.height * 0.3 : 0, swing, fold: resting ? 1 : 0, head, lean, ears, reach, lie: false };
 }
