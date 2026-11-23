@@ -9,7 +9,7 @@ import type { Cost } from './inventory';
 import { Item, type Tool, type ToolKind } from './items';
 
 const RIGHT_TOOL = new Map<Block, ToolKind>();
-for (const b of [Block.Stone, Block.Basalt, Block.StoneBricks, Block.MossyBricks, Block.Sandstone, Block.CoalOre, Block.CopperOre, Block.IronOre, Block.CrystalOre, Block.Lamp, Block.ChargedBlock, Block.SignalLamp, Block.SignalLampOn])
+for (const b of [Block.Stone, Block.Basalt, Block.StoneBricks, Block.MossyBricks, Block.MudBricks, Block.Sandstone, Block.CoalOre, Block.CopperOre, Block.IronOre, Block.CrystalOre, Block.Lamp, Block.ChargedBlock, Block.SignalLamp, Block.SignalLampOn])
   RIGHT_TOOL.set(b, 'pick');
 for (let f = 0; f < 4; f++) for (const lit of [false, true]) RIGHT_TOOL.set(furnace(f, lit), 'pick');
 for (const b of [Block.Wood, Block.SpruceWood, Block.ParasolWood, Block.Planks]) RIGHT_TOOL.set(b, 'axe');
@@ -38,6 +38,7 @@ const PICK_TIER = new Map<Block, number>([
   [Block.Basalt, 1],
   [Block.StoneBricks, 1],
   [Block.MossyBricks, 1],
+  [Block.MudBricks, 1],
   [Block.Sandstone, 1],
   [Block.CoalOre, 1],
   [Block.CopperOre, 2],

@@ -110,6 +110,8 @@ export const TEXTURE_NAMES = [
   'basalt_top',
   'lantern',
   'lantern_top',
+  'thatch',
+  'mud_bricks',
 ] as const;
 export type TextureName = (typeof TEXTURE_NAMES)[number];
 
@@ -715,6 +717,29 @@ const PAINTERS: Record<TextureName, (c: Canvas) => void> = {
   rail_curve: (c) => curvedRails(c),
   powered_rail: (c) => rails(c, COPPER, hex(0x5a2a1a)),
   powered_rail_on: (c) => rails(c, COPPER, hex(0xff5a2a)),
+  thatch(c) {
+    // Bundles of straw in rows, each row's lower edge darker where the next row overlaps it.
+    for (let y = 0; y < TEXTURE_SIZE; y++) {
+      const row = y % 4;
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const stalk = (x + (y >> 2) * 2) % 3 === 0 ? 0.88 : 1;
+        c.set(x, y, hex(0xc8a64e), (row === 3 ? 0.66 : row === 0 ? 1.08 : 1) * stalk * (1 + (c.rng() - 0.5) * 0.18));
+      }
+    }
+    c.spots(6, hex(0xa88a3e), 0.1);
+  },
+  mud_bricks(c) {
+    // Big sun-baked bricks, warm brown, in pale mortar, a few cracks.
+    const brick = hex(0x9a6c48);
+    const mortar = hex(0xc4ac88);
+    for (let y = 0; y < TEXTURE_SIZE; y++)
+      for (let x = 0; x < TEXTURE_SIZE; x++) {
+        const course = Math.floor(y / 5.34);
+        const joint = y % 16 === 15 || y === 4 || y === 10 || (x + (course % 2) * 5) % 10 === 9;
+        c.set(x, y, joint ? mortar : brick, 1 + (c.rng() - 0.5) * (joint ? 0.08 : 0.2));
+      }
+    c.spots(4, hex(0x7e5638), 0.1);
+  },
   mossy_bricks(c) {
     bricks(c);
     // Moss creeping over the bricks, thickest along the joints.

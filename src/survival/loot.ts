@@ -55,7 +55,20 @@ const DUNGEON: readonly Line[] = [
   [Item.IronAxe, 1, 1, 0.15],
 ];
 
-export const LOOT: Record<StructureKind, readonly Line[]> = { [StructureKind.Ruin]: RUIN, [StructureKind.Camp]: CAMP, [StructureKind.Dungeon]: DUNGEON };
+/** A settlement's huts (version 4): a household's things, food and the makings of more. */
+const HUT: readonly Line[] = [
+  [Item.Bread, 1, 3, 0.7],
+  [Item.Wheat, 2, 6, 0.6],
+  [Item.Seeds, 2, 6, 0.5],
+  [Item.Berries, 2, 5, 0.3],
+  [Block.Torch, 2, 4, 0.5],
+  [Block.Planks, 4, 8, 0.4],
+  [Item.Stick, 2, 4, 0.3],
+  [Block.Thatch, 2, 4, 0.2],
+  [Block.Lantern, 1, 1, 0.1],
+];
+
+export const LOOT: Record<StructureKind, readonly Line[]> = { [StructureKind.Ruin]: RUIN, [StructureKind.Camp]: CAMP, [StructureKind.Dungeon]: DUNGEON, [StructureKind.Hut]: HUT };
 
 /** The slots of the chest of a structure of `kind` at (x, y, z): each line's stack, if it comes up, in a slot of its own. */
 export function lootFor(seed: number, kind: StructureKind, x: number, y: number, z: number): (Stack | null)[] {

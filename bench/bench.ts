@@ -38,6 +38,7 @@ import { ALL_CONNECTED, chunkRegions, connectivityOf, MAX_REGIONS, NO_REGION, re
 import { createBody, NO_INPUT, stepPlayer } from '../src/world/physics';
 import { LAVA, LiquidFlow, wakeColumn } from '../src/world/liquids';
 import { LAVA_LEVEL } from '../src/world/deep';
+import { type Settlement, SETTLEMENT_REACH, settlementInCell } from '../src/world/settlements';
 import { findNearest } from '../src/world/find';
 import { LogicFlow } from '../src/world/logic';
 import { GroundItems } from '../src/survival/ground';
@@ -1255,13 +1256,57 @@ it('visibility', () => {
   console.log(lines.join('\n'));
 });
 
+it('settlements', () => {
+  // Version 4's settlements: laying out a cell (with its blocks), afresh each time; and the column jobs
+  // over a whole settlement (every column it reaches into, a generator each run so nothing is kept),
+  // against version 3's of the same columns.
+  const cells: [number, number][] = [];
+  for (let gz = -4; gz < 4; gz++) for (let gx = -4; gx < 4; gx++) cells.push([gx, gz]);
+  const ground = new Generator(SEED, { generation: 4 });
+  const layout: number[] = [];
+  let found: Settlement | null = null;
+  let count = 0;
+  for (let run = 0; run <= RUNS; run++) {
+    const t0 = performance.now();
+    for (const [gx, gz] of cells) {
+      const s = settlementInCell(SEED, gx, gz, ground);
+      if (s && run === 0) {
+        count++;
+        found ??= s;
+      }
+    }
+    if (run > 0) layout.push(performance.now() - t0);
+  }
+  const s = found!;
+  const cols: [number, number][] = [];
+  for (let cz = Math.floor((s.z - SETTLEMENT_REACH) / 32); cz <= Math.floor((s.z + SETTLEMENT_REACH) / 32); cz++)
+    for (let cx = Math.floor((s.x - SETTLEMENT_REACH) / 32); cx <= Math.floor((s.x + SETTLEMENT_REACH) / 32); cx++) cols.push([cx, cz]);
+  const jobs: Record<3 | 4, number[]> = { 3: [], 4: [] };
+  // Three times the runs, each version first every other run: 9 columns are few, and the difference small.
+  for (let run = 0; run <= RUNS * 3; run++)
+    for (const generation of run % 2 ? ([4, 3] as const) : ([3, 4] as const)) {
+      const g = new Generator(SEED, { generation });
+      const t0 = performance.now();
+      for (const [cx, cz] of cols) g.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);
+      if (run > 0) jobs[generation].push(performance.now() - t0);
+    }
+  const per = (g: 3 | 4) => median(jobs[g]) / cols.length;
+  console.log(
+    [
+      '',
+      `settlements (seed ${SEED}, ${cells.length} cells, ${count} settled, median of ${RUNS}): ${(median(layout) / cells.length).toFixed(3)} ms a cell laid out, ${s.blocks.length} blocks in the first`,
+      `  the ${cols.length} columns over it (median of ${RUNS * 3}): version 3 ${per(3).toFixed(3)} ms a column, version 4 ${per(4).toFixed(3)} (+${(per(4) - per(3)).toFixed(3)} ms, the layout once among them)`,
+    ].join('\n'),
+  );
+});
+
 it('generation versions', () => {
   // Generating the bench's columns (radius 9 round the origin) by each version, alternating, and
   // what version 2 makes of the land over 4096 x 4096 blocks (a column every 8).
   const cols = columns(RADIUS + 1);
-  const times: Record<Generation, number[]> = { 1: [], 2: [], 3: [] };
+  const times: Record<Generation, number[]> = { 1: [], 2: [], 3: [], 4: [] };
   for (let run = 0; run <= RUNS; run++) {
-    for (const generation of [1, 2, 3] as Generation[]) {
+    for (const generation of [1, 2, 3, 4] as Generation[]) {
       const g = new Generator(SEED, { generation });
       const t0 = performance.now();
       for (const [cx, cz] of cols) g.generateColumn(cx, cz, MIN_CHUNK_Y, MAX_CHUNK_Y);
@@ -1269,7 +1314,7 @@ it('generation versions', () => {
     }
   }
   const per = (g: Generation) => median(times[g]) / cols.length;
-  const lines = ['', `generation by version (${cols.length} columns, median of ${RUNS}): version 1 ${per(1).toFixed(3)} ms a column, version 2 ${per(2).toFixed(3)} (${((per(2) / per(1) - 1) * 100).toFixed(0)} %), version 3 ${per(3).toFixed(3)} (${((per(3) / per(2) - 1) * 100).toFixed(0)} % on 2)`];
+  const lines = ['', `generation by version (${cols.length} columns, median of ${RUNS}): version 1 ${per(1).toFixed(3)} ms a column, version 2 ${per(2).toFixed(3)} (${((per(2) / per(1) - 1) * 100).toFixed(0)} %), version 3 ${per(3).toFixed(3)} (${((per(3) / per(2) - 1) * 100).toFixed(0)} % on 2), version 4 ${per(4).toFixed(3)} (${((per(4) / per(3) - 1) * 100).toFixed(0)} % on 3)`];
   // Lighting the same columns as they arrive (World.addColumn), by version: version 3's lava lakes glow.
   const lit: Record<2 | 3, number[]> = { 2: [], 3: [] };
   let lavaBlocks = 0;

@@ -18,6 +18,8 @@ export enum StructureKind {
   Camp = 1,
   /** Version 3: a buried room of mossy brick, 9 x 5 x 9, a chest of better loot inside. */
   Dungeon = 2,
+  /** Version 4: a hut in a settlement (`settlements.ts`), for its chest's loot. */
+  Hut = 3,
 }
 
 /** What placing structures asks of the generator. */

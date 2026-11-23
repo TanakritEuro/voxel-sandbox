@@ -9,7 +9,7 @@
 // interpolates them across x and z once per sample level, then along y block by block.
 
 import { Block } from './blocks';
-import { CHUNK_SIZE, toChunk, toLocal } from './coords';
+import { CHUNK_SIZE, SEA_LEVEL, toChunk, toLocal } from './coords';
 import { Noise } from './noise';
 
 // Local copies: imported bindings can cost a lookup each time in the hot loops (they do under Vitest).
@@ -35,6 +35,13 @@ const DEEP_CELLS = S / DEEP_CELL;
 export type DeepCells = (x: number, y: number, z: number) => boolean;
 /** The lowest layers are never carved, so the world has a floor. */
 const FLOOR = 4;
+
+/**
+ * How high caves may carve in a column: up to its surface on dry land, but never within 4
+ * blocks below water in it or a neighbour, so no water hangs over or beside air (water
+ * doesn't flow). `h` is the column's height, `lowest` the lowest of it and its 4 neighbours.
+ */
+export const caveLimit = (h: number, lowest: number): number => (lowest <= SEA_LEVEL ? lowest - 4 : h);
 
 export class Caves {
   private readonly tunnelA: Noise;

@@ -54,7 +54,7 @@ export class Climate {
   /** How many of `BIOMES` the world has: 4 in generation version 1, all from 2. */
   private readonly count: number;
 
-  constructor(seed: number, generation: 1 | 2 | 3 = 1) {
+  constructor(seed: number, generation: 1 | 2 | 3 | 4 = 1) {
     this.count = generation === 1 ? V1_BIOMES : BIOME_COUNT;
     // Separate noises, each its own seed, so the four fields don't line up.
     this.temperature = new Noise(seed ^ 0x5eed7e3);

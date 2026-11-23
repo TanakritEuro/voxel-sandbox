@@ -19,7 +19,7 @@ import { unpackState } from './playerState';
 import { type SharedWeather, sharedWeatherOf } from '../world/weather';
 import type { Bolt } from '../world/lightning';
 
-export const PROTOCOL = 13;
+export const PROTOCOL = 14;
 
 /** The longest a guest's survival state may be, as JSON (36 slots and health fit in about 2,000). */
 const KEPT_LENGTH = 8192;
@@ -242,7 +242,7 @@ export function parseMessage(raw: unknown): Message | null {
       if (!Array.isArray(raw.at) || raw.at.length !== 3 || !raw.at.every(isNumber)) return null;
       if (!Array.isArray(raw.edited) || raw.edited.length % 2 !== 0 || raw.edited.length > 2 * 65536 || !raw.edited.every(isChunkCoord)) return null;
       if (!isMode(raw.mode) || (raw.kept !== null && !isKept(raw.kept))) return null;
-      if (raw.generation !== 1 && raw.generation !== 2 && raw.generation !== 3) return null;
+      if (raw.generation !== 1 && raw.generation !== 2 && raw.generation !== 3 && raw.generation !== 4) return null;
       const weather = sharedWeatherOf(raw.weather);
       if (!weather) return null;
       return {

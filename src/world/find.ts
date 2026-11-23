@@ -4,10 +4,11 @@
 import { Biome } from './biomes';
 import { SEA_LEVEL } from './coords';
 import type { Generator } from './generate';
-import { DUNGEON_CELL, STRUCTURE_CELL, StructureKind, structureInCell } from './structures';
+import { SETTLEMENT_CELL } from './settlements';
+import { DUNGEON_CELL, STRUCTURE_CELL, StructureKind } from './structures';
 import { DEEP_TOP, DeepBiome, LAVA_LEVEL } from './deep';
 
-export const FINDABLE = ['river', 'savanna', 'swamp', 'ruin', 'camp', 'crystal', 'grotto', 'lava', 'dungeon'] as const;
+export const FINDABLE = ['river', 'savanna', 'swamp', 'ruin', 'camp', 'crystal', 'grotto', 'lava', 'dungeon', 'settlement'] as const;
 export type Findable = (typeof FINDABLE)[number];
 
 export const isFindable = (s: string | null): s is Findable => (FINDABLE as readonly string[]).includes(s ?? '');
@@ -24,6 +25,7 @@ function matches(g: Generator, kind: Findable, x: number, z: number): boolean {
     case 'grotto':
     case 'lava':
     case 'dungeon':
+    case 'settlement':
       return false; // searched by cell, or underground, in `findNearest`
     case 'savanna':
     case 'swamp':
@@ -48,6 +50,7 @@ export function findNearest(g: Generator, kind: Findable, x: number, z: number, 
   if (kind === 'crystal' || kind === 'grotto') return nearestDeep(g, kind === 'crystal' ? DeepBiome.Crystal : DeepBiome.Grotto, x, z, Math.min(radius, 1024), step);
   if (kind === 'lava') return nearestLava(g, x, z, Math.min(radius, 1024), step);
   if (kind === 'dungeon') return nearestDungeon(g, x, z, Math.min(radius, 2048));
+  if (kind === 'settlement') return nearestSettlement(g, x, z, radius);
   for (let r = 0; r <= radius; r += step) {
     for (let dz = -r; dz <= r; dz += step) {
       for (let dx = -r; dx <= r; dx += step) {
@@ -137,6 +140,28 @@ function nearestDungeon(g: Generator, x: number, z: number, radius: number): { x
   return best && { x: best.x, z: best.z, y: best.y };
 }
 
+/** The nearest settlement to (x, z) (version 4): cells in rings outwards; a place on the gravel by its well. */
+function nearestSettlement(g: Generator, x: number, z: number, radius: number): { x: number; z: number } | null {
+  if (g.options.generation < 4) return null;
+  const C = SETTLEMENT_CELL;
+  const gx0 = Math.floor(x / C);
+  const gz0 = Math.floor(z / C);
+  let best = null as { x: number; z: number; d: number } | null;
+  for (let r = 0; r * C <= radius; r++) {
+    for (let gz = gz0 - r; gz <= gz0 + r; gz++)
+      for (let gx = gx0 - r; gx <= gx0 + r; gx++) {
+        if (Math.max(Math.abs(gx - gx0), Math.abs(gz - gz0)) !== r) continue;
+        const s = g.settlements.inCell(gx, gz);
+        if (!s) continue;
+        const d = Math.hypot(s.x - x, s.z - z);
+        if (!best || d < best.d) best = { x: s.x + 3, z: s.z, d };
+      }
+    // As for structures: a ring further is a cell further.
+    if (best) return { x: best.x, z: best.z };
+  }
+  return null;
+}
+
 /** Structure cells' width (`structures.ts`). */
 const CELL = STRUCTURE_CELL;
 
@@ -150,7 +175,7 @@ function nearestStructure(g: Generator, kind: StructureKind, x: number, z: numbe
     for (let gz = gz0 - r; gz <= gz0 + r; gz++)
       for (let gx = gx0 - r; gx <= gx0 + r; gx++) {
         if (Math.max(Math.abs(gx - gx0), Math.abs(gz - gz0)) !== r) continue;
-        const s = structureInCell(g.seed, gx, gz, g);
+        const s = g.structureInCell(gx, gz);
         if (!s || s.kind !== kind) continue;
         const d = Math.hypot(s.x - x, s.z - z);
         // Out of its door: two blocks past its edge.

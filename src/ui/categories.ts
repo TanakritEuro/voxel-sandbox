@@ -11,7 +11,7 @@ export type BlockKind = (typeof BLOCK_KINDS)[number];
 
 const KIND_OF = new Map<Block, BlockKind>();
 const put = (kind: BlockKind, blocks: readonly Block[]) => blocks.forEach((b) => KIND_OF.set(b, kind));
-put('Building', [Block.Stone, Block.Planks, Block.Glass, Block.Sandstone, Block.StoneBricks, Block.MossyBricks, Block.Fence, Block.Pane]);
+put('Building', [Block.Stone, Block.Planks, Block.Glass, Block.Sandstone, Block.StoneBricks, Block.MossyBricks, Block.Thatch, Block.MudBricks, Block.Fence, Block.Pane]);
 put('Nature', [
   Block.Dirt,
   Block.Grass,
@@ -60,7 +60,7 @@ const GROUP_OF = new Map<number, RecipeGroup>();
 const group = (g: RecipeGroup, items: readonly number[]) => items.forEach((i) => GROUP_OF.set(i, g));
 group('Basics', [Block.Planks, Item.Stick, Item.Paper]);
 group('Tools', [Item.WoodPick, Item.WoodAxe, Item.WoodSpade, Item.StonePick, Item.StoneAxe, Item.StoneSpade, Item.IronPick, Item.IronAxe, Item.IronSpade]);
-group('Building', [Block.StoneBricks, Block.Sandstone, Block.Pane, Block.Fence, Block.Furnace, Block.Chest, Block.Door, Block.Bed]);
+group('Building', [Block.StoneBricks, Block.Sandstone, Block.Thatch, Block.Pane, Block.Fence, Block.Furnace, Block.Chest, Block.Door, Block.Bed]);
 group('Light', [Block.Torch, Block.Lantern, Block.Lamp]);
 group('Logic', [Block.Wire, Block.Switch, Block.Button, Block.SignalLamp, Block.ChargedBlock, Block.Inverter, Block.Delay]);
 group('Travel', [Block.Rail, Block.PoweredRail, Item.Cart, Item.ChestCart, Item.Boat, Item.Map]);

@@ -1,6 +1,6 @@
 # Milestone 22: settlements
 
-**Status:** plan, to check (2026-11-23).
+**Status:** plan approved (2026-11-23), all six decisions as written; step 1 built.
 
 ## Goal
 
@@ -126,6 +126,7 @@ stopped).
 ## Steps
 
 1. **Settlements in the land:** the layout, blocks, version 4, thatch and mud bricks, `?find=settlement`; tests; bench.
+   Done (2026-11-23).
 2. **The hearthfolk:** kind, looks, brain, coming and going with the settlement, voices; tests.
 3. **Trading:** offers, stock, the screen, the finder's map and the crystal pick; tests.
 4. **Together:** guests trading through the host; tests.
@@ -139,3 +140,65 @@ stopped).
 4. **Trade-only goods:** the finder's map and the crystal pick (the crystal pick is a tool, not armour or a weapon).
 5. **Where:** plains, savanna and the forest's edge, about one settlement every 800–1000 blocks.
 6. **The folk's name:** hearthfolk, or another you'd like.
+
+## Step 1: settlements in the land (2026-11-23)
+
+**Built:**
+- **`world/settlements.ts`:** one chance per 320 x 320-block cell, two places tried for the middle (on the plains, the
+  savanna, or the forest within 48 blocks of open land; 3 above the sea; the well's square level within 1, no cave under
+  it). 3–7 huts tried 80 times at 10–26 blocks out, each on dry ground within 2 of its floor at nine points, within 6 of
+  the well's height, no cave under its middle or corners, a block clear of anything else; facing the well. 1–2 fields
+  (7 x 5 of farmland either side of a row of water, wheat at stages 3–7). No settlement without 3 huts and a field.
+- **What's written:** gravel paths from each doorstep to the well's square, a block at a time along the ground as it
+  is (not over water or a cave's mouth); the well (stone bricks round water three deep, fence posts, a plank-slab roof,
+  a square of gravel, two lanterns on posts); fields and the ground round them levelled; huts. Plank huts (plains, forest):
+  plank walls, log corners, a gabled thatch roof stepping up to a ridge, plank gable ends. Mud huts (savanna): mud brick
+  walls, parasol-wood corners, a flat thatch roof with a hump. Each: a plank floor, the doorway with its door open (as
+  if placed from outside), glass-pane windows in the sides and back, 1–2 beds along the back wall, a chest, a lantern
+  inside, a lantern on a post by the door. The trader's hut (the first placed) has a counter of plank slabs out front.
+- **Generation version 4:** `GENERATION` is 4; versions 1–3 unchanged. In version 4 no ruin or camp stands within 24
+  blocks of a settlement's reach (`Generator.structureInCell`, `structuresIn`), and no tree where its leaves would touch
+  a hut, the well, a field or a path (`crowds`). Settlements are written after everything else, each column job taking
+  only its own column's part (`Settlement.columns`).
+- **Kept per cell:** `Settlements` keeps the 32 cells last asked for; a layout asks each column's height once (`Memo`).
+  `caveLimit` moved to `caves.ts` (settlements use it; `generate.ts` still exports it).
+- **Thatch** (216: 4 wheat, broken by hand) and **mud bricks** (217: mud smelted, a pick of any tier), each with a texture.
+  Hut chests hold a household's things (`StructureKind.Hut`'s loot: bread, wheat, seeds, berries, torches, planks).
+- **`?find=settlement`:** the nearest, by cell; you stand on the gravel by the well. **`PROTOCOL` 14** (generation changed).
+
+**Tests:** `tests/settlements.test.ts` (13): how often and how big; level, dry, apart, within reach; the same whichever
+column is generated first, and a fresh layout equal to a kept one; the blocks written (well, doors open, beds, chest and
+its loot, lantern, roof, wheat, gravel paths with air over them); no leaves in huts, nothing on paths, no ruin or camp
+near; only in version 4, found by `?find`; kept and laid out again the same; thatch, mud bricks and their making.
+`tests/generationV4.test.ts` pins version 4 (the old columns, where it makes what version 3 makes, and five settled
+columns); `generationV3.test.ts` also pins version 3 at those five, the checksums from 19ac841's generator. The
+protocol test takes generation 4 and refuses 5. 757 in all pass; the build passes.
+
+**How often** (probed, 100 cells each): seeds 20261022, 7, 123, 99 and 5 gave a settlement every 888, 965, 776, 855 and
+826 blocks, with 4.2–5.3 huts on average.
+
+**Looked at:** ten settlements from above over five seeds (plank and mud), close up: a hut inside (open door, two beds,
+the lantern, windows), the well, paths, fields of wheat, lantern posts. Levelled rings stand a block above or below the
+land round them now and then; no hut on stilts or walled in dirt was seen. No console errors.
+
+**Measured** (headless bench, the server stopped):
+
+| | Version 3 | Version 4 | |
+| --- | --- | --- | --- |
+| Generate job, the bench's 253 columns (no settlement among them) | 3.905, 3.864 ms | 3.814, 3.884 | -2 %, +1 % |
+| The 9 columns over a settlement (median of 15, alternating) | 4.215, 4.215 | 4.314, 4.783 | +0.10, +0.57 ms |
+| Laying out a settled cell, warm | | 2.6–4.6 ms | once per worker per settlement |
+
+- **Over the limit inside a settlement:** a column job over one costs +0.1 to +0.6 ms (noisy), most of it the layout
+  (about 0.9 ms of heights and caves; the rest building ~5000 blocks), paid by the first column job in each worker that
+  reaches the settlement, then kept. Over land at large it's within (+0.15 ms). Step 5 measures it again interleaved;
+  if it matters, the blocks can be built lazily per column.
+- **Sprint flights over settled land** (dev server, seed 123, 15 s through a settlement, twice): no frame over 20 ms, no
+  holes, main thread p99 7.6 and 8.1 ms. The GPU and the main thread standing in one are for step 5, as planned.
+
+**Changed from the plan:**
+- **`PROTOCOL` 14 now,** since generation changed (the rule); step 4's messages will make it 15.
+- **Mud bricks are mud alone** in the furnace (a furnace takes one thing in), not mud and sand.
+- **Hut chests have loot,** a household's, from a table of their own.
+- **A settlement needs a field;** two places are tried for its middle, so they come about one every 780–970 blocks.
+- **Ruins and camps are kept 24 blocks further off** than the settlement's reach, so none stands just outside.

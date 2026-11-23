@@ -113,6 +113,9 @@ export enum Block {
   /** A lantern standing on a block, and one hanging under a block (light 15). */
   Lantern = 214,
   LanternHanging = 215,
+  /** Settlements (Milestone 22): a roof of bundled straw, and bricks of mud baked hard. */
+  Thatch = 216,
+  MudBricks = 217,
 }
 
 type RGB = [number, number, number];
@@ -508,6 +511,9 @@ const TABLE: readonly Omit<BlockInfo, 'sound'>[] = [
       [7 / 16, 13 / 16, 7 / 16, 9 / 16, 1, 9 / 16],
     ] as readonly Box[],
   },
+  // Settlements' roofs and walls.
+  solid('Thatch', 0.6, faces('thatch'), 0xc8a64e),
+  solid('Mud bricks', 2, faces('mud_bricks'), 0x9a6c48),
 ];
 
 /** A rail block of either kind: thin, walked through, in the cutout pass, broken quickly. */
@@ -566,6 +572,7 @@ SOUNDS[Block.GrottoFloor] = 'dirt';
 SOUNDS[Block.MushroomStem] = 'wood';
 SOUNDS[Block.MushroomCap] = 'leaves';
 SOUNDS[Block.Lantern] = SOUNDS[Block.LanternHanging] = 'glass';
+SOUNDS[Block.Thatch] = 'grass';
 for (let b = Block.Lava; b <= Block.LavaFalling; b++) SOUNDS[b as Block] = 'water';
 // Plank slabs and stairs sound of wood.
 for (let b = Block.Slab; b < Block.Fence; b++) if ((slabOf(b as Block) ?? stairsOf(b as Block))!.material === 1) SOUNDS[b as Block] = 'wood';

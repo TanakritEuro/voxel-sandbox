@@ -20,6 +20,7 @@ export const SMELTS: ReadonlyMap<number, number> = new Map<number, number>([
   [Item.RawCopper, Item.Copper],
   [Item.RawIron, Item.Iron],
   [Block.Sand, Block.Glass],
+  [Block.Mud, Block.MudBricks],
   [Item.RawMeat, Item.CookedMeat],
 ]);
 

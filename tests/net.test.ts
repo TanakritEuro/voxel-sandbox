@@ -148,6 +148,7 @@ describe('messages', () => {
     { type: 'welcome', you: 2, seed: 20261022, generation: 2, time: 0.25, weather: raining, players, at: [10.5, 70, -3.5], edited: [0, 0, -1, 4], mode: 'survival', kept: { inventory: [null, { item: 1, count: 3 }], health: { health: 12, air: 10 } } },
     { type: 'welcome', you: 2, seed: 20261022, generation: 2, time: 0.25, weather: held, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
     { type: 'welcome', you: 2, seed: 20261022, generation: 1, time: 0.25, weather: raining, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
+    { type: 'welcome', you: 2, seed: 20261022, generation: 4, time: 0.25, weather: raining, players, at: [10.5, 70, -3.5], edited: [], mode: 'creative', kept: null },
     { type: 'mode', mode: 'creative' },
     { type: 'kept', survival: { inventory: [], health: { health: 20, air: 10 } } },
     { type: 'reject', reason: 'This world is full.' },
@@ -200,6 +201,7 @@ describe('messages', () => {
       { ...welcome, you: 3 }, // not among the players
       { ...welcome, time: 1 },
       { ...welcome, seed: 1.5 },
+      { ...welcome, generation: 5 },
       { ...welcome, players: [...players, { id: 2, name: 'Twin' }] },
       { ...welcome, players: [...players, { id: 1, name: 'A' }, { id: 3, name: 'B' }, { id: 1, name: 'C' }] },
       { ...welcome, players: [players[0], { id: 2, name: 'x'.repeat(NAME_LENGTH + 1) }] },

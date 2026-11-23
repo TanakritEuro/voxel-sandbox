@@ -26,6 +26,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
+Milestone 22 (settlements) in progress, plan approved (`docs/milestone-22.md`); step 1 (settlements in the land, generation
+version 4, thatch and mud bricks, `?find=settlement`, `PROTOCOL` 14) built: steps 2–5 (the hearthfolk, trading, together,
+measurements) left.
 Milestones 1–21 built (`docs/milestone-1.md` to `docs/milestone-21.md`), waiting for playtests
 (Milestone 21, weather, in every world: spells of clear, overcast, rain and storms from the seed, saved; a greyer, darker
 sky, more cloud (thinning over its layer), closer fog, the sun hidden, for looks only; rain, splashes and flakes ending at
@@ -183,7 +186,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   their neighbours), dry grass 175, mud 176, reeds 177 (crossed sheets), parasol wood and leaves 178–179, stone and mossy bricks 180–181, rails 182–191 by shape and powered rails 192–203 by
   shape, off and on (`rail`, `poweredRail`, `railOf`, `RAIL_SHAPES`), crystal clusters (crossed sheets, light 12), grotto
   floor, mushroom stems and caps (light 12) 204–207, lava 208–212 (a source, flowing levels 1–3, falling; `lava`: light 15,
-  drawn in the opaque pass) and basalt 213, lanterns 214–215 (standing and hanging, light 15, small boxes; `lanternFor`),
+  drawn in the opaque pass) and basalt 213, lanterns 214–215 (standing and hanging, light 15, small boxes; `lanternFor`), thatch 216 and mud bricks 217,
   `isWater` (a liquid not lava), `chest`, `door`,
   `doorSide`, `bed`, `wheat`, `slab`, `stairs` and their `…Of`; `boxes`: what a body bumps into when it
   isn't the whole block, a door's panel, a bed's half, a slab, stairs' two):
@@ -200,10 +203,10 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   `blockBoxes`: any block's boxes as drawn), `textures.ts`
   (the procedural block textures and their layer order), `coords.ts`
   (chunk size, index layout, world height, `SEA_LEVEL`), `noise.ts` (2D/3D Perlin, fBm), `biomes.ts`
-  (climate, biome weights, blended heights; savanna and swamp only from generation version 2, a swamp's continent flattened), `generate.ts` (`Generation`: a world's generation version, 1 before Milestone 16, 2 from it, 3 from Milestone 19, `GENERATION` the
+  (climate, biome weights, blended heights; savanna and swamp only from generation version 2, a swamp's continent flattened), `generate.ts` (`Generation`: a world's generation version, 1 before Milestone 16, 2 from it, 3 from Milestone 19, 4 from Milestone 22, `GENERATION` the
   newest, `caveLimitAt`, `generationOf` cleaning a saved one; a `Generator` is version 1 unless told; column jobs: height map with a
   border for slopes, `writeLayers` per column, caves, ores, all-air chunks as null, spawn
-  search; options to switch caves and ores off), `caves.ts` (carving, `carvedAt`, `carvedColumn` (a column's run at once); in version 3 a deep biome's cells open
+  search; options to switch caves and ores off), `caves.ts` (`caveLimit`, carving, `carvedAt`, `carvedColumn` (a column's run at once); in version 3 a deep biome's cells open
   into caverns more readily), `deep.ts` (version 3, below y 40: deep biomes by 8-block cell from a 3D noise, crystal
   caverns and mushroom grottoes; `decorate`: clusters on crystal caverns' floors, crystal ore in their walls, grotto floors;
   `mushroomsIn`: giant mushrooms on grotto floors per 6 x 6 cell, `placeMushrooms` across chunk borders; `fillLava`: lava lakes,
@@ -214,7 +217,12 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   ground filled up to the floor, the walls or tent, a chest; written after everything else, across chunk borders;
   version 3's dungeons: one chance per 96 x 96-block cell, a buried room 9 x 5 x 9 of mossy brick with its floor at y 12–31,
   open where caves cross its walls (`caveColumn`), a chest of better loot; `Generator.dungeonsIn`, `dungeonNear`;
-  `Generator.lootAt` says whose chest a place is), `find.ts` (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava|dungeon`: the nearest of a kind (the deep ones a roomy cave floor
+  `Generator.lootAt` says whose chest a place is), `settlements.ts` (version 4: one chance per 320 x 320-block cell, the middle on
+  the plains, the savanna or the forest's edge, two places tried; 3–7 huts round a well on level, dry land facing it, 1–2
+  fields of wheat with water down the middle, gravel paths along the ground, lanterns on posts; plank huts with gabled thatch
+  roofs, mud brick huts on the savanna; open doors, beds, a chest (a household's loot), a lantern; the first a trader's with a
+  counter; `Settlements` keeps 32 cells' layouts, blocks by chunk column (`columns`); `crowds`: trees left out; no ruin or camp
+  within `SETTLEMENT_CLEAR` of one; `Generator.settlementsIn`), `find.ts` (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava|dungeon|settlement`: the nearest of a kind (the deep ones a roomy cave floor
   to stand in, lava a rock shore just above a lake, a dungeon its floor inside), searched with the generator alone; `dryNear` somewhere to stand by it),
   `features.ts` (ore veins and trees across chunk borders, parasol trees and swamp oaks too; `Ground`, what tree placement asks), `light.ts` (sunlight and block
   light per block: `lightColumn` in the worker, `lightBorders` when a column arrives,
@@ -258,7 +266,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   tool worn; `placeableIn`, `heldTool`), `furnace.ts` (`Furnace`: input, fuel and output, burning and
   smelting; `SMELTS`, `FUELS`; `Furnaces`: by place, saved in the world record), `chest.ts` (`Chests`: 27
   slots each by place, saved in the world record's `containers`; a structure's chest filled from its loot the first time
-  it's opened or broken, never again, the place kept even when empty), `loot.ts` (`lootFor`: a ruin's, camp's or dungeon's
+  it's opened or broken, never again, the place kept even when empty), `loot.ts` (`lootFor`: a ruin's, camp's, dungeon's or hut's
   chest by its table, seeded by its place; `lootSource` for a world), `map.ts` (`WorldMap`: the world's map, a 16 × 16 tile per
   explored column, each pixel 2 × 2 blocks' top block and a shade (land against the land north, water by depth),
   `tileOf`; `explore` round a player (4 chunks, two tiles a frame), `touch` after an edit, `paint` any window at any
@@ -391,7 +399,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   a link per guest; reliable `events` and unordered `frames` channels, heartbeats), `roomCode.ts`,
   `loopback.ts` (`Network`: rooms and linked pairs in one process on a virtual clock, with delay,
   jitter, reordering and cut lines, for tests), `protocol.ts` (the messages, each checked on
-  arrival; `PROTOCOL` (13), bumped with any change to messages or world generation; `cleanName`;
+  arrival; `PROTOCOL` (14), bumped with any change to messages or world generation; `cleanName`;
   edits packed 16 bytes a block; `checkChunk` for chunks from the network), `session.ts`
   (`HostSession`: greeting guests, answering for columns, checking and sharing edits and uses of
   blocks; the world's mode in the welcome and when it changes, the time and weather in it and every 2 s (`shareTime`, at once after
@@ -454,7 +462,7 @@ BFS light propagation; Sebastian Lague and "Let's Make a Voxel Engine" for overv
   32 × 32 room under it at once, reporting frame and water tick times. `src/circuit.ts` — `?circuit`, a
   clock, a 50-stage chaser and a 32 × 32 wire grid switched every second, built on a board in the air,
   reporting frame and logic tick times. `?radius=12` overrides the view radius,
-  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava|dungeon` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
+  `?workers=1` the worker count, `?at=x,z` where you spawn (`?find=river|savanna|swamp|ruin|camp|crystal|grotto|lava|dungeon|settlement` by the nearest one to there; `?seed`, `?at`, `?find`, `?autofly` and `?circuit`
   play an unsaved world (of the newest generation version); `?survival` makes it a survival one, `?kit` gives it a tool of each kind and
   tier and things to craft with, rails, carts, a boat, a map and lanterns), `?light` shows light as grey, `?nolock` counts the mouse as captured without the browser's
   pointer lock (for driving the game from outside),

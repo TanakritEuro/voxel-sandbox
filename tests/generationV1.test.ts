@@ -74,23 +74,24 @@ describe('generation versions', () => {
   it('are the newest for new worlds, 1 for worlds from before versions, and kept through saving', async () => {
     const fresh = newWorldRecord('w', 'New', 5, 0.3);
     expect(fresh.generation).toBe(GENERATION);
-    expect(GENERATION).toBe(3);
+    expect(GENERATION).toBe(4);
     const old: WorldRecord = { ...fresh, generation: undefined };
     delete old.generation;
     expect(generationOf(old.generation)).toBe(1);
-    for (const junk of [0, 4, '2', null, 1.5]) expect(generationOf(junk)).toBe(1);
+    for (const junk of [0, 5, '2', null, 1.5]) expect(generationOf(junk)).toBe(1);
     expect(generationOf(3)).toBe(3);
+    expect(generationOf(4)).toBe(4);
     const store = new MemoryStore();
     await store.putWorld(fresh);
     await store.putWorld({ ...old, id: 'o' });
-    expect(generationOf((await store.getWorld('w'))!.generation)).toBe(3);
+    expect(generationOf((await store.getWorld('w'))!.generation)).toBe(4);
     expect(generationOf((await store.getWorld('o'))!.generation)).toBe(1);
   });
 
   it('go from the world to its generate jobs, and the worker makes what that version makes', () => {
     const budget = TUNING.view.applyBudgetMs;
     TUNING.view.applyBudgetMs = 1e9; // no time limit: this is about what's asked, not when
-    for (const generation of [1, 2, 3] as const) {
+    for (const generation of [1, 2, 3, 4] as const) {
       const world = new World(9, { generation });
       const jobs: Job[] = [];
       const loader = new ChunkLoader(world, { set: () => {}, remove: () => {}, show: () => {} }, { capacity: 4, run: (job) => void jobs.push(job), onResult: () => {} });

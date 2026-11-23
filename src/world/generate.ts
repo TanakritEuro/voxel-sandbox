@@ -7,7 +7,7 @@
 // gravel under water, and water up to sea level. Then caves, ores and trees.
 
 import { Biome, BIOME_COUNT, Climate } from './biomes';
-import { Caves } from './caves';
+import { caveLimit, Caves } from './caves';
 import { Deep, DeepBiome, fillLava, LAVA_LEVEL, MUSHROOM_REACH, placeMushrooms } from './deep';
 import { type Ground, placeOres, placeTrees, TREE_REACH, TREE_TOP, treesIn } from './features';
 import { Block } from './blocks';
@@ -15,7 +15,8 @@ import { CHUNK_BITS, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL, WORLD_HEIGHT } from '.
 import { hash3 } from '../math';
 import { Noise } from './noise';
 import { Rivers } from './rivers';
-import { dungeonsIn, placeStructures, type Structure, structureBlocks, type StructureKind, structuresIn, structureTop } from './structures';
+import { columnKey, crowds, type Settlement, SETTLEMENT_CLEAR, Settlements } from './settlements';
+import { dungeonsIn, placeStructures, type Structure, structureBlocks, structureInCell, StructureKind, structuresIn, structureTop } from './structures';
 
 export { SEA_LEVEL } from './coords';
 /** Columns this steep (blocks up or down to a neighbour) show bare stone on top. */
@@ -110,13 +111,14 @@ export function columnLayers(info: ColumnInfo): Run[] {
 /**
  * Versions of world generation. A world keeps the version it was made with, so land it hasn't
  * edited yet comes out the same next to land it has: 1 is the world before Milestone 16, 2 adds
- * rivers, savanna and swamp, and structures; 3 (Milestone 19) adds the deep caves (`deep.ts`).
+ * rivers, savanna and swamp, and structures; 3 (Milestone 19) adds the deep caves (`deep.ts`); 4 (Milestone 22)
+ * adds settlements (`settlements.ts`), with no ruin or camp and no tree where one stands.
  */
-export type Generation = 1 | 2 | 3;
+export type Generation = 1 | 2 | 3 | 4;
 /** The version new worlds get. */
-export const GENERATION: Generation = 3;
-/** A version as saved or sent: 2 or 3 if it says so, else 1 (worlds from before versions say nothing). */
-export const generationOf = (v: unknown): Generation => (v === 3 ? 3 : v === 2 ? 2 : 1);
+export const GENERATION: Generation = 4;
+/** A version as saved or sent: 2, 3 or 4 if it says so, else 1 (worlds from before versions say nothing). */
+export const generationOf = (v: unknown): Generation => (v === 4 ? 4 : v === 3 ? 3 : v === 2 ? 2 : 1);
 
 /**
  * Generation passes that can be switched off (all on by default), for tests that compare with and
@@ -142,12 +144,7 @@ export function topBlock(info: ColumnInfo): Block {
   return Block.Air;
 }
 
-/**
- * How high caves may carve in a column: up to its surface on dry land, but never within 4
- * blocks below water in it or a neighbour, so no water hangs over or beside air (water
- * doesn't flow). `h` is the column's height, `lowest` the lowest of it and its 4 neighbours.
- */
-export const caveLimit = (h: number, lowest: number): number => (lowest <= SEA_LEVEL ? lowest - 4 : h);
+export { caveLimit } from './caves';
 
 export class Generator {
   readonly climate: Climate;
@@ -156,6 +153,8 @@ export class Generator {
   readonly rivers: Rivers;
   /** Version 3's deep caves. */
   readonly deep: Deep;
+  /** Version 4's settlements, laid out once per cell and kept. */
+  readonly settlements: Settlements;
   readonly options: Required<GeneratorOptions>;
   private readonly detail: Noise;
   private readonly weights = new Float64Array(BIOME_COUNT);
@@ -173,6 +172,7 @@ export class Generator {
     this.caves = new Caves(seed, this.options.generation >= 3 ? (x, y, z) => this.deep.biomeAt(x, y, z) !== DeepBiome.None : null);
     this.detail = new Noise(seed ^ 0x51e7);
     this.rivers = new Rivers(seed);
+    this.settlements = new Settlements(seed, this);
   }
 
   /** How high caves may carve in column (x, z) (`caveLimit` from the heights there and beside it). */
@@ -237,6 +237,11 @@ export class Generator {
   }
 
   /** Has a cave carved the block at (x, y, z)? (Slow: the column's height and its neighbours' each time.) */
+  /** Has a cave carved the block at (x, y, z), in a column that caves may carve up to `limit` (`caveLimit`)? */
+  carvedAt(x: number, y: number, z: number, limit: number): boolean {
+    return this.options.caves && this.caves.carvedAt(x, y, z, limit);
+  }
+
   caveAt(x: number, y: number, z: number): boolean {
     if (!this.options.caves) return false;
     const h = this.height(x, z);
@@ -246,7 +251,27 @@ export class Generator {
 
   /** Does a tree stand in column (x, z)? */
   treeAt(x: number, z: number): boolean {
-    return this.options.trees && treesIn(this.seed, x, z, x, z, this.ground()).length > 0;
+    return this.options.trees && this.clearOf(treesIn(this.seed, x, z, x, z, this.ground()), x, z, x, z).length > 0;
+  }
+
+  /** Version 4: `trees` (standing within [x0, x1] x [z0, z1] and their reach) but those that would crowd a settlement. */
+  private clearOf<T extends { x: number; z: number }>(trees: T[], x0: number, z0: number, x1: number, z1: number): T[] {
+    if (this.options.generation < 4 || !trees.length) return trees;
+    const near = this.settlements.within(x0 - TREE_REACH, z0 - TREE_REACH, x1 + TREE_REACH, z1 + TREE_REACH);
+    return near.length ? trees.filter((t) => !near.some((st) => crowds(st, t.x, t.z, TREE_REACH))) : trees;
+  }
+
+  /** Version 4's settlements whose blocks may reach into [x0, x1] x [z0, z1]. */
+  settlementsIn(x0: number, z0: number, x1: number, z1: number): Settlement[] {
+    return this.options.generation >= 4 ? this.settlements.within(x0, z0, x1, z1) : [];
+  }
+
+  /** Cell (gx, gz)'s ruin or camp, if it has one: none where a settlement stands (version 4). */
+  structureInCell(gx: number, gz: number): Structure | null {
+    if (this.options.generation === 1) return null;
+    const s = structureInCell(this.seed, gx, gz, this);
+    if (!s || this.options.generation < 4) return s;
+    return this.settlements.within(s.x - s.half, s.z - s.half, s.x + s.half, s.z + s.half, SETTLEMENT_CLEAR).length ? null : s;
   }
 
   private snowLine(x: number, z: number): number {
@@ -295,7 +320,8 @@ export class Generator {
   /** The structures whose blocks may reach into [x0, x1] x [z0, z1]: version 2's on the surface, version 3's dungeons too (none in version 1). */
   structuresIn(x0: number, z0: number, x1: number, z1: number): Structure[] {
     if (this.options.generation === 1) return [];
-    const out = structuresIn(this.seed, x0, z0, x1, z1, this);
+    let out = structuresIn(this.seed, x0, z0, x1, z1, this);
+    if (this.options.generation >= 4) out = out.filter((s) => !this.settlements.within(s.x - s.half, s.z - s.half, s.x + s.half, s.z + s.half, SETTLEMENT_CLEAR).length);
     return this.options.generation >= 3 ? out.concat(this.dungeonsIn(x0, z0, x1, z1)) : out;
   }
 
@@ -317,6 +343,7 @@ export class Generator {
   /** The kind of structure whose chest stands at (x, y, z), or null if none does (its loot is for that kind). */
   lootAt(x: number, y: number, z: number): StructureKind | null {
     for (const st of this.structuresIn(x, z, x, z)) if (st.chest[0] === x && st.chest[1] === y && st.chest[2] === z) return st.kind;
+    for (const st of this.settlementsIn(x, z, x, z)) for (const h of st.huts) if (h.chest[0] === x && h.chest[1] === y && h.chest[2] === z) return StructureKind.Hut;
     return null;
   }
 
@@ -367,7 +394,7 @@ export class Generator {
       dry: (x, z) => heights[index(x, z)] > SEA_LEVEL + 1,
       carved: (x, y, z) => this.options.caves && this.caves.carvedAt(x, y, z, spanLimits[index(x, z)]),
     };
-    const trees = this.options.trees ? treesIn(this.seed, x0 - TREE_REACH, z0 - TREE_REACH, x0 + S - 1 + TREE_REACH, z0 + S - 1 + TREE_REACH, ground) : [];
+    const trees = this.options.trees ? this.clearOf(treesIn(this.seed, x0 - TREE_REACH, z0 - TREE_REACH, x0 + S - 1 + TREE_REACH, z0 + S - 1 + TREE_REACH, ground), x0, z0, x0 + S - 1, z0 + S - 1) : [];
 
     // Each column's runs, and the highest block anywhere (chunks above it are all air).
     const runs = new Int16Array(COLUMNS * MAX_RUNS * 3);
@@ -400,6 +427,13 @@ export class Generator {
     const structures = this.options.generation === 1 ? [] : this.structuresIn(x0, z0, x0 + S - 1, z0 + S - 1);
     const built = structures.map((st) => structureBlocks(this.seed, st, this));
     for (const st of structures) top = Math.max(top, structureTop(st));
+    // Version 4's settlements, written last.
+    for (const st of this.settlementsIn(x0, z0, x0 + S - 1, z0 + S - 1)) {
+      const part = st.columns.get(columnKey(cx, cz));
+      if (!part) continue;
+      built.push(part.blocks);
+      top = Math.max(top, part.top);
+    }
 
     const out: (Uint8Array | null)[] = [];
     for (let cy = cyMin; cy <= cyMax; cy++) {
